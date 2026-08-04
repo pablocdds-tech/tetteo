@@ -5,6 +5,7 @@ import { agoraParaCampo } from "@/lib/data";
 import { AvisoUnidade } from "@/modules/estoque/components/aviso-unidade";
 import { FormularioNovaContagem } from "@/modules/estoque/components/formulario-nova-contagem";
 import { categoriasDeInsumos } from "@/modules/estoque/services/contagens";
+import { listarLocais } from "@/modules/estoque/services/rotinas";
 
 export default async function PaginaNovaContagem() {
   const contexto = await obterContexto();
@@ -22,7 +23,10 @@ export default async function PaginaNovaContagem() {
     );
   }
 
-  const categorias = await categoriasDeInsumos(contexto);
+  const [categorias, locais] = await Promise.all([
+    categoriasDeInsumos(contexto),
+    listarLocais(contexto),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -32,6 +36,7 @@ export default async function PaginaNovaContagem() {
       <div className="mt-6">
         <FormularioNovaContagem
           categorias={categorias}
+          locais={locais}
           agora={agoraParaCampo()}
         />
       </div>

@@ -16,9 +16,11 @@ import { abrirContagem, type EstadoFormulario } from "../acoes";
  */
 export function FormularioNovaContagem({
   categorias,
+  locais,
   agora,
 }: {
   categorias: string[];
+  locais: { id: string; nome: string }[];
   agora: string;
 }) {
   const [estado, acao, enviando] = useActionState<EstadoFormulario, FormData>(
@@ -45,6 +47,30 @@ export function FormularioNovaContagem({
         erro={estado.erros?.descricao}
         ajuda="Opcional. Serve só para você reconhecer a contagem na lista."
       />
+
+      {locais.length > 0 && (
+        <div className="flex w-full flex-col gap-1.5">
+          <label htmlFor="localId" className="text-ink-2 text-sm font-semibold">
+            Onde contar
+          </label>
+          <select
+            id="localId"
+            name="localId"
+            className="border-line-2 bg-surface text-ink focus:border-accent h-10 w-full rounded-md border px-3 text-base focus:shadow-[0_0_0_3px_var(--accent-sub)] focus:outline-none"
+          >
+            <option value="">A loja inteira</option>
+            {locais.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </select>
+          <span className="text-ink-3 text-sm">
+            Escolher um lugar traz só o que existe nele — folha curta, contagem
+            rápida.
+          </span>
+        </div>
+      )}
 
       {categorias.length > 0 && (
         <fieldset className="flex flex-col gap-2">

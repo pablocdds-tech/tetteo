@@ -31,6 +31,13 @@ export const esquemaNovaContagem = z.object({
 
   /** Vazio significa contagem cheia — todos os insumos ativos. */
   categorias: z.array(z.string().trim().min(1)).default([]),
+
+  /** O lugar contado. Vazio é a loja inteira. */
+  localId: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v ? v : null)),
 });
 
 export type DadosNovaContagem = z.infer<typeof esquemaNovaContagem>;

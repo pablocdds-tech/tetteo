@@ -53,6 +53,7 @@ export async function abrirContagem(
     referencia: dados.get("referencia") ?? "",
     descricao: dados.get("descricao") ?? "",
     categorias: dados.getAll("categorias").map(String),
+    localId: dados.get("localId") ?? "",
   });
 
   if (!analise.success) {
