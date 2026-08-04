@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { lerDataLocal } from "@/lib/data";
 import { numeroBrOpcional } from "@/lib/numero";
 
 /**
@@ -19,10 +20,8 @@ export const esquemaNovaContagem = z.object({
     .string()
     .trim()
     .min(1, "Informe a data e a hora da contagem.")
-    .refine((v) => !Number.isNaN(new Date(v).getTime()), {
-      message: "Data inválida.",
-    })
-    .transform((v) => new Date(v)),
+    .refine((v) => lerDataLocal(v) !== null, { message: "Data inválida." })
+    .transform((v) => lerDataLocal(v)!),
 
   descricao: z
     .string()

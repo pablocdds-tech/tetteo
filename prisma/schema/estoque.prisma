@@ -44,6 +44,7 @@ model LocalEstoque {
   posicoes  PosicaoEstoque[]
   contagens Contagem[]
   rotinas   RotinaDeContagem[]
+  notas     NotaEntrada[]
 
   @@unique([unidadeId, nome])
   @@index([unidadeId, ativo])
@@ -175,6 +176,11 @@ model NotaEntrada {
   emitidaEm  DateTime?
   /// A data que conta para o CMV: quando a mercadoria entrou.
   recebidaEm DateTime
+
+  /// Onde a mercadoria foi guardada ao chegar. Quase sempre o depósito — é
+  /// dali que ela desce para a praça depois.
+  localDestinoId String?
+  localDestino   LocalEstoque? @relation(fields: [localDestinoId], references: [id])
 
   status StatusNota @default(RASCUNHO)
 

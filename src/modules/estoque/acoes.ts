@@ -12,6 +12,7 @@ import {
   esquemaRotina,
 } from "./schemas/contagem";
 import { analisarPlanilha, type PlanoDeImportacao } from "./schemas/importacao";
+import { esquemaItem, esquemaNota } from "./schemas/nota";
 import {
   cancelarContagem,
   criarContagem,
@@ -19,6 +20,13 @@ import {
   salvarQuantidades,
 } from "./services/contagens";
 import { importarPlanilha } from "./services/importacao";
+import {
+  adicionarItem,
+  cancelarNota,
+  criarNota,
+  lancarNota,
+  removerItem,
+} from "./services/notas";
 import {
   criarRotina,
   desativarRotina,
@@ -302,6 +310,145 @@ export async function desativarRotinaAcao(dados: FormData) {
 
   await desativarRotina(contexto, id);
   revalidatePath("/estoque/contagens");
+}
+
+// ---------------------------------------------------------------------------
+// NOTAS DE ENTRADA
+// ---------------------------------------------------------------------------
+
+function coletarErros(issues: { path: PropertyKey[]; message: string }[]) {
+  const erros: Record<string, string> = {};
+  for (const problema of issues) {
+    const campo = String(problema.path[0] ?? "");
+    if (campo && !erros[campo]) erros[campo] = problema.message;
+  }
+  return erros;
+}
+
+export async function criarNotaAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const analise = esquemaNota.safeParse({
+    fornecedor: dados.get("fornecedor") ?? "",
+    numero: dados.get("numero") ?? "",
+    serie: dados.get("serie") ?? "",
+    recebidaEm: dados.get("recebidaEm") ?? "",
+    localDestinoId: dados.get("localDestinoId") ?? "",
+    observacao: dados.get("observacao") ?? "",
+  });
+
+  if (!analise.success) return { erros: coletarErros(analise.error.issues) };
+
+  let id: string;
+  try {
+    const nota = await criarNota(contexto, analise.data);
+    id = nota.id;
+  } catch (erro) {
+    if (erro instanceof Error && erro.message.includes("Unique constraint")) {
+      return {
+        erros: {
+          numero:
+            "Esta nota já foi lançada — mesmo fornecedor, número e série. Procure na lista antes de digitar de novo.",
+        },
+      };
+    }
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message };
+    }
+    if (erro instanceof Error) return { erro: erro.message };
+    throw erro;
+  }
+
+  revalidatePath("/estoque/entradas");
+  redirect(`/estoque/entradas/${id}`);
+}
+
+export async function adicionarItemAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const notaId = String(dados.get("notaId") ?? "");
+  if (!notaId) return { erro: "Nota não informada." };
+
+  const analise = esquemaItem.safeParse({
+    insumoId: dados.get("insumoId") ?? "",
+    quantidadeNota: dados.get("quantidadeNota") ?? "",
+    embalagemNome: dados.get("embalagemNome") ?? "",
+    fatorConversao: dados.get("fatorConversao") || "1",
+    valorTotal: dados.get("valorTotal") ?? "",
+    salvarEmbalagem: dados.get("salvarEmbalagem") === "on",
+  });
+
+  if (!analise.success) return { erros: coletarErros(analise.error.issues) };
+
+  try {
+    await adicionarItem(contexto, notaId, analise.data);
+  } catch (erro) {
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message };
+    }
+    if (erro instanceof Error) return { erro: erro.message };
+    throw erro;
+  }
+
+  revalidatePath(`/estoque/entradas/${notaId}`);
+  return {};
+}
+
+export async function removerItemAcao(dados: FormData) {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const notaId = String(dados.get("notaId") ?? "");
+  const itemId = String(dados.get("itemId") ?? "");
+  if (!notaId || !itemId) return;
+
+  await removerItem(contexto, notaId, itemId);
+  revalidatePath(`/estoque/entradas/${notaId}`);
+}
+
+export async function lancarNotaAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const id = String(dados.get("notaId") ?? "");
+  if (!id) return { erro: "Nota não informada." };
+
+  try {
+    await lancarNota(contexto, id);
+  } catch (erro) {
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message };
+    }
+    if (erro instanceof Error) return { erro: erro.message };
+    throw erro;
+  }
+
+  revalidatePath("/estoque/entradas");
+  revalidatePath(`/estoque/entradas/${id}`);
+  return {};
+}
+
+export async function cancelarNotaAcao(dados: FormData) {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const id = String(dados.get("notaId") ?? "");
+  if (!id) return;
+
+  await cancelarNota(contexto, id);
+  revalidatePath("/estoque/entradas");
+  redirect("/estoque/entradas");
 }
 
 export async function cancelarContagemAcao(dados: FormData) {
