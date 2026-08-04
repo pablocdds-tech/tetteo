@@ -1,0 +1,250 @@
+// ===========================================================================
+// ESTOQUE — o razão
+//
+// O App de Estoque LÊ o catálogo e ESCREVE aqui. Nenhum outro App escreve
+// nestas tabelas: quem quiser movimentar estoque publica um evento e o
+// Estoque decide.
+// ===========================================================================
+
+/// O motivo do movimento.
+///
+/// O prefixo não é enfeite: `ENTRADA%` e `SAIDA%` são lidos por um CHECK no
+/// banco, que recusa entrada com quantidade negativa e saída com positiva.
+enum TipoMovimento {
+  ENTRADA_COMPRA
+  ENTRADA_TRANSFERENCIA
+  ENTRADA_PRODUCAO
+  ENTRADA_DEVOLUCAO
+  ENTRADA_AJUSTE
+
+  SAIDA_VENDA
+  SAIDA_PRODUCAO
+  SAIDA_TRANSFERENCIA
+  SAIDA_PERDA
+  SAIDA_CONSUMO_INTERNO
+  SAIDA_AJUSTE
+}
+
+/// De qual documento o movimento nasceu.
+///
+/// Os três últimos ainda não têm módulo que os produza. Estão aqui porque
+/// acrescentar valor a enum é migration, e a alternativa — descobrir na
+/// integração que falta um valor — para a operação numa sexta à noite.
+enum OrigemMovimento {
+  COMPRA_NOTA_FISCAL
+  ORDEM_PRODUCAO
+  PEDIDO_VENDA
+  TRANSFERENCIA
+  INVENTARIO
+  AJUSTE_MANUAL
+
+  IFOOD_PEDIDO
+  PDV_VENDA
+  FISCAL_NFE_SAIDA
+}
+
+/// ═════════════════════════════════════════════════════════════════════════
+/// A ÚNICA FONTE DE VERDADE DO ESTOQUE.
+///
+/// Tudo que mexe em estoque vira uma linha aqui: entrada por nota, consumo por
+/// Ordem de Produção, produção de pré-preparo, baixa por venda, transferência,
+/// perda, ajuste de inventário. Saldo é DERIVADO daqui, nunca o contrário.
+///
+/// Esta é a única tabela do sistema sem `excluidoEm` e sem `atualizadoEm`, e
+/// isso é a exceção declarada à regra de `core.prisma:9-11`. Um trigger no
+/// banco recusa UPDATE e DELETE — não por desconfiança de quem programa, mas
+/// porque no dia em que alguém for "só corrigir" um lançamento às 2h da manhã,
+/// o banco precisa dizer não.
+///
+/// Corrigir é lançar um ESTORNO: mesma linha com sinal invertido, apontando
+/// para a original em `estornaMovimentoId`. Os dois ficam visíveis para sempre.
+/// ═════════════════════════════════════════════════════════════════════════
+model MovimentoEstoque {
+  id            String  @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id])
+  insumoId      String
+  insumo        Insumo  @relation(fields: [organizacaoId, insumoId], references: [organizacaoId, id])
+
+  loteId String?
+  lote   Lote?   @relation(fields: [organizacaoId, loteId], references: [organizacaoId, id])
+
+  tipo TipoMovimento
+
+  /// COM SINAL, na unidade em que foi lançado. Positivo entra, negativo sai.
+  /// Estorno inverte o sinal do tipo — entrada estornada é negativa.
+  quantidade      Decimal       @db.Decimal(14, 4)
+  unidadeMedidaId String
+  unidadeMedida   UnidadeMedida @relation(fields: [organizacaoId, unidadeMedidaId], references: [organizacaoId, id])
+
+  /// A mesma quantidade convertida para `insumo.unidadeEstoqueId`.
+  ///
+  /// Redundante de propósito. Com ela, saldo é `SUM(quantidadeBase)` — sem
+  /// juntar tabela de conversão e, principalmente, sem que mudar um fator
+  /// amanhã reescreva o saldo de ontem.
+  quantidadeBase Decimal @db.Decimal(14, 4)
+
+  /// O custo NO MOMENTO DO MOVIMENTO, congelado.
+  ///
+  /// É este campo que faz "alterar o preço de compra hoje não recalcula o CMV
+  /// de pedidos já fechados" ser verdade: não existe caminho do cadastro até
+  /// aqui. O número foi gravado e acabou.
+  custoUnitario Decimal @db.Decimal(18, 8)
+
+  /// `quantidadeBase × custoUnitario`, com sinal. Preenchido por TRIGGER, não
+  /// pela aplicação — assim não existe o estado em que os três discordam.
+  custoTotal Decimal @default(0) @db.Decimal(14, 4)
+
+  origemTipo OrigemMovimento
+  /// Polimórfico e SEM chave estrangeira, como `auditoria.unidadeId`
+  /// (`core.prisma:80-81`): o razão precisa sobreviver ao documento que o
+  /// originou, inclusive quando esse documento vier de um módulo que ainda
+  /// não existe.
+  origemId   String?
+
+  estornaMovimentoId String?
+  estorna            MovimentoEstoque?  @relation("Estorno", fields: [estornaMovimentoId], references: [id])
+  estornadoPor       MovimentoEstoque[] @relation("Estorno")
+
+  /// A trava contra duplicação de entrada externa.
+  ///
+  ///   nota fiscal → "nfe:<chave de acesso>:<nº do item>"
+  ///   iFood       → "ifood:<pedido>:<item>:<insumo>"
+  ///   produção    → "op:<ordem>:<insumo>"
+  ///
+  /// Reimportar o mesmo XML colide na trava única e não duplica movimento.
+  /// Sem isto, reprocessar uma nota dá entrada em 20 kg de queijo quando
+  /// entraram 10.
+  chaveIdempotencia String
+
+  /// ⚠️ DUAS DATAS, E AS DUAS IMPORTAM.
+  ///
+  /// `ocorridoEm` é quando o fato aconteceu no mundo: a data da nota, a hora
+  /// do pedido. `criadoEm` é quando o sistema soube. São diferentes toda vez
+  /// que alguém lança na segunda a nota que chegou na sexta — e o CMV do mês
+  /// depende da primeira, não da segunda.
+  ///
+  /// Sem `@default`: quem lança é obrigado a informar quando aconteceu.
+  ocorridoEm DateTime
+  criadoEm   DateTime @default(now())
+
+  criadoPorId String?
+  criadoPor   Usuario? @relation(fields: [criadoPorId], references: [id])
+
+  observacao String?
+
+  @@unique([organizacaoId, chaveIdempotencia])
+  /// O índice do saldo e do extrato. Lidera por organização, depois unidade e
+  /// insumo, e fecha em `ocorridoEm` — que é a data pela qual se pergunta.
+  @@index([organizacaoId, unidadeId, insumoId, ocorridoEm])
+  /// CMV do período, por loja.
+  @@index([organizacaoId, unidadeId, ocorridoEm])
+  /// "Quais movimentos esta nota gerou?"
+  @@index([organizacaoId, origemTipo, origemId])
+  @@index([organizacaoId, loteId])
+  @@map("movimento_estoque")
+}
+
+/// O saldo. CACHE, não verdade.
+///
+/// A verdade é `SUM(movimento_estoque.quantidadeBase)`. Esta tabela existe
+/// porque somar um razão de milhões de linhas a cada tela de estoque não é
+/// viável — e é reconciliável justamente por ser derivada.
+///
+/// NENHUMA regra de negócio escreve aqui. Só o serviço de movimento, na MESMA
+/// transação em que grava a linha do razão. Se divergir, o razão está certo.
+model SaldoEstoque {
+  id            String  @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id])
+  insumoId      String
+  insumo        Insumo  @relation(fields: [organizacaoId, insumoId], references: [organizacaoId, id])
+
+  /// Na unidade de estoque do insumo. Pode ficar negativo: recusar a venda
+  /// porque o sistema acha que acabou o queijo — quando tem queijo na
+  /// geladeira e o erro é de lançamento — para a operação por um problema de
+  /// cadastro. O alerta resolve; a trava atrapalha.
+  quantidade Decimal @default(0) @db.Decimal(14, 4)
+
+  /// CUSTO MÉDIO PONDERADO MÓVEL, por loja.
+  ///
+  ///   entrada → (qtdAnterior × médioAnterior + qtdEntrada × custoEntrada)
+  ///             ÷ (qtdAnterior + qtdEntrada)
+  ///   saída   → consome pelo médio vigente e NÃO altera o médio
+  ///
+  /// Por loja e não por rede porque cada unidade compra por um preço e guarda
+  /// um estoque físico diferente. Um número só na rede seria média de coisas
+  /// que não se misturam.
+  custoMedio Decimal @default(0) @db.Decimal(18, 8)
+
+  ultimoMovimentoId String?
+  ultimoMovimentoEm DateTime?
+  /// Quando o job de reconciliação conferiu esta linha contra o razão pela
+  /// última vez.
+  reconciliadoEm    DateTime?
+
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([organizacaoId, unidadeId, insumoId])
+  @@index([organizacaoId, unidadeId])
+  @@map("saldo_estoque")
+}
+
+enum StatusLote {
+  ATIVO
+  ESGOTADO
+  VENCIDO
+  DESCARTADO
+}
+
+/// O lote — rastreio e etiqueta ANVISA.
+///
+/// A etiqueta do manipulado exige três coisas: produzido em, validade e
+/// responsável. Estão todas aqui, antes da interface existir: acrescentar
+/// rastreio a um razão que já tem movimento gravado significa não conseguir
+/// dizer de qual lote saiu o que já saiu.
+///
+/// Quantidades na unidade de estoque do insumo, como no razão.
+model Lote {
+  id            String  @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id])
+  insumoId      String
+  insumo        Insumo  @relation(fields: [organizacaoId, insumoId], references: [organizacaoId, id])
+
+  /// Gerado pela aplicação: MASSA-20260804-01.
+  codigo String
+
+  produzidoEm DateTime?
+  validadeEm  DateTime?
+
+  /// Quem produziu. Exigência da etiqueta, não conveniência de auditoria.
+  responsavelId String?
+  responsavel   Usuario? @relation(fields: [responsavelId], references: [id])
+
+  /// Preenchido quando o lote nasce de uma Ordem de Produção (M6). Sem FK
+  /// ainda porque a tabela só existe lá.
+  ordemProducaoId String?
+
+  quantidadeInicial Decimal @db.Decimal(14, 4)
+  /// Cache, como o saldo: a verdade é a soma dos movimentos com este lote.
+  quantidadeAtual   Decimal @db.Decimal(14, 4)
+
+  status StatusLote @default(ATIVO)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
+
+  movimentos MovimentoEstoque[]
+
+  @@unique([organizacaoId, id])
+  @@unique([organizacaoId, unidadeId, insumoId, codigo])
+  /// "O que vence amanhã nesta loja?" — a consulta que sustenta o checklist
+  /// de validade e o alerta de descarte.
+  @@index([organizacaoId, unidadeId, validadeEm])
+  @@map("lote")
+}

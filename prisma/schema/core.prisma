@@ -85,6 +85,9 @@ model Unidade {
   // Exceções de catálogo por loja. Vive em `catalogo.prisma`, camada de dado
   // central — o Prisma só exige o outro lado da relação declarado aqui.
   insumos      InsumoPorUnidade[]
+  movimentos   MovimentoEstoque[]
+  saldos       SaldoEstoque[]
+  lotes        Lote[]
 
   // `auditoria` guarda a unidade como texto solto, de propósito: o registro é
   // só-escrita e precisa sobreviver mesmo que a unidade mude ou seja excluída.
@@ -139,6 +142,12 @@ model Usuario {
   eventos          Evento[]
   auditorias       Auditoria[]
   notificacoes     Notificacao[]
+
+  // O razão de estoque registra quem lançou; o lote, quem produziu (exigência
+  // da etiqueta ANVISA). Vivem em `estoque.prisma` — o Prisma só exige o
+  // outro lado da relação declarado aqui.
+  movimentosEstoque MovimentoEstoque[]
+  lotesProduzidos   Lote[]
 
   @@map("usuario")
 }

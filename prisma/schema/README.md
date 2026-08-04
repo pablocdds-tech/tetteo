@@ -42,12 +42,13 @@ O Prisma não expressa `WHERE` em índice. Todo campo único de tabela com
 `excluidoEm` precisa de um destes — `@@unique` comum queimaria o valor de um
 registro excluído para sempre.
 
-| índice                           | M   | garante                                                 |
-| -------------------------------- | --- | ------------------------------------------------------- |
-| `insumo_nome_ativo_uk`           | M1  | nome único entre os insumos não excluídos               |
-| `unidade_medida_codigo_ativo_uk` | M2  | código único entre as unidades não excluídas            |
-| `unidade_medida_base_unica_uk`   | M2  | **uma** unidade base por grandeza                       |
-| `conversao_unidade_vigente_uk`   | M2  | **uma** conversão vigente por (insumo, origem, destino) |
+| índice                               | M   | garante                                                 |
+| ------------------------------------ | --- | ------------------------------------------------------- |
+| `insumo_nome_ativo_uk`               | M1  | nome único entre os insumos não excluídos               |
+| `unidade_medida_codigo_ativo_uk`     | M2  | código único entre as unidades não excluídas            |
+| `unidade_medida_base_unica_uk`       | M2  | **uma** unidade base por grandeza                       |
+| `conversao_unidade_vigente_uk`       | M2  | **uma** conversão vigente por (insumo, origem, destino) |
+| `movimento_estoque_estorno_unico_uk` | M4  | cada movimento é estornado **no máximo uma vez**        |
 
 ### CHECKs
 
@@ -57,6 +58,16 @@ registro excluído para sempre.
 | `conversao_unidade`  | M2  | fator ≤ 0; origem igual ao destino; vigência terminando antes de começar |
 | `insumo`             | M3  | custo ou estoque mínimo negativo; validade de zero dia                   |
 | `insumo_por_unidade` | M3  | estoque máximo menor que o mínimo                                        |
+| `movimento_estoque`  | M4  | quantidade zero; sinal que não bate com o tipo; custo negativo           |
+| `lote`               | M4  | quantidade inicial ≤ 0; validade anterior à produção                     |
+
+### Triggers e visões
+
+| objeto                               | tipo    | M   | por que existe                                                               |
+| ------------------------------------ | ------- | --- | ---------------------------------------------------------------------------- |
+| `movimento_estoque_imutavel`         | trigger | M4  | recusa UPDATE e DELETE no razão — a regra append-only vira garantia do banco |
+| `movimento_estoque_antes_de_inserir` | trigger | M4  | calcula `custoTotal` e exige que estorno seja espelho exato do original      |
+| `saldo_divergente`                   | visão   | M4  | lista onde o cache de saldo discorda da soma do razão. Vazia = saudável      |
 
 ## Rollback
 

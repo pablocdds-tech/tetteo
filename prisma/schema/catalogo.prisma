@@ -78,6 +78,7 @@ model UnidadeMedida {
   conversoesComoDestino ConversaoUnidade[] @relation("ConversaoDestino")
   insumosComoEstoque    Insumo[]           @relation("InsumoUnidadeEstoque")
   insumosComoCompra     Insumo[]           @relation("InsumoUnidadeCompra")
+  movimentos            MovimentoEstoque[]
 
   @@unique([organizacaoId, id])
   @@index([organizacaoId, grandeza])
@@ -214,6 +215,9 @@ model Insumo {
 
   conversoes ConversaoUnidade[]
   porUnidade InsumoPorUnidade[]
+  movimentos MovimentoEstoque[]
+  saldos     SaldoEstoque[]
+  lotes      Lote[]
 
   /// Alvo das chaves estrangeiras COMPOSTAS das tabelas que vierem depois.
   ///
