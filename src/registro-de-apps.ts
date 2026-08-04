@@ -1,3 +1,4 @@
+import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
 import { manifestoCardapio } from "@/modules/cardapio/manifest";
 import { manifestoEstoque } from "@/modules/estoque/manifest";
@@ -332,15 +333,15 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
       { rota: "/configuracoes", nome: "Geral" },
       { rota: "/configuracoes/unidades", nome: "Unidades" },
       { rota: "/configuracoes/usuarios", nome: "Usuários e papéis" },
-      { rota: "/configuracoes/integracoes", nome: "Integrações" },
+      {
+        rota: "/configuracoes/auditoria",
+        nome: "Histórico",
+        permissao: "configuracoes.auditoria",
+      },
     ],
     permissaoParaVer: "configuracoes.ver",
-    permissoes: [
-      { chave: "configuracoes.ver", descricao: "Ver configurações da rede" },
-      { chave: "configuracoes.editar", descricao: "Alterar configurações" },
-    ],
+    permissoes: [...PERMISSOES_CONFIGURACOES],
     comportamentoNaRede: "consolida",
-    emConstrucao: true,
   },
 ];
 
