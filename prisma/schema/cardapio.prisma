@@ -36,10 +36,26 @@ model Insumo {
 
   unidadeMedida UnidadeMedida
 
+  /// Como a pessoa CHAMA a unidade: "pct", "rolo", "bisnaga", "bandeja".
+  ///
+  /// A conta é sempre feita na unidade base acima — pacote e rolo são ambos
+  /// contados de um em um, então valem UN. Mas ninguém pede "cinco unidades de
+  /// guardanapo", pede cinco pacotes. O rótulo existe para a tela falar a
+  /// língua da cozinha sem inventar uma unidade de medida nova a cada item.
+  unidadeRotulo String?
+
   /// Dinheiro e quantidade NUNCA em ponto flutuante: 0.1 + 0.2 não dá 0.3 em
   /// binário, e num sistema que soma milhares de lançamentos esse erro vira
   /// divergência real de caixa. Decimal guarda o valor exato.
   custoMedio Decimal @default(0) @db.Decimal(14, 4)
+
+  /// O preço da ÚLTIMA compra, guardado ao lado da média.
+  ///
+  /// Os dois servem a perguntas diferentes: a média custeia o que já foi
+  /// consumido, o último diz por quanto se repõe hoje. Num período de alta,
+  /// escolher um ou outro muda o CMV — então o sistema guarda ambos e deixa a
+  /// escolha explícita, em vez de decidir escondido.
+  custoUltimo Decimal @default(0) @db.Decimal(14, 4)
 
   /// Abaixo disso, o insumo entra na lista de reposição.
   estoqueMinimo Decimal @default(0) @db.Decimal(14, 3)
@@ -59,6 +75,7 @@ model Insumo {
   embalagens      EmbalagemCompra[]
   itensDeNota     NotaEntradaItem[]
   itensDeContagem ContagemItem[]
+  posicoes        PosicaoEstoque[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])

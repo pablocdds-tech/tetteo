@@ -15,6 +15,69 @@
 // mais as notas lançadas depois dela, e a tela diz isso em voz alta.
 // ===========================================================================
 
+/// Um lugar físico onde mercadoria fica: praça, câmara fria, estoque seco,
+/// cozinha, bar.
+///
+/// Existe porque a alternativa é pior. O sistema que a pizzaria usa hoje
+/// escreve o lugar dentro do NOME do produto — "coca-cola lata (estoque
+/// diário)" ao lado de "coca-cola lata" — e o resultado é que trinta produtos
+/// estão cadastrados em dobro. Ninguém responde "quantas coca eu tenho?" sem
+/// somar duas linhas na mão, o alerta de estoque mínimo dispara sobre metade
+/// do estoque real, e tirar caixa do depósito para a geladeira vira
+/// transferência entre dois produtos diferentes.
+///
+/// Aqui o produto é um só e o lugar é um campo. A folha de contagem passa a
+/// seguir o caminho que a pessoa faz na loja.
+model LocalEstoque {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  nome String
+  /// A ordem em que se anda pela loja ao contar. Menor conta primeiro.
+  ordem Int @default(0)
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  posicoes  PosicaoEstoque[]
+  contagens Contagem[]
+
+  @@unique([unidadeId, nome])
+  @@index([unidadeId, ativo])
+  @@map("local_estoque")
+}
+
+/// Quanto de um insumo existe num lugar — e a partir de quanto falta.
+///
+/// O saldo é por LOCAL, não por unidade: a mesma coca-cola tem vinte e cinco
+/// na geladeira da frente e vinte e quatro no depósito, e as duas contas
+/// importam por motivos diferentes. Somar as duas dá o total da loja; olhar só
+/// uma diz se precisa repor agora.
+model PosicaoEstoque {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  localId String
+  local   LocalEstoque @relation(fields: [localId], references: [id], onDelete: Cascade)
+
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  quantidade Decimal @default(0) @db.Decimal(14, 3)
+
+  /// Mínimo DESTE lugar. Nulo usa o mínimo geral do insumo — porque repor a
+  /// geladeira da frente e repor o depósito são decisões de tamanho diferente.
+  estoqueMinimo Decimal? @db.Decimal(14, 3)
+
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([localId, insumoId])
+  @@index([unidadeId, insumoId])
+  @@map("posicao_estoque")
+}
+
 /// Uma embalagem em que o insumo é COMPRADO, quando difere de como ele é
 /// medido e contado.
 ///
@@ -194,6 +257,14 @@ model Contagem {
 
   /// Categorias contadas. Vazio significa contagem cheia.
   categorias String[] @default([])
+
+  /// O lugar contado. Nulo é a contagem da loja inteira.
+  ///
+  /// Contar por lugar é o que torna a rotina possível: a praça se conta todo
+  /// dia em cinco minutos, o depósito uma vez por semana. Uma folha única com
+  /// os duzentos e sessenta e um itens não é contada por ninguém.
+  localId String?
+  local   LocalEstoque? @relation(fields: [localId], references: [id])
 
   status StatusContagem @default(ABERTA)
 

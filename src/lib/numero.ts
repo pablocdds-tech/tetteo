@@ -66,6 +66,19 @@ function interpretar(bruto: string): Leitura {
   return { ok: true, valor };
 }
 
+/**
+ * Leitura direta, sem Zod — para importação em lote, onde uma célula ruim não
+ * pode derrubar as outras duzentas e sessenta.
+ *
+ * Devolve `null` para vazio e `undefined` para o que não deu para entender,
+ * porque quem chama precisa saber a diferença: em branco é ausência de dado,
+ * ilegível é aviso na tela.
+ */
+export function lerNumeroBr(texto: string): number | null | undefined {
+  const leitura = interpretar(texto);
+  return leitura.ok ? leitura.valor : undefined;
+}
+
 function mensagem(motivo: "invalido" | "ambiguo", rotulo: string) {
   if (motivo === "ambiguo") {
     return `Não deu para entender ${rotulo}: use vírgula para os decimais (1.200,00) ou escreva sem ponto (1200).`;

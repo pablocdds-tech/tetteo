@@ -7,12 +7,14 @@ import { obterContexto } from "@/core/sessao/contexto";
 import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 
 import { esquemaNovaContagem, esquemaQuantidade } from "./schemas/contagem";
+import { analisarPlanilha, type PlanoDeImportacao } from "./schemas/importacao";
 import {
   cancelarContagem,
   criarContagem,
   fecharContagem,
   salvarQuantidades,
 } from "./services/contagens";
+import { importarPlanilha } from "./services/importacao";
 
 export type EstadoFormulario = {
   erro?: string;
@@ -156,6 +158,66 @@ export async function fecharFolha(
 
   revalidatePath("/estoque/contagens");
   redirect(`/estoque/contagens/${id}`);
+}
+
+export type EstadoImportacao = {
+  erro?: string;
+  plano?: PlanoDeImportacao;
+  texto?: string;
+  resumo?: {
+    insumosCriados: number;
+    insumosAtualizados: number;
+    locais: number;
+    posicoes: number;
+    linhas: number;
+  };
+};
+
+/**
+ * Analisa a planilha colada e devolve o PLANO — sem gravar nada.
+ *
+ * O passo separado existe porque importar duzentos e sessenta produtos é
+ * irreversível na prática: ninguém desfaz isso item a item. Ver antes o que
+ * vai virar o quê é o que torna a operação segura.
+ */
+export async function analisarImportacao(
+  _anterior: EstadoImportacao,
+  dados: FormData,
+): Promise<EstadoImportacao> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const texto = String(dados.get("planilha") ?? "");
+  if (!texto.trim()) return { erro: "Cole a planilha antes de continuar." };
+
+  const plano = analisarPlanilha(texto);
+  if (plano.erroGeral) return { erro: plano.erroGeral, texto };
+
+  return { plano, texto };
+}
+
+export async function confirmarImportacao(
+  _anterior: EstadoImportacao,
+  dados: FormData,
+): Promise<EstadoImportacao> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const texto = String(dados.get("planilha") ?? "");
+  const plano = analisarPlanilha(texto);
+
+  try {
+    const resumo = await importarPlanilha(contexto, plano);
+    revalidatePath("/cardapio");
+    revalidatePath("/estoque");
+    return { resumo };
+  } catch (erro) {
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message, plano, texto };
+    }
+    if (erro instanceof Error) return { erro: erro.message, plano, texto };
+    throw erro;
+  }
 }
 
 export async function cancelarContagemAcao(dados: FormData) {
