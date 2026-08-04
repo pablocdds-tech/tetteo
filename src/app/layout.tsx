@@ -31,6 +31,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="pt-BR"
+      // O sistema é claro por padrão, independente do tema do computador.
+      // O tema escuro continua desenhado e disponível: será usado pelo seletor
+      // de tema e forçado no Modo Operação (cozinha, à noite).
+      data-theme="light"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">{children}</body>
