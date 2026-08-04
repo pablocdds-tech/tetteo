@@ -1,0 +1,88 @@
+// ===========================================================================
+// CATÁLOGO — dado central
+//
+// Esta camada NÃO pertence a nenhum App.
+//
+// `insumo` é escrito pelo Cardápio e lido pelo Estoque, pelas Compras, pelo
+// Financeiro e pelo Analytics. É o caso clássico do dado central descrito em
+// `src/modules/README.md`: todos leem, só o dono escreve. Mantê-lo dentro de
+// `cardapio.prisma` obrigaria o App de Estoque a atravessar exatamente a
+// fronteira que o linter existe para impedir.
+// ===========================================================================
+
+/// LEGADO — some na M9.
+///
+/// Substituído pela tabela `unidade_medida` (M2), que precisa existir porque
+/// "saco", "caixa" e "fardo" são vocabulário do fornecedor, não do sistema: um
+/// enum obrigaria uma migration a cada embalagem nova que a pizzaria comprar.
+///
+/// Continua populado enquanto a interface antiga o lê. O nome do tipo no
+/// Postgres foi renomeado na M1 para liberar `UnidadeMedida` para a tabela.
+enum UnidadeMedidaLegado {
+  KG
+  G
+  L
+  ML
+  UN
+}
+
+/// Um insumo — o que se compra e se consome: mussarela, farinha, tomate.
+///
+/// Pertence à ORGANIZAÇÃO, não à unidade. É uma decisão do desenho: o cadastro
+/// do insumo é padrão da rede (a mussarela é a mesma receita em todas as
+/// lojas), enquanto o SALDO dele é físico e por loja. A regra: o que é padrão é
+/// da rede; o que é físico ou aconteceu num lugar é da unidade.
+///
+/// O que varia legitimamente por loja (trabalha ou não com o item, estoque
+/// mínimo próprio) mora em `insumo_por_unidade`, a partir da M3.
+model Insumo {
+  id            String      @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+
+  nome      String
+  categoria String?
+
+  unidadeMedida UnidadeMedidaLegado
+
+  /// Dinheiro e quantidade NUNCA em ponto flutuante: 0.1 + 0.2 não dá 0.3 em
+  /// binário, e num sistema que soma milhares de lançamentos esse erro vira
+  /// divergência real de caixa. Decimal guarda o valor exato.
+  ///
+  /// LEGADO — some na M9. Hoje é digitado à mão e nada o calcula. A partir da
+  /// M4 o custo real passa a ser `saldo_estoque.custoMedio`, que é POR LOJA:
+  /// cada unidade compra por um preço e guarda um estoque físico diferente, e
+  /// um número só na rede seria mentira em qualquer rede com mais de uma loja.
+  custoMedio Decimal @default(0) @db.Decimal(14, 4)
+
+  /// Abaixo disso, o insumo entra na lista de reposição.
+  ///
+  /// Alargado de (14,3) para (14,4) na M1: quantidade e dinheiro passam a
+  /// compartilhar a mesma escala em todo o sistema. Escalas diferentes entre
+  /// tabelas que se somam são fonte silenciosa de arredondamento.
+  estoqueMinimo Decimal @default(0) @db.Decimal(14, 4)
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  criadoPorId     String?
+  atualizadoPorId String?
+
+  /// Alvo das chaves estrangeiras COMPOSTAS das tabelas que vierem depois.
+  ///
+  /// É o mecanismo que faz "toda FK valida o mesmo tenant" ser verdade no
+  /// banco em vez de promessa: um movimento de estoque da organização A
+  /// referencia (organizacaoId, insumoId) e o Postgres recusa, fisicamente,
+  /// apontar para um insumo da organização B.
+  @@unique([organizacaoId, id])
+  @@index([organizacaoId, ativo])
+  // O nome único vive num ÍNDICE PARCIAL (`WHERE "excluidoEm" IS NULL`),
+  // criado em SQL na M1. Com `@@unique([organizacaoId, nome])` — que valia
+  // para todas as linhas — excluir "Mussarela" queimava o nome para sempre:
+  // recadastrar batia numa trava apontando para um registro invisível.
+  // O Prisma não expressa índice parcial; ver `prisma/schema/README.md`.
+  @@map("insumo")
+}

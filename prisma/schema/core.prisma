@@ -43,6 +43,11 @@ model Organizacao {
   auditorias  Auditoria[]
   notificacoes Notificacao[]
 
+  // O Prisma exige os dois lados de uma relação. `insumo` vive em
+  // `catalogo.prisma` — camada de dado central, não de App —, então isto aqui
+  // não é o Core conhecendo um App: nenhum App é dono do catálogo.
+  insumos     Insumo[]
+
   @@map("organizacao")
 }
 
@@ -80,6 +85,10 @@ model Unidade {
   // só-escrita e precisa sobreviver mesmo que a unidade mude ou seja excluída.
 
   @@unique([organizacaoId, codigo])
+  /// Alvo das chaves estrangeiras COMPOSTAS das tabelas de fato (movimento de
+  /// estoque, ordem de produção, inventário). É o que permite ao Postgres
+  /// recusar um lançamento que aponte para a loja de outra organização.
+  @@unique([organizacaoId, id])
   @@index([organizacaoId])
   @@map("unidade")
 }
