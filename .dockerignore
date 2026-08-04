@@ -1,0 +1,34 @@
+# Tudo que não deve entrar na imagem.
+# Além de deixar a imagem menor, evita que segredos locais viajem para a VPS.
+
+node_modules
+.next
+out
+build
+
+.git
+.gitignore
+.gitattributes
+
+# segredos — NUNCA dentro da imagem
+.env
+.env.*
+!.env.example
+
+# ferramental de IA instalado na pasta
+.agents
+.claude
+.codex
+.impeccable
+skills-lock.json
+AGENTS.md
+CLAUDE.md
+
+# documentação e configuração de editor
+*.md
+!README.md
+.vscode
+.idea
+
+npm-debug.log*
+*.tsbuildinfo
