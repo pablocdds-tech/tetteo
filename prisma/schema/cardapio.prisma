@@ -1,0 +1,53 @@
+// ===========================================================================
+// APP: CARDÁPIO
+//
+// Cada App traz seu próprio arquivo de schema. Nenhum App mexe no arquivo de
+// outro — a mesma fronteira que vale no código vale aqui.
+// ===========================================================================
+
+/// Unidade em que o insumo é medido e comprado.
+enum UnidadeMedida {
+  KG
+  G
+  L
+  ML
+  UN
+}
+
+/// Um insumo — o que se compra e se consome: mussarela, farinha, tomate.
+///
+/// Pertence à ORGANIZAÇÃO, não à unidade. É uma decisão do desenho: o
+/// cadastro do insumo é padrão da rede (a mussarela é a mesma receita em
+/// todas as lojas), enquanto o SALDO dele é físico e por loja — e isso vai
+/// morar no App de Estoque. A regra: o que é padrão é da rede; o que é físico
+/// ou aconteceu num lugar é da unidade.
+model Insumo {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  nome      String
+  categoria String?
+
+  unidadeMedida UnidadeMedida
+
+  /// Dinheiro e quantidade NUNCA em ponto flutuante: 0.1 + 0.2 não dá 0.3 em
+  /// binário, e num sistema que soma milhares de lançamentos esse erro vira
+  /// divergência real de caixa. Decimal guarda o valor exato.
+  custoMedio Decimal @default(0) @db.Decimal(14, 4)
+
+  /// Abaixo disso, o insumo entra na lista de reposição.
+  estoqueMinimo Decimal @default(0) @db.Decimal(14, 3)
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  criadoPorId     String?
+  atualizadoPorId String?
+
+  @@unique([organizacaoId, nome])
+  @@index([organizacaoId, ativo])
+  @@map("insumo")
+}
