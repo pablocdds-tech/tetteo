@@ -26,6 +26,101 @@ enum UnidadeMedidaLegado {
   UN
 }
 
+/// A natureza física do que se mede. Conversão só existe DENTRO da mesma
+/// grandeza: kg ↔ g sempre; kg ↔ L nunca. Densidade é propriedade do insumo
+/// (1 L de azeite não pesa 1 kg), então "quanto pesa um litro disto" é
+/// conversão específica de insumo, não de unidade.
+enum GrandezaMedida {
+  MASSA
+  VOLUME
+  CONTAGEM
+}
+
+/// A unidade em que se mede, compra e consome.
+///
+/// Substitui o enum `UnidadeMedidaLegado`. Precisa ser tabela porque "saco",
+/// "caixa" e "fardo" são vocabulário do fornecedor, não do sistema — com enum,
+/// cada embalagem nova que a pizzaria passasse a comprar exigiria uma migration.
+///
+/// Semeada POR ORGANIZAÇÃO em vez de global. Oito linhas duplicadas por rede
+/// não custam nada e, em troca, toda tabela do sistema fica com exatamente a
+/// mesma política de isolamento — sem o caso especial "esta aqui não tem dono"
+/// que teria que ser lembrado em cada policy escrita daqui pra frente.
+model UnidadeMedida {
+  id            String      @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+
+  codigo String // "kg", "g", "L", "ml", "un", "saco"
+  nome   String
+
+  grandeza GrandezaMedida
+
+  /// Quanto vale 1 desta unidade na unidade base da mesma grandeza.
+  /// Com base em kg: g → 0,001. Com base em L: ml → 0,001.
+  ///
+  /// Oito casas porque a conversão é o primeiro elo da cadeia de custo — o
+  /// erro que entrar aqui é multiplicado por tudo que vier depois.
+  fatorParaBase Decimal @db.Decimal(18, 8)
+
+  /// A unidade de referência da grandeza. Exatamente uma por (organização,
+  /// grandeza), garantido por índice parcial criado na M2.
+  ehBase Boolean @default(false)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  criadoPorId     String?
+  atualizadoPorId String?
+
+  conversoesComoOrigem  ConversaoUnidade[] @relation("ConversaoOrigem")
+  conversoesComoDestino ConversaoUnidade[] @relation("ConversaoDestino")
+
+  @@unique([organizacaoId, id])
+  @@index([organizacaoId, grandeza])
+  // `codigo` único por organização vive num índice parcial (M2), pelo mesmo
+  // motivo do nome do insumo: `@@unique` queimaria o código de uma unidade
+  // excluída para sempre.
+  @@map("unidade_medida")
+}
+
+/// A conversão que NÃO é universal.
+///
+/// kg ↔ g é aritmética e vive em `fatorParaBase`. Já "1 saco = 25 kg" depende
+/// do que está dentro do saco: farinha vem em 25 kg, arroz em 5 kg, e nenhuma
+/// tabela de unidades resolve isso sem saber de qual insumo se fala.
+///
+/// VERSIONADA por um motivo concreto: o fornecedor troca a embalagem de 25 kg
+/// para 20 kg e as notas antigas precisam continuar sendo lidas com o fator da
+/// época. Sem `vigenteDe`, mudar o fator reescreveria o histórico de compras.
+model ConversaoUnidade {
+  id            String @id @default(cuid())
+  organizacaoId String
+  insumoId      String
+  insumo        Insumo @relation(fields: [organizacaoId, insumoId], references: [organizacaoId, id])
+
+  unidadeOrigemId String
+  unidadeOrigem   UnidadeMedida @relation("ConversaoOrigem", fields: [organizacaoId, unidadeOrigemId], references: [organizacaoId, id])
+
+  unidadeDestinoId String
+  unidadeDestino   UnidadeMedida @relation("ConversaoDestino", fields: [organizacaoId, unidadeDestinoId], references: [organizacaoId, id])
+
+  /// Quantas unidades de DESTINO cabem em 1 unidade de ORIGEM.
+  /// 1 saco de farinha = 25 kg → origem=saco, destino=kg, fator=25.
+  fator Decimal @db.Decimal(18, 8)
+
+  vigenteDe  DateTime
+  /// `null` = é a vigente hoje. Índice parcial garante uma só por trio.
+  vigenteAte DateTime?
+
+  criadoEm    DateTime @default(now())
+  criadoPorId String?
+
+  @@index([organizacaoId, insumoId, vigenteDe])
+  @@map("conversao_unidade")
+}
+
 /// Um insumo — o que se compra e se consome: mussarela, farinha, tomate.
 ///
 /// Pertence à ORGANIZAÇÃO, não à unidade. É uma decisão do desenho: o cadastro
@@ -70,6 +165,8 @@ model Insumo {
 
   criadoPorId     String?
   atualizadoPorId String?
+
+  conversoes ConversaoUnidade[]
 
   /// Alvo das chaves estrangeiras COMPOSTAS das tabelas que vierem depois.
   ///

@@ -46,7 +46,8 @@ model Organizacao {
   // O Prisma exige os dois lados de uma relação. `insumo` vive em
   // `catalogo.prisma` — camada de dado central, não de App —, então isto aqui
   // não é o Core conhecendo um App: nenhum App é dono do catálogo.
-  insumos     Insumo[]
+  insumos        Insumo[]
+  unidadesMedida UnidadeMedida[]
 
   @@map("organizacao")
 }

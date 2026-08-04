@@ -36,10 +36,25 @@ o Prisma gerar, apague as linhas que derrubem qualquer coisa listada abaixo.
 Toda migration que criar um objeto invisível ao Prisma **precisa acrescentá-lo
 aqui**. Esta tabela é a única memória que o projeto tem deles.
 
-| objeto                      | tipo              | onde nasce | por que existe                                                         |
-| --------------------------- | ----------------- | ---------- | ---------------------------------------------------------------------- |
-| `insumo_nome_ativo_uk`      | índice parcial    | M1         | nome único **só entre os não excluídos** — Prisma não expressa `WHERE` |
-| `insumo_organizacaoId_fkey` | chave estrangeira | M1         | (esta o Prisma enxerga; listada só por ter nascido em SQL)             |
+### Índices parciais
+
+O Prisma não expressa `WHERE` em índice. Todo campo único de tabela com
+`excluidoEm` precisa de um destes — `@@unique` comum queimaria o valor de um
+registro excluído para sempre.
+
+| índice                           | M   | garante                                                 |
+| -------------------------------- | --- | ------------------------------------------------------- |
+| `insumo_nome_ativo_uk`           | M1  | nome único entre os insumos não excluídos               |
+| `unidade_medida_codigo_ativo_uk` | M2  | código único entre as unidades não excluídas            |
+| `unidade_medida_base_unica_uk`   | M2  | **uma** unidade base por grandeza                       |
+| `conversao_unidade_vigente_uk`   | M2  | **uma** conversão vigente por (insumo, origem, destino) |
+
+### CHECKs
+
+| tabela              | M   | recusa                                                                   |
+| ------------------- | --- | ------------------------------------------------------------------------ |
+| `unidade_medida`    | M2  | fator ≤ 0; unidade marcada como base com fator diferente de 1            |
+| `conversao_unidade` | M2  | fator ≤ 0; origem igual ao destino; vigência terminando antes de começar |
 
 ## Rollback
 
