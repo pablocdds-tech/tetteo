@@ -77,6 +77,8 @@ model Insumo {
   itensDeContagem ContagemItem[]
   posicoes        PosicaoEstoque[]
   itensDeFicha    ItemDeFicha[]
+  itensDeCotacao  ItemDeCotacao[]
+  itensDePedido   ItemDePedido[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])

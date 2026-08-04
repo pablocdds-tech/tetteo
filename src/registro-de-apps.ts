@@ -2,6 +2,7 @@ import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
 import { manifestoCardapio } from "@/modules/cardapio/manifest";
 import { manifestoChecklists } from "@/modules/checklists/manifest";
+import { manifestoCompras } from "@/modules/compras/manifest";
 import { manifestoEstoque } from "@/modules/estoque/manifest";
 
 /**
@@ -87,30 +88,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     emConstrucao: true,
   },
 
-  {
-    chave: "compras",
-    nome: "Compras",
-    subtitulo: "Catálogo & cotações",
-    icone: "🛒",
-    cor: { fundo: "#E23B2E", frente: "#FFFFFF" },
-    area: "gestao",
-    rota: "/compras",
-    navegacao: [
-      { rota: "/compras", nome: "Pedidos" },
-      { rota: "/compras/cotacoes", nome: "Cotações" },
-      { rota: "/compras/fornecedores", nome: "Fornecedores" },
-      { rota: "/compras/catalogo", nome: "Catálogo" },
-    ],
-    permissaoParaVer: "compras.ver",
-    permissoes: [
-      { chave: "compras.ver", descricao: "Ver pedidos e fornecedores" },
-      { chave: "compras.lancar", descricao: "Lançar compras e notas" },
-      { chave: "compras.aprovar", descricao: "Aprovar cotações" },
-    ],
-    eventosQuePublica: ["compra.criada", "compra.recebida"],
-    comportamentoNaRede: "consolida",
-    emConstrucao: true,
-  },
+  manifestoCompras,
 
   manifestoCardapio,
 

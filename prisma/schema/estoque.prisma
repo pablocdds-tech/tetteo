@@ -115,37 +115,11 @@ model EmbalagemCompra {
   @@map("embalagem_compra")
 }
 
-/// De quem se compra.
-///
-/// Fornecedor é vocabulário compartilhado: Compras vai cadastrar, Estoque
-/// lança a nota dele e Financeiro paga. Mora aqui porque Estoque é o primeiro
-/// que precisa — quando Compras for construído, o dono passa a ser ele e este
-/// bloco muda de arquivo. Muda o arquivo, não a tabela.
-model Fornecedor {
-  id            String @id @default(cuid())
-  organizacaoId String
-
-  nome      String
-  /// CNPJ ou CPF. Livre de propósito: fornecedor de feira não tem nota.
-  documento String?
-  telefone  String?
-
-  observacao String?
-
-  ativo Boolean @default(true)
-
-  criadoEm     DateTime  @default(now())
-  atualizadoEm DateTime  @updatedAt
-  excluidoEm   DateTime?
-
-  criadoPorId String?
-
-  notas NotaEntrada[]
-
-  @@unique([organizacaoId, nome])
-  @@index([organizacaoId, ativo])
-  @@map("fornecedor")
-}
+// FORNECEDOR mudou para `compras.prisma`.
+//
+// Estava aqui porque Estoque foi o primeiro que precisou dele, com a nota
+// escrita de que o dono passaria a ser Compras quando Compras existisse.
+// Compras existe. Mudou o arquivo, não a tabela — nenhuma migração.
 
 /// Rascunho pode ser corrigido à vontade. Lançada mexeu no custo e virou
 /// história — corrigir exige cancelar e refazer, porque o CMV de uma semana
