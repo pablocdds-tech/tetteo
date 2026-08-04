@@ -18,13 +18,13 @@ export type AppNaBarra = {
 /**
  * A NAVEGAÇÃO LATERAL.
  *
- * Duas camadas, e a separação entre elas é o que faz treze módulos caberem sem
+ * Duas camadas, e a separação entre elas é o que faz muitos módulos caberem sem
  * virar uma lista impossível de ler:
  *
  *   1. TROCAR DE MÓDULO — um gesto próprio. O módulo atual fica no topo; ao
  *      clicar, abre um painel flutuante com todos, em grade.
  *   2. NAVEGAR DENTRO DO MÓDULO — a barra mostra só as opções do módulo
- *      aberto. Nunca os outros doze.
+ *      aberto. Nunca os dos outros.
  *
  * Sem essa separação, o menu cresce junto com o sistema até ninguém achar
  * nada. Com ela, a barra tem sempre três ou quatro itens, não importa quantos

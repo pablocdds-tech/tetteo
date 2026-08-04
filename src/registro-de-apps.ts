@@ -13,8 +13,12 @@ import { manifestoCardapio } from "@/modules/cardapio/manifest";
  * incluí-lo sozinhos.
  *
  * Cada módulo declara também a sua NAVEGAÇÃO INTERNA. É isso que mantém a
- * barra lateral enxuta: ela nunca lista os treze módulos, só as opções do
+ * barra lateral enxuta: ela nunca lista os módulos todos, só as opções do
  * módulo aberto. Trocar de módulo é outro gesto — o painel flutuante do topo.
+ *
+ * A ORDEM aqui é a ordem que aparece no painel, e ela segue a corrente do
+ * negócio, não o alfabeto: Compras → Cardápio → Estoque → Financeiro. Quem
+ * abre o painel lê o caminho do dinheiro.
  */
 export const APPS_REGISTRADOS: ManifestoDoApp[] = [
   {
@@ -106,6 +110,101 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
   },
 
   manifestoCardapio,
+
+  /**
+   * ESTOQUE — onde a ficha técnica deixa de ser teoria.
+   *
+   * O Cardápio diz quanto o prato DEVERIA custar. O Estoque diz quanto ele
+   * custou de verdade: contagem, perdas, produção interna (massa, molho) e o
+   * CMV. Sem ele a corrente de eventos morre no meio — Compras registra a
+   * entrada e ninguém baixa a saída.
+   *
+   * Exige unidade: estoque somado da rede não existe. Farinha na câmara fria
+   * de uma loja não faz pizza na outra.
+   */
+  {
+    chave: "estoque",
+    nome: "Estoque",
+    subtitulo: "Contagem, perdas & CMV",
+    icone: "📦",
+    cor: { fundo: "#B45309", frente: "#FFFFFF" },
+    area: "operacao",
+    rota: "/estoque",
+    navegacao: [
+      { rota: "/estoque", nome: "Posição" },
+      { rota: "/estoque/movimentacoes", nome: "Movimentações" },
+      { rota: "/estoque/contagens", nome: "Contagens" },
+      { rota: "/estoque/producao", nome: "Produção" },
+      { rota: "/estoque/cmv", nome: "CMV" },
+    ],
+    permissaoParaVer: "estoque.ver",
+    permissoes: [
+      { chave: "estoque.ver", descricao: "Ver posição e movimentações" },
+      {
+        chave: "estoque.movimentar",
+        descricao: "Lançar entradas, saídas e perdas",
+      },
+      { chave: "estoque.contar", descricao: "Fazer e fechar contagens" },
+    ],
+    eventosQuePublica: [
+      "estoque.movimentado",
+      "estoque.abaixo-do-minimo",
+      "estoque.contagem-fechada",
+    ],
+    eventosQueEscuta: ["compra.recebida", "pedido.entregue"],
+    comportamentoNaRede: "exige-unidade",
+    emConstrucao: true,
+  },
+
+  /**
+   * FINANCEIRO — a resposta do dia 5.
+   *
+   * Contas a pagar e a receber, fluxo de caixa, conferência do caixa do PDV e
+   * o resultado do mês. É o fim da corrente: compra criada vira conta a pagar,
+   * pedido entregue vira dinheiro a receber.
+   *
+   * Consolida: você quer o resultado da rede somado E de cada unidade.
+   */
+  {
+    chave: "financeiro",
+    nome: "Financeiro",
+    subtitulo: "Contas, caixa & resultado",
+    icone: "💰",
+    cor: { fundo: "#14365D", frente: "#FFFFFF" },
+    area: "gestao",
+    rota: "/financeiro",
+    navegacao: [
+      { rota: "/financeiro", nome: "Visão do caixa" },
+      { rota: "/financeiro/pagar", nome: "Contas a pagar" },
+      { rota: "/financeiro/receber", nome: "Contas a receber" },
+      { rota: "/financeiro/fechamento", nome: "Fechamento de caixa" },
+      {
+        rota: "/financeiro/resultado",
+        nome: "Resultado",
+        permissao: "financeiro.resultado",
+      },
+    ],
+    permissaoParaVer: "financeiro.ver",
+    permissoes: [
+      { chave: "financeiro.ver", descricao: "Ver contas e fluxo de caixa" },
+      {
+        chave: "financeiro.lancar",
+        descricao: "Lançar contas a pagar e a receber",
+      },
+      {
+        chave: "financeiro.baixar",
+        descricao: "Dar baixa em pagamentos e recebimentos",
+      },
+      {
+        chave: "financeiro.resultado",
+        descricao: "Ver o resultado (DRE) da rede",
+      },
+    ],
+    eventosQuePublica: ["conta.criada", "conta.paga", "caixa.fechado"],
+    eventosQueEscuta: ["compra.criada", "pedido.entregue"],
+    comportamentoNaRede: "consolida",
+    emConstrucao: true,
+  },
 
   {
     chave: "delivery",
