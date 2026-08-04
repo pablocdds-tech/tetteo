@@ -36,12 +36,38 @@ RUN npx prisma generate
 
 RUN npm run build
 
+# --- Etapa 2b: ferramenta de migração --------------------------------------
+# O CLI do Prisma é dependência de desenvolvimento e NÃO entra no pacote
+# `standalone` que o Next gera — mas o contêiner precisa dele para colocar o
+# banco em dia ao subir.
+#
+# Instalado numa pasta limpa em vez de copiado do `node_modules` do projeto:
+# assim quem resolve a árvore de dependências é o npm, e não eu adivinhando
+# quais pacotes o CLI arrasta junto. A versão vem do próprio package.json, o
+# que impede o CLI de descolar da versão do cliente.
+FROM base AS migrador
+WORKDIR /migrador
+COPY package.json ./referencia.json
+RUN apk add --no-cache openssl \
+  && VERSAO_PRISMA=$(node -p "require('/migrador/referencia.json').devDependencies.prisma") \
+  && VERSAO_DOTENV=$(node -p "require('/migrador/referencia.json').devDependencies.dotenv") \
+  && VERSAO_TS=$(node -p "require('/migrador/referencia.json').devDependencies.typescript") \
+  && rm referencia.json \
+  && npm init -y > /dev/null \
+  && npm install --no-audit --no-fund \
+       "prisma@${VERSAO_PRISMA}" "dotenv@${VERSAO_DOTENV}" "typescript@${VERSAO_TS}"
+
 # --- Etapa 3: execução -----------------------------------------------------
 FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+
+# O motor do Prisma é compilado contra o OpenSSL do sistema. O alpine vem sem
+# ele, e a falta só aparece na hora de conectar — com uma mensagem que não diz
+# o que está faltando.
+RUN apk add --no-cache openssl
 
 # Roda como usuário sem privilégios. Se algum dia a aplicação for invadida,
 # quem estiver dentro não é root do contêiner.
@@ -52,7 +78,18 @@ COPY --from=builder --chown=tetteo:tetteo /app/.next/standalone ./
 COPY --from=builder --chown=tetteo:tetteo /app/.next/static ./.next/static
 COPY --from=builder --chown=tetteo:tetteo /app/public ./public
 
+# O migrador e o que ele precisa ler: o histórico de migrações e a
+# configuração que diz onde fica o banco. Fica numa pasta separada para não se
+# misturar com o `node_modules` enxuto que o Next montou.
+COPY --from=migrador --chown=tetteo:tetteo /migrador ./migrador
+COPY --chown=tetteo:tetteo prisma ./migrador/prisma
+COPY --chown=tetteo:tetteo prisma.config.ts ./migrador/prisma.config.ts
+COPY --chown=tetteo:tetteo docker-entrypoint.sh ./
+
 USER tetteo
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Chamado através do `sh` de propósito: o bit de executável não sobrevive ao
+# trajeto Windows → Git → imagem, e o contêiner falharia com um erro que não
+# tem nada a ver com a causa.
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
