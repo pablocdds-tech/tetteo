@@ -1,7 +1,12 @@
 import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
 
 import type { DadosInsumo } from "../schemas/insumo";
+
+// Reexportado para quem já importava daqui: o erro passou a ser compartilhado
+// entre os Apps, mas o caminho antigo continua valendo.
+export { SemPermissao };
 
 /**
  * As regras de negócio do insumo.
@@ -14,13 +19,6 @@ import type { DadosInsumo } from "../schemas/insumo";
  *   2. Nada é apagado de verdade — exclusão é lógica
  *   3. Toda escrita é auditada — quem mudou, o quê, de qual valor para qual
  */
-
-export class SemPermissao extends Error {
-  constructor(acao: string) {
-    super(`Você não tem permissão para ${acao}.`);
-    this.name = "SemPermissao";
-  }
-}
 
 export async function listarInsumos(contexto: ContextoSessao) {
   if (!pode(contexto, "cardapio.ver")) throw new SemPermissao("ver o cardápio");

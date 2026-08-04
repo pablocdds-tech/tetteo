@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { obterContexto, pode } from "@/core/sessao/contexto";
+import { paraCampo } from "@/lib/numero";
 import { FormularioInsumo } from "@/modules/cardapio/components/formulario-insumo";
 import { obterInsumo } from "@/modules/cardapio/services/insumos";
 
@@ -28,8 +29,11 @@ export default async function PaginaEditarInsumo({
             nome: insumo.nome,
             categoria: insumo.categoria,
             unidadeMedida: insumo.unidadeMedida,
-            custoMedio: insumo.custoMedio.toString(),
-            estoqueMinimo: insumo.estoqueMinimo.toString(),
+            // `paraCampo`, nunca `.toString()`: o Decimal devolveria "38.9" e
+            // o ponto solto seria relido como milhar — salvar sem mexer em
+            // nada gravaria 389.
+            custoMedio: paraCampo(insumo.custoMedio.toString(), 2),
+            estoqueMinimo: paraCampo(insumo.estoqueMinimo.toString()),
           }}
         />
       </div>

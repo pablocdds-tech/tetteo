@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { numeroBr } from "@/lib/numero";
+
 /**
  * A validação do insumo.
  *
@@ -13,18 +15,6 @@ export const UNIDADES = [
   { valor: "ML", rotulo: "Mililitro (ml)" },
   { valor: "UN", rotulo: "Unidade (un)" },
 ] as const;
-
-/** Aceita "38,90" e "38.90" — no Brasil se digita com vírgula. */
-const numeroBr = (rotulo: string) =>
-  z
-    .string()
-    .trim()
-    .transform((v) => v.replace(/\./g, "").replace(",", "."))
-    .refine((v) => v === "" || !Number.isNaN(Number(v)), {
-      message: `Informe ${rotulo} como número.`,
-    })
-    .transform((v) => (v === "" ? 0 : Number(v)))
-    .refine((n) => n >= 0, { message: `${rotulo} não pode ser negativo.` });
 
 export const esquemaInsumo = z.object({
   nome: z
