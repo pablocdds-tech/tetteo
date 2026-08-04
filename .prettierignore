@@ -1,0 +1,13 @@
+# Gerados
+.next/
+node_modules/
+package-lock.json
+
+# Ferramental de IA instalado na pasta — não é código do Tetteo
+.agents/
+.claude/
+.codex/
+.impeccable/
+skills-lock.json
+AGENTS.md
+CLAUDE.md

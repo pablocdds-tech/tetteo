@@ -1,0 +1,10 @@
+# O desenvolvimento é no Windows, o servidor é Linux. Normalizar a quebra de
+# linha no repositório evita que todo arquivo apareça como "modificado" quando
+# alguém trocar de máquina.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
