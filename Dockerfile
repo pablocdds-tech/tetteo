@@ -24,6 +24,16 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Endereço de banco de mentira, só para esta etapa. `prisma generate` não
+# conecta em lugar nenhum — apenas lê o schema e escreve o cliente tipado —
+# mas exige que a variável exista. O valor real vem do Dokploy, em execução.
+ENV DATABASE_URL="postgresql://compilacao:compilacao@localhost:5432/compilacao"
+
+# Gera o cliente do Prisma ANTES de compilar: sem isso o TypeScript não
+# encontra os tipos das tabelas e a compilação falha.
+RUN npx prisma generate
+
 RUN npm run build
 
 # --- Etapa 3: execução -----------------------------------------------------
