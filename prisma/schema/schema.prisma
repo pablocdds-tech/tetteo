@@ -1,0 +1,16 @@
+// Configuração do banco.
+//
+// O schema fica dividido em arquivos, um por camada — do mesmo jeito que o
+// código. `core.prisma` guarda as tabelas do Kernel; cada App traz o seu
+// próprio arquivo. Nenhum App mexe no arquivo de outro.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// A partir do Prisma 7 a URL de conexão não vive mais aqui — ela fica em
+// `prisma.config.ts`, lida do ambiente. Isso evita que a string de conexão
+// (que contém a senha) acabe versionada por descuido.
+datasource db {
+  provider = "postgresql"
+}

@@ -1,0 +1,449 @@
+// ===========================================================================
+// CORE — as tabelas do Kernel
+//
+// Aqui não existe regra de negócio. Nada sobre insumo, pedido ou ficha
+// técnica. Só o que a plataforma precisa para funcionar: quem entra, o que
+// pode fazer, em qual loja, e o registro do que aconteceu.
+//
+// Três regras valem para TODA tabela do sistema, inclusive as dos Apps:
+//   1. Toda linha sabe a qual organização (e quase sempre unidade) pertence
+//   2. Nada é apagado de verdade — `excluidoEm` marca a exclusão
+//   3. Identificador é aleatório, nunca sequencial
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// TERRITÓRIO — a hierarquia que sustenta o multi-unidade
+// ---------------------------------------------------------------------------
+
+/// A rede. Hoje: Vitaliano Pizzaria.
+model Organizacao {
+  id        String  @id @default(cuid())
+  nome      String
+  slug      String  @unique
+  documento String? // CNPJ
+
+  // Identidade visual — o logo da pizzaria aparece aqui, não na interface
+  logoUrl      String?
+  corPrimaria  String?
+
+  fusoHorario String @default("America/Sao_Paulo")
+  moeda       String @default("BRL")
+  ativa       Boolean @default(true)
+
+  criadoEm    DateTime  @default(now())
+  atualizadoEm DateTime @updatedAt
+  excluidoEm  DateTime?
+
+  unidades    Unidade[]
+  papeis      Papel[]
+  acessos     Acesso[]
+  convites    Convite[]
+  apps        AppInstalado[]
+  eventos     Evento[]
+  auditorias  Auditoria[]
+  notificacoes Notificacao[]
+
+  @@map("organizacao")
+}
+
+/// Cada loja física. Fuso e CNPJ próprios porque redes que crescem para outro
+/// estado precisam disso — e adicionar depois sairia caro.
+model Unidade {
+  id            String @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+
+  nome      String
+  codigo    String
+  documento String?
+
+  endereco   String?
+  bairro     String?
+  cidade     String?
+  estado     String?
+  cep        String?
+  telefone   String?
+
+  fusoHorario String  @default("America/Sao_Paulo")
+  ativa       Boolean @default(true)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  acessos      Acesso[]
+  eventos      Evento[]
+  notificacoes Notificacao[]
+  sessoes      Sessao[]
+
+  // `auditoria` guarda a unidade como texto solto, de propósito: o registro é
+  // só-escrita e precisa sobreviver mesmo que a unidade mude ou seja excluída.
+
+  @@unique([organizacaoId, codigo])
+  @@index([organizacaoId])
+  @@map("unidade")
+}
+
+// ---------------------------------------------------------------------------
+// PESSOAS E ACESSO
+//
+// Usuário NÃO é Funcionário. Usuário é conta de acesso; Funcionário é
+// registro trabalhista e vai morar no App de Pessoas. O chapeiro pode ser
+// funcionário e nunca logar; o contador pode logar e nunca ser funcionário.
+// Juntar os dois numa tabela só parece economia e vira um nó impossível.
+// ---------------------------------------------------------------------------
+
+enum StatusUsuario {
+  ATIVO
+  CONVIDADO
+  SUSPENSO
+}
+
+model Usuario {
+  id        String  @id @default(cuid())
+  nome      String
+  email     String  @unique
+  telefone  String?
+  avatarUrl String?
+  senhaHash String?
+
+  status         StatusUsuario @default(CONVIDADO)
+  ultimoAcessoEm DateTime?
+
+  // Preferências pessoais — escopo "eu", nunca "esta loja"
+  tema   String @default("light")
+  idioma String @default("pt-BR")
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  acessos          Acesso[]
+  sessoes          Sessao[]
+  convitesEnviados Convite[]     @relation("ConviteAutor")
+  acessosConcedidos Acesso[]     @relation("AcessoAutor")
+  eventos          Evento[]
+  auditorias       Auditoria[]
+  notificacoes     Notificacao[]
+
+  @@map("usuario")
+}
+
+/// O cargo dentro do sistema: Diretor, Gerente, Caixa, Cozinha, Financeiro.
+model Papel {
+  id            String @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+
+  nome      String
+  descricao String?
+  ehSistema Boolean @default(false)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  permissoes PapelPermissao[]
+  acessos    Acesso[]
+  convites   Convite[]
+
+  @@unique([organizacaoId, nome])
+  @@map("papel")
+}
+
+/// A permissão é guardada como TEXTO puro ("estoque.dar_baixa"), sem tabela
+/// própria. O vocabulário pertence ao código de cada App — uma tabela viraria
+/// cópia desatualizada dos manifestos, com alguém sincronizando na mão.
+model PapelPermissao {
+  id     String @id @default(cuid())
+  papelId String
+  papel  Papel  @relation(fields: [papelId], references: [id], onDelete: Cascade)
+
+  chave String
+
+  @@unique([papelId, chave])
+  @@index([chave])
+  @@map("papel_permissao")
+}
+
+enum StatusAcesso {
+  ATIVO
+  SUSPENSO
+}
+
+/// A peça central do multi-unidade.
+///
+/// `unidadeId` vazio significa REDE INTEIRA. É o que separa o dono (vê tudo)
+/// do gerente da loja Centro (vê só a dele), sem nunca duplicar contas:
+///
+///   Pablo · Vitaliano · (vazio)  · Diretor  → todas as unidades
+///   João  · Vitaliano · Centro   · Gerente  → só a loja Centro
+///   João  · Vitaliano · Zona Sul · Consulta → na outra, só olha
+///
+/// NENHUMA consulta do sistema busca dado sem passar por aqui. É isso que
+/// garante o isolamento por desenho, não por disciplina de quem programa.
+model Acesso {
+  id            String @id @default(cuid())
+  usuarioId     String
+  usuario       Usuario @relation(fields: [usuarioId], references: [id])
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+  unidadeId     String?
+  unidade       Unidade? @relation(fields: [unidadeId], references: [id])
+  papelId       String
+  papel         Papel @relation(fields: [papelId], references: [id])
+
+  status StatusAcesso @default(ATIVO)
+
+  concedidoPorId String?
+  concedidoPor   Usuario? @relation("AcessoAutor", fields: [concedidoPorId], references: [id])
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  @@unique([usuarioId, organizacaoId, unidadeId])
+  @@index([usuarioId])
+  @@index([organizacaoId, unidadeId])
+  @@map("acesso")
+}
+
+/// Permite encerrar acesso à distância. Quando alguém é desligado, você
+/// derruba todos os dispositivos daquela pessoa na hora, sem esperar o token
+/// vencer — numa empresa com rotatividade, isso não é luxo.
+model Sessao {
+  id        String  @id @default(cuid())
+  usuarioId String
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  tokenHash String @unique
+
+  dispositivo String?
+  ip          String?
+  navegador   String?
+
+  /// A sessão lembra em qual loja você estava — é o que faz o seletor do topo
+  /// funcionar sem perguntar toda vez.
+  unidadeAtivaId String?
+  unidadeAtiva   Unidade? @relation(fields: [unidadeAtivaId], references: [id])
+
+  criadaEm          DateTime  @default(now())
+  expiraEm          DateTime
+  ultimaAtividadeEm DateTime  @default(now())
+  revogadaEm        DateTime?
+
+  @@index([usuarioId])
+  @@map("sessao")
+}
+
+model Convite {
+  id            String @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+
+  email     String
+  papelId   String
+  papel     Papel    @relation(fields: [papelId], references: [id])
+  unidadeIds String[] @default([])
+
+  token String @unique
+
+  convidadoPorId String?
+  convidadoPor   Usuario? @relation("ConviteAutor", fields: [convidadoPorId], references: [id])
+
+  criadoEm DateTime  @default(now())
+  expiraEm DateTime
+  aceitoEm DateTime?
+
+  @@index([organizacaoId])
+  @@map("convite")
+}
+
+// ---------------------------------------------------------------------------
+// APPS
+//
+// O que NÃO está aqui: nome, ícone, cor, rota, permissões. Isso vive no
+// manifesto, dentro do código. O banco guarda só o estado de instalação.
+// ---------------------------------------------------------------------------
+
+model AppInstalado {
+  id            String @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+
+  /// A chave declarada no manifesto do App: "cardapio", "estoque", …
+  chaveApp String
+
+  habilitado    Boolean @default(true)
+  configuracoes Json    @default("{}")
+
+  instaladoEm  DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([organizacaoId, chaveApp])
+  @@map("app_instalado")
+}
+
+// ---------------------------------------------------------------------------
+// EVENTOS — a espinha do sistema
+//
+// Um evento é um FATO que já aconteceu: passado, imutável. Por isso o nome é
+// sempre no passado ("compra.criada"). Quem publica não sabe quem escuta.
+// ---------------------------------------------------------------------------
+
+model Evento {
+  id      String @id @default(cuid())
+  tipo    String
+  versao  Int    @default(1)
+
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+  unidadeId     String?
+  unidade       Unidade? @relation(fields: [unidadeId], references: [id])
+
+  atorUsuarioId String?
+  atorUsuario   Usuario? @relation(fields: [atorUsuarioId], references: [id])
+
+  dados Json
+
+  /// Acompanha a cascata inteira: permite perguntar "o que aconteceu por causa
+  /// da compra #482?" e ver a árvore toda. Sem isso, arquitetura de eventos
+  /// vira caixa-preta impossível de depurar.
+  correlacaoId String
+
+  /// Qual evento causou este. Junto com o anterior, monta a árvore.
+  causaEventoId String?
+  causaEvento   Evento?  @relation("EventoCausa", fields: [causaEventoId], references: [id])
+  causados      Evento[] @relation("EventoCausa")
+
+  ocorridoEm DateTime @default(now())
+
+  entregas EntregaEvento[]
+
+  @@index([tipo, ocorridoEm])
+  @@index([correlacaoId])
+  @@index([organizacaoId, unidadeId, ocorridoEm])
+  @@map("evento")
+}
+
+enum StatusEntrega {
+  PENDENTE
+  PROCESSADO
+  FALHOU
+}
+
+/// A tabela que quase todo mundo esquece — e sem a qual nada disso é confiável.
+///
+/// Sistemas de eventos reenviam mensagens quando não têm certeza se chegaram.
+/// Sem este registro, o Estoque poderia receber "compra.criada" duas vezes e
+/// dar entrada em 20kg de queijo quando entraram 10kg. A chave única embaixo
+/// é o que torna cada entrega única por App.
+model EntregaEvento {
+  id       String @id @default(cuid())
+  eventoId String
+  evento   Evento @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+
+  /// Qual App deve reagir a este evento
+  appDestino String
+
+  status      StatusEntrega @default(PENDENTE)
+  tentativas  Int           @default(0)
+  ultimoErro  String?
+  processadoEm DateTime?
+
+  criadoEm DateTime @default(now())
+
+  @@unique([eventoId, appDestino])
+  @@index([status, criadoEm])
+  @@map("entrega_evento")
+}
+
+// ---------------------------------------------------------------------------
+// AUDITORIA
+//
+// Três coisas costumam ser chamadas de "log" e não são a mesma:
+//   Evento    → para outros Apps reagirem        (tabela `evento`)
+//   Auditoria → para humano investigar           (esta tabela)
+//   Log técnico → para achar bug     → FORA DO BANCO, em arquivo/serviço
+//
+// O terceiro cresce em ordem de grandeza maior que tudo e derrubaria a
+// performance justamente do que deveria monitorar.
+// ---------------------------------------------------------------------------
+
+enum AcaoAuditoria {
+  CRIOU
+  ALTEROU
+  EXCLUIU
+  ACESSOU
+}
+
+/// Regra de ouro: auditoria é SÓ ESCRITA. Nunca se altera, nunca se apaga uma
+/// linha. Existe exatamente para o dia em que você precisar descobrir quem
+/// mudou o preço de custo às 2h da manhã.
+model Auditoria {
+  id            String @id @default(cuid())
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+  unidadeId     String?
+
+  usuarioId String?
+  usuario   Usuario? @relation(fields: [usuarioId], references: [id])
+
+  entidade   String
+  entidadeId String
+  acao       AcaoAuditoria
+
+  valoresAntes  Json?
+  valoresDepois Json?
+
+  ip        String?
+  navegador String?
+
+  quando DateTime @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([organizacaoId, quando])
+  @@index([usuarioId, quando])
+  @@map("auditoria")
+}
+
+// ---------------------------------------------------------------------------
+// NOTIFICAÇÕES
+//
+// Nenhum App constrói sua própria caixinha. Todos publicam no mesmo formato e
+// o Core decide como exibir.
+// ---------------------------------------------------------------------------
+
+enum PrioridadeNotificacao {
+  BAIXA
+  NORMAL
+  ALTA
+  URGENTE
+}
+
+model Notificacao {
+  id            String @id @default(cuid())
+  destinatarioId String
+  destinatario  Usuario @relation(fields: [destinatarioId], references: [id], onDelete: Cascade)
+
+  organizacaoId String
+  organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
+  unidadeId     String?
+  unidade       Unidade? @relation(fields: [unidadeId], references: [id])
+
+  /// Qual App gerou o aviso
+  appOrigem String
+  tipo      String
+  titulo    String
+  mensagem  String?
+
+  /// Leva ao ponto EXATO, não à tela inicial do App
+  link String?
+
+  prioridade PrioridadeNotificacao @default(NORMAL)
+
+  criadaEm DateTime  @default(now())
+  lidaEm   DateTime?
+
+  @@index([destinatarioId, lidaEm])
+  @@map("notificacao")
+}
