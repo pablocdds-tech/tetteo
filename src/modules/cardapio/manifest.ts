@@ -11,11 +11,16 @@ import { PERMISSOES_CARDAPIO } from "./permissoes";
 export const manifestoCardapio: ManifestoDoApp = {
   chave: "cardapio",
   nome: "Cardápio",
-  subtitulo: "Insumos & fichas técnicas",
+  subtitulo: "Pratos & insumos",
   icone: "🍽️",
   cor: { fundo: "#FBE9E3", frente: "#C4512F" },
   area: "operacao",
   rota: "/cardapio",
+  navegacao: [
+    { rota: "/cardapio", nome: "Insumos" },
+    { rota: "/cardapio/pratos", nome: "Pratos" },
+    { rota: "/cardapio/fichas", nome: "Fichas técnicas" },
+  ],
   permissaoParaVer: "cardapio.ver",
   permissoes: [...PERMISSOES_CARDAPIO],
   eventosQuePublica: ["insumo.criado", "insumo.alterado", "insumo.excluido"],

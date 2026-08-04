@@ -57,6 +57,16 @@ export type ManifestoDoApp = {
   rota: string;
 
   /**
+   * A navegação DENTRO do App — o que aparece na barra lateral quando ele
+   * está aberto.
+   *
+   * É isto que faz a barra lateral não virar uma lista de treze módulos: ela
+   * mostra só o que existe dentro do módulo escolhido. Trocar de módulo é um
+   * gesto separado, no painel flutuante do topo.
+   */
+  navegacao: { rota: string; nome: string; permissao?: string }[];
+
+  /**
    * A permissão mínima para o App sequer aparecer. Quem não tem, não vê o
    * ícone — em vez de ver e tomar "acesso negado".
    */
