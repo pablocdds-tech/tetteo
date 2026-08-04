@@ -33,6 +33,7 @@ export async function listarContagens(contexto: ContextoSessao) {
     where: { unidadeId: unidade.id, canceladaEm: null },
     orderBy: { referencia: "desc" },
     include: {
+      local: { select: { nome: true } },
       // `_count` traz só os números: a lista não precisa carregar cento e
       // vinte itens por linha para dizer "32 de 118".
       _count: { select: { itens: true } },
@@ -114,29 +115,58 @@ export async function categoriasDeInsumos(contexto: ContextoSessao) {
  */
 export async function criarContagem(
   contexto: ContextoSessao,
-  dados: DadosNovaContagem,
+  dados: DadosNovaContagem & {
+    localId?: string | null;
+    rotinaId?: string | null;
+  },
 ) {
   if (!pode(contexto, "estoque.contar")) {
     throw new SemPermissao("abrir contagens");
   }
   const unidade = exigirUnidade(contexto);
 
-  const insumos = await db.insumo.findMany({
-    where: {
-      organizacaoId: contexto.organizacao.id,
-      excluidoEm: null,
-      ativo: true,
-      ...(dados.categorias.length > 0
-        ? { categoria: { in: dados.categorias } }
-        : {}),
-    },
-    select: { id: true },
-    orderBy: { nome: "asc" },
-  });
+  // A folha nasce do escopo. Com LUGAR, entram os insumos que têm posição
+  // naquele lugar — é o que faz a folha da praça ter vinte itens e não
+  // duzentos e trinta. Sem lugar, entra o catálogo, filtrado por categoria.
+  let insumoIds: string[];
 
-  if (insumos.length === 0) {
+  if (dados.localId) {
+    const posicoes = await db.posicaoEstoque.findMany({
+      where: {
+        localId: dados.localId,
+        unidadeId: unidade.id,
+        insumo: {
+          excluidoEm: null,
+          ativo: true,
+          ...(dados.categorias.length > 0
+            ? { categoria: { in: dados.categorias } }
+            : {}),
+        },
+      },
+      select: { insumoId: true },
+    });
+    insumoIds = posicoes.map((p) => p.insumoId);
+  } else {
+    const insumos = await db.insumo.findMany({
+      where: {
+        organizacaoId: contexto.organizacao.id,
+        excluidoEm: null,
+        ativo: true,
+        ...(dados.categorias.length > 0
+          ? { categoria: { in: dados.categorias } }
+          : {}),
+      },
+      select: { id: true },
+      orderBy: { nome: "asc" },
+    });
+    insumoIds = insumos.map((i) => i.id);
+  }
+
+  if (insumoIds.length === 0) {
     throw new Error(
-      "Nenhum insumo ativo nesse escopo. Cadastre insumos no Cardápio antes de contar.",
+      dados.localId
+        ? "Nenhum insumo cadastrado nesse lugar. Importe ou cadastre posições antes de contar."
+        : "Nenhum insumo ativo nesse escopo. Cadastre insumos no Cardápio antes de contar.",
     );
   }
 
@@ -146,11 +176,13 @@ export async function criarContagem(
       referencia: dados.referencia,
       descricao: dados.descricao || null,
       categorias: dados.categorias,
+      localId: dados.localId ?? null,
+      rotinaId: dados.rotinaId ?? null,
       abertaPorId: contexto.usuario.id,
       itens: {
         // Quantidade nasce NULA: ninguém contou ainda. Nascer zero afirmaria
         // que a câmara fria está vazia.
-        createMany: { data: insumos.map((i) => ({ insumoId: i.id })) },
+        createMany: { data: insumoIds.map((id) => ({ insumoId: id })) },
       },
     },
   });
@@ -159,7 +191,8 @@ export async function criarContagem(
     referencia: dados.referencia.toISOString(),
     descricao: dados.descricao ?? null,
     categorias: dados.categorias,
-    itens: insumos.length,
+    localId: dados.localId ?? null,
+    itens: insumoIds.length,
   });
 
   return contagem;

@@ -43,3 +43,53 @@ export type DadosNovaContagem = z.infer<typeof esquemaNovaContagem>;
  * trata os dois de forma oposta.
  */
 export const esquemaQuantidade = numeroBrOpcional("a quantidade");
+
+export const esquemaRotina = z
+  .object({
+    nome: z
+      .string()
+      .trim()
+      .min(2, "Dê um nome à rotina — ele aparece na lista de cobrança.")
+      .max(80, "O nome está longo demais."),
+    recorrencia: z.enum(["DIARIA", "SEMANAL", "MENSAL"], {
+      message: "Escolha a frequência.",
+    }),
+    diaDaSemana: z.coerce.number().int().min(0).max(6).nullish(),
+    diaDoMes: z.coerce
+      .number()
+      .int()
+      .min(1, "O dia do mês vai de 1 a 28.")
+      // Até 28: "dia 31" não existe em fevereiro e a rotina sumiria do mês.
+      .max(28, "Use até o dia 28 — fevereiro existe.")
+      .nullish(),
+    horario: z
+      .string()
+      .trim()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Horário no formato 07:00.")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    localId: z
+      .string()
+      .trim()
+      .optional()
+      .transform((v) => (v ? v : null)),
+    categorias: z.array(z.string().trim().min(1)).default([]),
+  })
+  .superRefine((dados, ctx) => {
+    if (dados.recorrencia === "SEMANAL" && dados.diaDaSemana == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["diaDaSemana"],
+        message: "Escolha o dia da semana.",
+      });
+    }
+    if (dados.recorrencia === "MENSAL" && dados.diaDoMes == null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["diaDoMes"],
+        message: "Escolha o dia do mês.",
+      });
+    }
+  });
+
+export type DadosRotina = z.infer<typeof esquemaRotina>;

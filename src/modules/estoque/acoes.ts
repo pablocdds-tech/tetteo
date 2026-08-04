@@ -6,7 +6,11 @@ import { redirect } from "next/navigation";
 import { obterContexto } from "@/core/sessao/contexto";
 import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 
-import { esquemaNovaContagem, esquemaQuantidade } from "./schemas/contagem";
+import {
+  esquemaNovaContagem,
+  esquemaQuantidade,
+  esquemaRotina,
+} from "./schemas/contagem";
 import { analisarPlanilha, type PlanoDeImportacao } from "./schemas/importacao";
 import {
   cancelarContagem,
@@ -15,6 +19,11 @@ import {
   salvarQuantidades,
 } from "./services/contagens";
 import { importarPlanilha } from "./services/importacao";
+import {
+  criarRotina,
+  desativarRotina,
+  executarRotina,
+} from "./services/rotinas";
 
 export type EstadoFormulario = {
   erro?: string;
@@ -218,6 +227,81 @@ export async function confirmarImportacao(
     if (erro instanceof Error) return { erro: erro.message, plano, texto };
     throw erro;
   }
+}
+
+export async function criarRotinaAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const analise = esquemaRotina.safeParse({
+    nome: dados.get("nome") ?? "",
+    recorrencia: dados.get("recorrencia") ?? "",
+    diaDaSemana: dados.get("diaDaSemana") || null,
+    diaDoMes: dados.get("diaDoMes") || null,
+    horario: dados.get("horario") ?? "",
+    localId: dados.get("localId") ?? "",
+    categorias: dados.getAll("categorias").map(String),
+  });
+
+  if (!analise.success) {
+    const erros: Record<string, string> = {};
+    for (const problema of analise.error.issues) {
+      const campo = String(problema.path[0] ?? "");
+      if (campo && !erros[campo]) erros[campo] = problema.message;
+    }
+    return { erros };
+  }
+
+  try {
+    await criarRotina(contexto, {
+      nome: analise.data.nome,
+      recorrencia: analise.data.recorrencia,
+      diaDaSemana: analise.data.diaDaSemana ?? null,
+      diaDoMes: analise.data.diaDoMes ?? null,
+      horario: analise.data.horario ?? null,
+      localId: analise.data.localId,
+      categorias: analise.data.categorias,
+    });
+  } catch (erro) {
+    if (erro instanceof Error && erro.message.includes("Unique constraint")) {
+      return { erros: { nome: "Já existe uma rotina com esse nome." } };
+    }
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message };
+    }
+    if (erro instanceof Error) return { erro: erro.message };
+    throw erro;
+  }
+
+  revalidatePath("/estoque/contagens");
+  redirect("/estoque/contagens");
+}
+
+/** "Contar agora": abre (ou retoma) a contagem da rotina e leva à folha. */
+export async function executarRotinaAcao(dados: FormData) {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const id = String(dados.get("rotinaId") ?? "");
+  if (!id) return;
+
+  const contagem = await executarRotina(contexto, id);
+  revalidatePath("/estoque/contagens");
+  redirect(`/estoque/contagens/${contagem.id}`);
+}
+
+export async function desativarRotinaAcao(dados: FormData) {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const id = String(dados.get("rotinaId") ?? "");
+  if (!id) return;
+
+  await desativarRotina(contexto, id);
+  revalidatePath("/estoque/contagens");
 }
 
 export async function cancelarContagemAcao(dados: FormData) {

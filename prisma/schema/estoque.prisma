@@ -43,6 +43,7 @@ model LocalEstoque {
 
   posicoes  PosicaoEstoque[]
   contagens Contagem[]
+  rotinas   RotinaDeContagem[]
 
   @@unique([unidadeId, nome])
   @@index([unidadeId, ativo])
@@ -231,6 +232,61 @@ model NotaEntradaItem {
   @@map("nota_entrada_item")
 }
 
+/// Com que frequência uma rotina de contagem se repete.
+enum Recorrencia {
+  DIARIA
+  SEMANAL
+  MENSAL
+}
+
+/// Uma ROTINA de contagem: "Contagem final pizzaria, todo dia às 7h",
+/// "Inventário semanal, segunda", "Inventário completo, dia 1º".
+///
+/// A diferença entre contar uma vez e contar TODA SEMANA é o que separa um
+/// número solto de um CMV que dá para acompanhar. A rotina carrega a agenda e
+/// o escopo (um lugar, categorias, ou tudo); cada execução vira uma Contagem
+/// normal, ligada à rotina que a gerou.
+///
+/// O status ("em dia", "aguardando", "atrasada") não é guardado — é calculado
+/// da última contagem fechada contra a agenda. Guardá-lo criaria um campo que
+/// mente assim que a meia-noite passa.
+model RotinaDeContagem {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  nome String
+
+  recorrencia Recorrencia
+
+  /// 0 = domingo … 6 = sábado. Só faz sentido na SEMANAL.
+  diaDaSemana Int?
+
+  /// 1–28. Só faz sentido na MENSAL. Até 28 de propósito: "dia 31" não
+  /// existe em fevereiro e a rotina sumiria do mês.
+  diaDoMes Int?
+
+  /// "07:00" — informativo, aparece na agenda. A cobrança é por DIA: atrasar
+  /// vinte minutos não é atraso, pular o dia é.
+  horario String?
+
+  /// O escopo da folha: um lugar, categorias, ou nada = tudo.
+  localId String?
+  local   LocalEstoque? @relation(fields: [localId], references: [id])
+
+  categorias String[] @default([])
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  contagens Contagem[]
+
+  @@unique([unidadeId, nome])
+  @@index([unidadeId, ativo])
+  @@map("rotina_de_contagem")
+}
+
 /// Aberta aceita digitação. Fechada congela quantidades e custos — vira uma
 /// das duas pontas do CMV e não pode mais mudar.
 enum StatusContagem {
@@ -265,6 +321,10 @@ model Contagem {
   /// os duzentos e sessenta e um itens não é contada por ninguém.
   localId String?
   local   LocalEstoque? @relation(fields: [localId], references: [id])
+
+  /// A rotina que gerou esta contagem, quando não foi avulsa.
+  rotinaId String?
+  rotina   RotinaDeContagem? @relation(fields: [rotinaId], references: [id])
 
   status StatusContagem @default(ABERTA)
 

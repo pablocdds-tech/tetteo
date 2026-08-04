@@ -7,6 +7,7 @@ type Linha = {
   referencia: Date;
   descricao: string | null;
   categorias: string[];
+  local: { nome: string } | null;
   status: string;
   totalItens: number;
   itensContados: number;
@@ -105,9 +106,10 @@ export function ListaContagens({
                 )}
               </td>
               <td className="text-ink-2 px-4 py-2.5">
-                {c.categorias.length === 0
-                  ? "Contagem cheia"
-                  : c.categorias.join(", ")}
+                {c.local?.nome ??
+                  (c.categorias.length === 0
+                    ? "Contagem cheia"
+                    : c.categorias.join(", "))}
               </td>
               <td className="text-ink px-4 py-2.5 text-right tabular-nums">
                 {c.itensContados}

@@ -5,7 +5,9 @@ import { obterContexto, pode } from "@/core/sessao/contexto";
 import { Botao } from "@/design-system/botao";
 import { AvisoUnidade } from "@/modules/estoque/components/aviso-unidade";
 import { ListaContagens } from "@/modules/estoque/components/lista-contagens";
+import { PainelDeRotinas } from "@/modules/estoque/components/painel-de-rotinas";
 import { listarContagens } from "@/modules/estoque/services/contagens";
+import { listarRotinas } from "@/modules/estoque/services/rotinas";
 
 /** A rota só delega: quem sabe o que é uma contagem é o App, não o roteamento. */
 export default async function PaginaContagens() {
@@ -25,7 +27,10 @@ export default async function PaginaContagens() {
     );
   }
 
-  const contagens = await listarContagens(contexto);
+  const [contagens, rotinas] = await Promise.all([
+    listarContagens(contexto),
+    listarRotinas(contexto),
+  ]);
   const aberta = contagens.find((c) => c.status === "ABERTA");
 
   return (
@@ -33,11 +38,17 @@ export default async function PaginaContagens() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <Cabecalho unidade={contexto.unidadeAtiva.nome} />
 
-        {podeContar && contagens.length > 0 && (
+        {podeContar && (
           <Link href="/estoque/contagens/nova">
-            <Botao>Nova contagem</Botao>
+            <Botao peso={rotinas.length > 0 ? "secundario" : "primario"}>
+              Contagem avulsa
+            </Botao>
           </Link>
         )}
+      </div>
+
+      <div className="mt-6">
+        <PainelDeRotinas rotinas={rotinas} podeContar={podeContar} />
       </div>
 
       {/* Uma contagem aberta é trabalho pela metade. Vale um atalho: a pessoa
@@ -53,6 +64,7 @@ export default async function PaginaContagens() {
           <span className="min-w-0 flex-1 text-sm">
             <span className="block font-semibold">
               Você tem uma contagem em andamento
+              {aberta.descricao ? `: ${aberta.descricao}` : ""}
             </span>
             <span className="text-ink-3 block">
               {aberta.itensContados} de {aberta.totalItens} itens contados
@@ -62,9 +74,10 @@ export default async function PaginaContagens() {
         </Link>
       )}
 
-      <div className="mt-6">
+      <section className="mt-8">
+        <h2 className="mb-3 font-semibold">Histórico</h2>
         <ListaContagens contagens={contagens} podeContar={podeContar} />
-      </div>
+      </section>
     </div>
   );
 }
