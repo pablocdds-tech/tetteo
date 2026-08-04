@@ -66,6 +66,54 @@ const PAPEIS = [
   },
 ] as const;
 
+/**
+ * As unidades que toda cozinha usa.
+ *
+ * "saco", "caixa" e "fardo" NÃO entram aqui: são vocabulário do fornecedor e
+ * cada rede cadastra os seus. O que uma pizzaria compra em saco, outra compra
+ * em fardo — e quanto pesa cada um depende do que está dentro, o que se
+ * resolve em `conversao_unidade`, por insumo.
+ *
+ * Exatamente uma base por grandeza — o banco recusa a segunda.
+ */
+const UNIDADES_DE_MEDIDA = [
+  {
+    codigo: "kg",
+    nome: "Quilograma",
+    grandeza: "MASSA",
+    fatorParaBase: "1",
+    ehBase: true,
+  },
+  {
+    codigo: "g",
+    nome: "Grama",
+    grandeza: "MASSA",
+    fatorParaBase: "0.001",
+    ehBase: false,
+  },
+  {
+    codigo: "L",
+    nome: "Litro",
+    grandeza: "VOLUME",
+    fatorParaBase: "1",
+    ehBase: true,
+  },
+  {
+    codigo: "ml",
+    nome: "Mililitro",
+    grandeza: "VOLUME",
+    fatorParaBase: "0.001",
+    ehBase: false,
+  },
+  {
+    codigo: "un",
+    nome: "Unidade",
+    grandeza: "CONTAGEM",
+    fatorParaBase: "1",
+    ehBase: true,
+  },
+] as const;
+
 async function main() {
   const organizacao = await db.organizacao.upsert({
     where: { slug: "vitaliano" },
@@ -91,6 +139,32 @@ async function main() {
     },
   });
   console.log(`unidade: ${unidade.nome}`);
+
+  // As unidades de medida são POR ORGANIZAÇÃO, e toda rede precisa das suas
+  // antes de cadastrar o primeiro insumo — `insumo.unidadeEstoqueId` é
+  // obrigatória desde a M3.
+  //
+  // Não dá para usar `upsert`: o código só é único entre as unidades não
+  // excluídas, e isso vive num índice parcial que o Prisma não enxerga
+  // (`prisma/schema/README.md`). Daí o findFirst antes.
+  for (const medida of UNIDADES_DE_MEDIDA) {
+    const jaExiste = await db.unidadeMedida.findFirst({
+      where: {
+        organizacaoId: organizacao.id,
+        codigo: medida.codigo,
+        excluidoEm: null,
+      },
+      select: { id: true },
+    });
+    if (jaExiste) continue;
+
+    await db.unidadeMedida.create({
+      data: { organizacaoId: organizacao.id, ...medida },
+    });
+  }
+  console.log(
+    `unidades de medida: ${UNIDADES_DE_MEDIDA.map((u) => u.codigo).join(", ")}`,
+  );
 
   for (const papel of PAPEIS) {
     const registro = await db.papel.upsert({

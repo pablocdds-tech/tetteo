@@ -22,6 +22,48 @@ export class SemPermissao extends Error {
   }
 }
 
+/**
+ * A ponte entre o formulário antigo e a tabela de unidades.
+ *
+ * O formulário ainda manda o valor do enum legado (`KG`, `G`, …). O banco, a
+ * partir da M3, guarda um ponteiro para `unidade_medida` — que é o que permite
+ * cadastrar "saco" e "caixa" sem migration.
+ *
+ * Enquanto as duas coisas convivem, o insumo grava as duas: o enum para a tela
+ * atual continuar funcionando e o ponteiro para o razão de estoque poder somar
+ * saldo. O enum some na M9, junto com este mapa.
+ */
+const CODIGO_DA_UNIDADE_LEGADA: Record<DadosInsumo["unidadeMedida"], string> = {
+  KG: "kg",
+  G: "g",
+  L: "L",
+  ML: "ml",
+  UN: "un",
+};
+
+async function resolverUnidadeEstoque(
+  organizacaoId: string,
+  unidadeLegada: DadosInsumo["unidadeMedida"],
+): Promise<string> {
+  const codigo = CODIGO_DA_UNIDADE_LEGADA[unidadeLegada];
+
+  const unidade = await db.unidadeMedida.findFirst({
+    where: { organizacaoId, codigo, excluidoEm: null },
+    select: { id: true },
+  });
+
+  // Só acontece se a organização não passou pelo seed. Sem unidade de estoque
+  // o saldo do insumo não pode ser somado, então é melhor recusar o cadastro
+  // do que criar um insumo que o estoque não consegue movimentar.
+  if (!unidade) {
+    throw new Error(
+      `A unidade de medida "${codigo}" não está cadastrada nesta organização. Rode \`npm run seed\`.`,
+    );
+  }
+
+  return unidade.id;
+}
+
 export async function listarInsumos(contexto: ContextoSessao) {
   if (!pode(contexto, "cardapio.ver")) throw new SemPermissao("ver o cardápio");
 
@@ -54,13 +96,20 @@ export async function criarInsumo(
     throw new SemPermissao("cadastrar insumos");
   }
 
+  const unidadeEstoqueId = await resolverUnidadeEstoque(
+    contexto.organizacao.id,
+    dados.unidadeMedida,
+  );
+
   const insumo = await db.insumo.create({
     data: {
       organizacaoId: contexto.organizacao.id,
       nome: dados.nome,
       categoria: dados.categoria || null,
       unidadeMedida: dados.unidadeMedida,
+      unidadeEstoqueId,
       custoMedio: dados.custoMedio,
+      custoReferencia: dados.custoMedio,
       estoqueMinimo: dados.estoqueMinimo,
       criadoPorId: contexto.usuario.id,
       atualizadoPorId: contexto.usuario.id,
@@ -84,13 +133,28 @@ export async function atualizarInsumo(
   const anterior = await obterInsumo(contexto, id);
   if (!anterior) throw new Error("Insumo não encontrado.");
 
-  const insumo = await db.insumo.update({
-    where: { id },
+  const unidadeEstoqueId = await resolverUnidadeEstoque(
+    contexto.organizacao.id,
+    dados.unidadeMedida,
+  );
+
+  // `updateMany` e não `update`: o filtro carrega a organização junto, então a
+  // escrita é escopada pela mesma regra que a leitura. Com `update({ where:
+  // { id } })`, a garantia dependia de a busca anterior ter sido bem escrita —
+  // e é este arquivo que os próximos Apps vão copiar.
+  await db.insumo.updateMany({
+    where: {
+      id,
+      organizacaoId: contexto.organizacao.id,
+      excluidoEm: null,
+    },
     data: {
       nome: dados.nome,
       categoria: dados.categoria || null,
       unidadeMedida: dados.unidadeMedida,
+      unidadeEstoqueId,
       custoMedio: dados.custoMedio,
+      custoReferencia: dados.custoMedio,
       estoqueMinimo: dados.estoqueMinimo,
       atualizadoPorId: contexto.usuario.id,
     },
@@ -110,7 +174,7 @@ export async function atualizarInsumo(
     dados,
   );
 
-  return insumo;
+  return obterInsumo(contexto, id);
 }
 
 export async function excluirInsumo(contexto: ContextoSessao, id: string) {
@@ -123,8 +187,15 @@ export async function excluirInsumo(contexto: ContextoSessao, id: string) {
 
   // Exclusão LÓGICA. O registro sai da tela mas continua no banco: relatórios
   // antigos e o histórico de compras continuam fazendo sentido.
-  await db.insumo.update({
-    where: { id },
+  //
+  // O nome volta a ficar livre — desde a M1 a trava de unicidade só vale entre
+  // os não excluídos, então recadastrar "Mussarela" depois disto funciona.
+  await db.insumo.updateMany({
+    where: {
+      id,
+      organizacaoId: contexto.organizacao.id,
+      excluidoEm: null,
+    },
     data: { excluidoEm: new Date(), atualizadoPorId: contexto.usuario.id },
   });
 

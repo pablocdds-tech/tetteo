@@ -76,6 +76,8 @@ model UnidadeMedida {
 
   conversoesComoOrigem  ConversaoUnidade[] @relation("ConversaoOrigem")
   conversoesComoDestino ConversaoUnidade[] @relation("ConversaoDestino")
+  insumosComoEstoque    Insumo[]           @relation("InsumoUnidadeEstoque")
+  insumosComoCompra     Insumo[]           @relation("InsumoUnidadeCompra")
 
   @@unique([organizacaoId, id])
   @@index([organizacaoId, grandeza])
@@ -121,6 +123,20 @@ model ConversaoUnidade {
   @@map("conversao_unidade")
 }
 
+/// O nível do insumo dentro do estoque.
+///
+/// O terceiro nível — o produto vendido (Pizza Margherita) — não é insumo e
+/// mora em `produto`, na M7. Aqui ficam só os dois que ocupam prateleira.
+enum TipoInsumo {
+  /// Nível 1: chega de fornecedor. Saco de farinha, bloco de queijo.
+  BRUTO
+
+  /// Nível 2: a cozinha produz a partir do nível 1, por Ordem de Produção.
+  /// Bolinha de massa, molho temperado. Tem ficha técnica própria, tem
+  /// rendimento, tem perda de processo e tem lote com validade.
+  MANIPULADO
+}
+
 /// Um insumo — o que se compra e se consome: mussarela, farinha, tomate.
 ///
 /// Pertence à ORGANIZAÇÃO, não à unidade. É uma decisão do desenho: o cadastro
@@ -137,8 +153,38 @@ model Insumo {
 
   nome      String
   categoria String?
+  tipo      TipoInsumo @default(BRUTO)
 
   unidadeMedida UnidadeMedidaLegado
+
+  /// A unidade em que o SALDO é mantido.
+  ///
+  /// Toda quantidade do razão é normalizada para cá antes de ser gravada, o
+  /// que faz "somar o saldo" ser um SUM puro — sem juntar tabela de conversão
+  /// e, principalmente, sem que mudar um fator amanhã reescreva o saldo de
+  /// ontem.
+  unidadeEstoqueId String
+  unidadeEstoque   UnidadeMedida @relation("InsumoUnidadeEstoque", fields: [organizacaoId, unidadeEstoqueId], references: [organizacaoId, id])
+
+  /// A unidade em que normalmente se compra. Só preenche o formulário de
+  /// entrada por padrão; nada no cálculo depende dela.
+  unidadeCompraId String?
+  unidadeCompra   UnidadeMedida? @relation("InsumoUnidadeCompra", fields: [organizacaoId, unidadeCompraId], references: [organizacaoId, id])
+
+  /// O custo de CADASTRO — o que a pessoa digita ao criar o insumo.
+  ///
+  /// Serve para a ficha técnica mostrar algum número enquanto o insumo não
+  /// tem histórico de compra. A partir da M4, o custo que vale é
+  /// `saldo_estoque.custoMedio`, calculado e POR LOJA: cada unidade compra
+  /// por um preço e guarda um estoque físico diferente.
+  custoReferencia Decimal @default(0) @db.Decimal(18, 8)
+
+  /// Etiquetagem ANVISA. O modelo precisa de lote mesmo com a interface
+  /// vindo depois: acrescentar rastreio a um razão que já tem movimento
+  /// gravado significa não conseguir dizer de qual lote saiu o que já saiu.
+  controlaLote Boolean @default(false)
+  /// Prazo de validade padrão, contado da produção. Nulo = não perece.
+  validadeDias Int?
 
   /// Dinheiro e quantidade NUNCA em ponto flutuante: 0.1 + 0.2 não dá 0.3 em
   /// binário, e num sistema que soma milhares de lançamentos esse erro vira
@@ -167,6 +213,7 @@ model Insumo {
   atualizadoPorId String?
 
   conversoes ConversaoUnidade[]
+  porUnidade InsumoPorUnidade[]
 
   /// Alvo das chaves estrangeiras COMPOSTAS das tabelas que vierem depois.
   ///
@@ -182,4 +229,50 @@ model Insumo {
   // recadastrar batia numa trava apontando para um registro invisível.
   // O Prisma não expressa índice parcial; ver `prisma/schema/README.md`.
   @@map("insumo")
+}
+
+/// A exceção por loja.
+///
+/// `insumo` é da rede — a mussarela é a mesma em todas as lojas. Mas nem toda
+/// loja trabalha com todo item, e o ponto de reposição de quem vende 200
+/// pizzas por noite não é o de quem vende 40.
+///
+/// Sem esta tabela, a saída seria duplicar o cadastro por loja, e aí o mesmo
+/// insumo passa a ter dois nomes, duas fichas e dois custos que ninguém
+/// consegue consolidar depois.
+model InsumoPorUnidade {
+  id            String  @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id])
+  insumoId      String
+  insumo        Insumo  @relation(fields: [organizacaoId, insumoId], references: [organizacaoId, id])
+
+  /// Esta loja trabalha com este insumo? Falso não exclui nada — só some das
+  /// listas de contagem e de reposição daquela unidade.
+  ativo Boolean @default(true)
+
+  /// Sobrepõem `insumo.estoqueMinimo` quando preenchidos. Nulo = usa o da rede.
+  estoqueMinimo Decimal? @db.Decimal(14, 4)
+  estoqueMaximo Decimal? @db.Decimal(14, 4)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  criadoPorId     String?
+  atualizadoPorId String?
+
+  /// ÚNICA TABELA DO ESCOPO SEM `excluidoEm`, e de propósito.
+  ///
+  /// Ela não guarda história — guarda uma configuração que sobrepõe o padrão
+  /// da rede. Apagar a linha significa exatamente "volta a valer o padrão",
+  /// que é um estado legítimo, e quem mudou o quê já fica registrado em
+  /// `auditoria`.
+  ///
+  /// Com `excluidoEm` aqui, esta trava precisaria virar índice parcial e o
+  /// caso comum — a loja voltar a trabalhar com o item — esbarraria numa
+  /// linha invisível, que é exatamente o defeito que a M1 corrigiu no insumo.
+  @@unique([organizacaoId, unidadeId, insumoId])
+  @@index([organizacaoId, unidadeId])
+  @@map("insumo_por_unidade")
 }

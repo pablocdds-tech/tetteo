@@ -82,6 +82,10 @@ model Unidade {
   notificacoes Notificacao[]
   sessoes      Sessao[]
 
+  // Exceções de catálogo por loja. Vive em `catalogo.prisma`, camada de dado
+  // central — o Prisma só exige o outro lado da relação declarado aqui.
+  insumos      InsumoPorUnidade[]
+
   // `auditoria` guarda a unidade como texto solto, de propósito: o registro é
   // só-escrita e precisa sobreviver mesmo que a unidade mude ou seja excluída.
 

@@ -51,10 +51,12 @@ registro excluído para sempre.
 
 ### CHECKs
 
-| tabela              | M   | recusa                                                                   |
-| ------------------- | --- | ------------------------------------------------------------------------ |
-| `unidade_medida`    | M2  | fator ≤ 0; unidade marcada como base com fator diferente de 1            |
-| `conversao_unidade` | M2  | fator ≤ 0; origem igual ao destino; vigência terminando antes de começar |
+| tabela               | M   | recusa                                                                   |
+| -------------------- | --- | ------------------------------------------------------------------------ |
+| `unidade_medida`     | M2  | fator ≤ 0; unidade marcada como base com fator diferente de 1            |
+| `conversao_unidade`  | M2  | fator ≤ 0; origem igual ao destino; vigência terminando antes de começar |
+| `insumo`             | M3  | custo ou estoque mínimo negativo; validade de zero dia                   |
+| `insumo_por_unidade` | M3  | estoque máximo menor que o mínimo                                        |
 
 ## Rollback
 
