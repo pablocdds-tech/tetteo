@@ -1,5 +1,6 @@
 import type { ManifestoDoApp } from "@/core/registry/tipos";
 import { manifestoCardapio } from "@/modules/cardapio/manifest";
+import { manifestoEstoque } from "@/modules/estoque/manifest";
 
 /**
  * O REGISTRO DE APPS — "Módulos da Rede".
@@ -111,50 +112,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
 
   manifestoCardapio,
 
-  /**
-   * ESTOQUE — onde a ficha técnica deixa de ser teoria.
-   *
-   * O Cardápio diz quanto o prato DEVERIA custar. O Estoque diz quanto ele
-   * custou de verdade: contagem, perdas, produção interna (massa, molho) e o
-   * CMV. Sem ele a corrente de eventos morre no meio — Compras registra a
-   * entrada e ninguém baixa a saída.
-   *
-   * Exige unidade: estoque somado da rede não existe. Farinha na câmara fria
-   * de uma loja não faz pizza na outra.
-   */
-  {
-    chave: "estoque",
-    nome: "Estoque",
-    subtitulo: "Contagem, perdas & CMV",
-    icone: "📦",
-    cor: { fundo: "#B45309", frente: "#FFFFFF" },
-    area: "operacao",
-    rota: "/estoque",
-    navegacao: [
-      { rota: "/estoque", nome: "Posição" },
-      { rota: "/estoque/movimentacoes", nome: "Movimentações" },
-      { rota: "/estoque/contagens", nome: "Contagens" },
-      { rota: "/estoque/producao", nome: "Produção" },
-      { rota: "/estoque/cmv", nome: "CMV" },
-    ],
-    permissaoParaVer: "estoque.ver",
-    permissoes: [
-      { chave: "estoque.ver", descricao: "Ver posição e movimentações" },
-      {
-        chave: "estoque.movimentar",
-        descricao: "Lançar entradas, saídas e perdas",
-      },
-      { chave: "estoque.contar", descricao: "Fazer e fechar contagens" },
-    ],
-    eventosQuePublica: [
-      "estoque.movimentado",
-      "estoque.abaixo-do-minimo",
-      "estoque.contagem-fechada",
-    ],
-    eventosQueEscuta: ["compra.recebida", "pedido.entregue"],
-    comportamentoNaRede: "exige-unidade",
-    emConstrucao: true,
-  },
+  manifestoEstoque,
 
   /**
    * FINANCEIRO — a resposta do dia 5.

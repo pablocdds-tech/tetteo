@@ -1,0 +1,240 @@
+// ===========================================================================
+// APP: ESTOQUE
+//
+// O objetivo deste App na v1 é UM número: o CMV real do período.
+//
+//     CMV = contagem inicial  +  compras do período  −  contagem final
+//
+// Repare no que essa fórmula NÃO exige: venda, ficha técnica, integração com
+// o PDV. Tudo que saiu do estoque — vendido, quebrado, vencido, comido —
+// simplesmente não aparece na contagem final. O número já é líquido.
+//
+// Por isso a v1 não tem saldo em tempo real. Sem o PDV baixando as vendas, um
+// saldo corrente só subiria: em duas semanas o sistema afirmaria que há 400kg
+// de mussarela na geladeira. A posição é DERIVADA da última contagem fechada
+// mais as notas lançadas depois dela, e a tela diz isso em voz alta.
+// ===========================================================================
+
+/// Uma embalagem em que o insumo é COMPRADO, quando difere de como ele é
+/// medido e contado.
+///
+/// A mussarela é medida em KG e comprada em caixa de 10kg. Sem isto, a nota
+/// entra como "2" e a contagem em quilos — e o CMV vira lixo silenciosamente.
+///
+/// É opcional de propósito: quem compra a granel digita direto na unidade
+/// base e nunca cadastra nada aqui.
+model EmbalagemCompra {
+  id       String @id @default(cuid())
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  /// Como aparece na tela: "Caixa 10kg", "Saco 25kg", "Fardo c/ 12".
+  nome String
+
+  /// Quantas unidades-base cabem dentro. Caixa de 10kg de um insumo medido em
+  /// KG tem fator 10. Fardo com 12 latas de um insumo medido em UN tem 12.
+  fator Decimal @db.Decimal(14, 4)
+
+  /// A que vem pré-selecionada ao lançar nota. Só uma por insumo, na prática.
+  padrao Boolean @default(false)
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  itensDeNota NotaEntradaItem[]
+
+  @@unique([insumoId, nome])
+  @@index([insumoId, ativo])
+  @@map("embalagem_compra")
+}
+
+/// De quem se compra.
+///
+/// Fornecedor é vocabulário compartilhado: Compras vai cadastrar, Estoque
+/// lança a nota dele e Financeiro paga. Mora aqui porque Estoque é o primeiro
+/// que precisa — quando Compras for construído, o dono passa a ser ele e este
+/// bloco muda de arquivo. Muda o arquivo, não a tabela.
+model Fornecedor {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  nome      String
+  /// CNPJ ou CPF. Livre de propósito: fornecedor de feira não tem nota.
+  documento String?
+  telefone  String?
+
+  observacao String?
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  criadoPorId String?
+
+  notas NotaEntrada[]
+
+  @@unique([organizacaoId, nome])
+  @@index([organizacaoId, ativo])
+  @@map("fornecedor")
+}
+
+/// Rascunho pode ser corrigido à vontade. Lançada mexeu no custo e virou
+/// história — corrigir exige cancelar e refazer, porque o CMV de uma semana
+/// já fechada não pode mudar sozinho.
+enum StatusNota {
+  RASCUNHO
+  LANCADA
+  CANCELADA
+}
+
+/// Uma nota de entrada: o que chegou, de quem, quando e por quanto.
+///
+/// Pertence à UNIDADE, não à organização. A mercadoria chegou num endereço
+/// físico — é o lado "aconteceu num lugar" da regra do desenho.
+model NotaEntrada {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  fornecedorId String
+  fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
+
+  numero String?
+  serie  String?
+  /// Os 44 dígitos da NFe. Guardado agora para que importar o XML mais tarde
+  /// seja só preencher, sem migração.
+  chaveAcesso String?
+
+  emitidaEm  DateTime?
+  /// A data que conta para o CMV: quando a mercadoria entrou.
+  recebidaEm DateTime
+
+  status StatusNota @default(RASCUNHO)
+
+  valorTotal Decimal @default(0) @db.Decimal(14, 2)
+
+  observacao String?
+
+  lancadaEm    DateTime?
+  canceladaEm  DateTime?
+  registradaPorId String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  itens NotaEntradaItem[]
+
+  /// Lançar a mesma nota duas vezes é o erro mais comum do mundo e infla o
+  /// CMV sem deixar rastro. O banco recusa.
+  @@unique([unidadeId, fornecedorId, numero, serie])
+  @@index([unidadeId, recebidaEm])
+  @@index([unidadeId, status])
+  @@map("nota_entrada")
+}
+
+model NotaEntradaItem {
+  id     String      @id @default(cuid())
+  notaId String
+  nota   NotaEntrada @relation(fields: [notaId], references: [id], onDelete: Cascade)
+
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  /// A quantidade COMO ESTÁ NA NOTA — "2", de duas caixas. Guardada para que
+  /// a conferência contra o papel bata número a número.
+  quantidadeNota Decimal @db.Decimal(14, 3)
+
+  embalagemId String?
+  embalagem   EmbalagemCompra? @relation(fields: [embalagemId], references: [id])
+
+  /// Congelado no lançamento. Se a caixa mudar de 10kg para 12kg amanhã, as
+  /// notas antigas continuam contando 10 — senão o CMV do passado se reescreve.
+  fatorConversao Decimal @default(1) @db.Decimal(14, 4)
+
+  /// Já convertida para a unidade base do insumo — "20", de 20 kg. É esta que
+  /// entra em todo cálculo.
+  quantidade Decimal @db.Decimal(14, 3)
+
+  /// Por unidade BASE (por kg), não por caixa. Comparável entre fornecedores
+  /// que embalam diferente.
+  valorUnitario Decimal @db.Decimal(14, 4)
+  valorTotal    Decimal @db.Decimal(14, 2)
+
+  @@index([notaId])
+  @@index([insumoId])
+  @@map("nota_entrada_item")
+}
+
+/// Aberta aceita digitação. Fechada congela quantidades e custos — vira uma
+/// das duas pontas do CMV e não pode mais mudar.
+enum StatusContagem {
+  ABERTA
+  FECHADA
+  CANCELADA
+}
+
+/// Uma contagem física do estoque de uma unidade.
+///
+/// Não precisa ser de tudo. Contagem semanal costuma pegar só o que pesa no
+/// custo (queijos, carnes, bebidas) e a cheia fica para o fim do mês. O CMV é
+/// calculado apenas sobre os insumos presentes nas DUAS pontas.
+model Contagem {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  /// O momento que a contagem representa — normalmente o fechamento da loja.
+  /// Separado de criadoEm: você conta segunda de manhã o estoque de domingo.
+  referencia DateTime
+
+  /// Como a pessoa chama: "Semana 32", "Fechamento julho".
+  descricao String?
+
+  /// Categorias contadas. Vazio significa contagem cheia.
+  categorias String[] @default([])
+
+  status StatusContagem @default(ABERTA)
+
+  abertaPorId  String?
+  fechadaPorId String?
+  fechadaEm    DateTime?
+  canceladaEm  DateTime?
+
+  observacao String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  itens ContagemItem[]
+
+  @@index([unidadeId, referencia])
+  @@index([unidadeId, status])
+  @@map("contagem")
+}
+
+model ContagemItem {
+  id         String   @id @default(cuid())
+  contagemId String
+  contagem   Contagem @relation(fields: [contagemId], references: [id], onDelete: Cascade)
+
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  /// Nulo enquanto ninguém contou. Diferente de zero, que significa "acabou".
+  quantidade Decimal? @db.Decimal(14, 3)
+
+  /// Congelado no fechamento. O CMV de uma semana não pode mudar porque o
+  /// preço da mussarela subiu depois.
+  custoUnitario Decimal @default(0) @db.Decimal(14, 4)
+
+  observacao String?
+
+  contadoPorId String?
+  contadoEm    DateTime?
+
+  @@unique([contagemId, insumoId])
+  @@index([insumoId])
+  @@map("contagem_item")
+}

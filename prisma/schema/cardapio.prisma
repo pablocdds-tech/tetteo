@@ -1,8 +1,14 @@
 // ===========================================================================
 // APP: CARDÁPIO
 //
-// Cada App traz seu próprio arquivo de schema. Nenhum App mexe no arquivo de
-// outro — a mesma fronteira que vale no código vale aqui.
+// Cada App traz seu próprio arquivo de schema. Um App não define tabela no
+// arquivo de outro — a mesma fronteira que vale no código vale aqui.
+//
+// A exceção são as RELAÇÕES: o Prisma exige os dois lados declarados. Quando
+// Estoque passa a apontar para Insumo, a lista de volta aparece aqui. Isso é
+// aceitável enquanto a seta for de mão única (Estoque conhece Cardápio,
+// Cardápio não conhece Estoque). Se Insumo acumular dependentes demais, ele
+// deixa de ser do Cardápio e vira vocabulário compartilhado da rede.
 // ===========================================================================
 
 /// Unidade em que o insumo é medido e comprado.
@@ -46,6 +52,13 @@ model Insumo {
 
   criadoPorId     String?
   atualizadoPorId String?
+
+  /// Quem depende do catálogo. Insumo é o vocabulário base da rede: Estoque
+  /// conta, Compras compra e Financeiro custeia sempre o MESMO cadastro. A
+  /// dependência é de mão única — Cardápio não sabe o que é uma contagem.
+  embalagens      EmbalagemCompra[]
+  itensDeNota     NotaEntradaItem[]
+  itensDeContagem ContagemItem[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])
