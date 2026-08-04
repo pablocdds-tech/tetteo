@@ -1,13 +1,12 @@
 import { pode, type ContextoSessao } from "@/core/sessao/contexto";
-import { SemPermissao } from "@/lib/erros";
-import { db } from "@/server/db";
-
 import {
   proximaCobranca,
   statusDaRotina,
   type Agenda,
   type StatusRotina,
-} from "../schemas/agenda";
+} from "@/lib/agenda";
+import { SemPermissao } from "@/lib/erros";
+import { db } from "@/server/db";
 
 import { criarContagem, exigirUnidade } from "./contagens";
 

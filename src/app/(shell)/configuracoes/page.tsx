@@ -27,9 +27,7 @@ export default async function PaginaConfiguracoes() {
   return (
     <div className="mx-auto w-full max-w-5xl">
       <h1 className="text-2xl font-semibold tracking-tight">Configurações</h1>
-      <p className="text-ink-3 mt-1 text-sm">
-        O painel de controle do Tetteo
-      </p>
+      <p className="text-ink-3 mt-1 text-sm">O painel de controle do Tetteo</p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-3">
         <Atalho

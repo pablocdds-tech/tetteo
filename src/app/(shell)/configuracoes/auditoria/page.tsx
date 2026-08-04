@@ -99,7 +99,10 @@ export default async function PaginaAuditoria({
       ) : (
         <div className="border-line divide-line mt-4 divide-y rounded-xl border">
           {registro.linhas.map((l) => (
-            <div key={l.id} className="flex flex-wrap gap-x-3 gap-y-1 px-4 py-3">
+            <div
+              key={l.id}
+              className="flex flex-wrap gap-x-3 gap-y-1 px-4 py-3"
+            >
               <span
                 className={`h-fit flex-none rounded-full px-2 py-0.5 text-[10px] font-semibold ${COR[l.acao] ?? ""}`}
               >

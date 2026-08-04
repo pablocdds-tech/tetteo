@@ -47,17 +47,37 @@ const PAPEIS = [
       "compras.ver",
       "compras.lancar",
       "financeiro.ver",
+      "checklists.ver",
+      "checklists.responder",
+      "checklists.editar",
+      "checklists.resolver",
     ],
   },
   {
     nome: "Caixa",
     descricao: "Operação de caixa e atendimento",
-    permissoes: ["cardapio.ver", "financeiro.ver"],
+    permissoes: [
+      "cardapio.ver",
+      "financeiro.ver",
+      "checklists.ver",
+      "checklists.responder",
+    ],
   },
   {
+    /**
+     * Responde checklist, mas NÃO resolve pendência. Quem encontra o problema
+     * quase nunca é quem conserta, e deixar a mesma pessoa apontar e dar baixa
+     * transforma a pendência em autoavaliação.
+     */
     nome: "Cozinha",
     descricao: "Produção e conferência de insumos",
-    permissoes: ["cardapio.ver", "estoque.ver", "estoque.contar"],
+    permissoes: [
+      "cardapio.ver",
+      "estoque.ver",
+      "estoque.contar",
+      "checklists.ver",
+      "checklists.responder",
+    ],
   },
   {
     nome: "Financeiro",

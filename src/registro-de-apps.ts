@@ -1,6 +1,7 @@
 import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
 import { manifestoCardapio } from "@/modules/cardapio/manifest";
+import { manifestoChecklists } from "@/modules/checklists/manifest";
 import { manifestoEstoque } from "@/modules/estoque/manifest";
 
 /**
@@ -114,6 +115,8 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
   manifestoCardapio,
 
   manifestoEstoque,
+
+  manifestoChecklists,
 
   /**
    * FINANCEIRO — a resposta do dia 5.
@@ -290,28 +293,6 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
       { chave: "rh.ver", descricao: "Ver processos de recrutamento e cultura" },
     ],
     comportamentoNaRede: "consolida",
-    emConstrucao: true,
-  },
-
-  {
-    chave: "checklists",
-    nome: "Checklists",
-    subtitulo: "Compliance operacional",
-    icone: "✅",
-    cor: { fundo: "#34A853", frente: "#FFFFFF" },
-    area: "operacao",
-    rota: "/checklists",
-    navegacao: [
-      { rota: "/checklists", nome: "Do dia" },
-      { rota: "/checklists/modelos", nome: "Modelos" },
-      { rota: "/checklists/auditorias", nome: "Auditorias" },
-    ],
-    permissaoParaVer: "checklists.ver",
-    permissoes: [
-      { chave: "checklists.ver", descricao: "Ver e responder checklists" },
-      { chave: "checklists.editar", descricao: "Criar e alterar modelos" },
-    ],
-    comportamentoNaRede: "compara",
     emConstrucao: true,
   },
 

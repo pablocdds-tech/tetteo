@@ -1,5 +1,10 @@
 /**
- * A AGENDA DAS ROTINAS DE CONTAGEM.
+ * A AGENDA DAS ROTINAS.
+ *
+ * Nasceu no Estoque, para cobrar contagem. Mudou para cá quando os Checklists
+ * precisaram da mesma coisa — "abertura todo dia às 7h" é o mesmo problema que
+ * "contagem da praça todo dia às 7h", e um App não pode importar do outro.
+ * Não há vocabulário de negócio aqui: só datas, recorrência e atraso.
  *
  * Funções puras, sem banco e sem relógio próprio — quem chama passa o "hoje".
  * É o que permite testar "segunda que vem" sem esperar até segunda.
@@ -64,7 +69,7 @@ export function proximaOcorrencia(agenda: Agenda, prazo: Date): Date {
 /**
  * Onde a rotina está em relação à agenda.
  *
- *   feita       a ocorrência vigente já tem contagem fechada
+ *   feita       a ocorrência vigente já foi cumprida (contagem ou checklist)
  *   aguardando  vence HOJE e ainda não foi feita — o estado normal de manhã
  *   atrasada    a ocorrência vigente ficou para trás sem contagem
  */

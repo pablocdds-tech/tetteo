@@ -1,0 +1,302 @@
+// ===========================================================================
+// APP: CHECKLISTS
+//
+// O Estoque responde "quanto custou". Os Checklists respondem "foi feito?".
+//
+// É o único módulo que a equipe inteira abre TODO DIA — o pizzaiolo às 7h, a
+// faxineira às 15h, o caixa às 23h. Por isso a tela principal não é uma lista
+// de cadastros: é a lista do que falta fazer hoje.
+//
+// O desenho tem três camadas, e separá-las é o que evita o erro clássico de
+// escrever a mesma checagem doze vezes:
+//
+//   MODELO    o que perguntar — "Abertura da Pizzaria", 14 itens
+//   ROTINA    quando e de quem cobrar — "todo dia às 7h, Alisson", por loja
+//   RESPOSTA  o que aconteceu num dia — as respostas, congeladas
+//
+// O modelo é da REDE; a rotina e a resposta são da LOJA. É o que permite
+// comparar: a mesma abertura, 96% no Vitaliano e 71% no Texanos, é uma frase
+// que só faz sentido se a pergunta for literalmente a mesma nos dois lugares.
+// ===========================================================================
+
+/// O que uma pergunta espera como resposta.
+///
+/// SIM_NAO é a espinha dorsal — "a câmara fria está limpa?" — e é a única que
+/// gera conformidade. As outras registram: o número da temperatura, o texto do
+/// que foi observado. Registrar não é o mesmo que julgar, e misturar os dois
+/// faria a nota do checklist virar opinião.
+enum TipoDeResposta {
+  SIM_NAO
+  NUMERO
+  TEXTO
+}
+
+/// Um modelo de checklist: a lista de perguntas, sem data e sem dono.
+///
+/// Pertence à ORGANIZAÇÃO de propósito. "Abertura da Pizzaria" é escrita uma
+/// vez e as duas lojas respondem a mesma coisa — se cada loja tivesse a sua
+/// cópia, a comparação entre elas viraria comparação entre dois questionários
+/// diferentes, que não é comparação nenhuma.
+model ModeloDeChecklist {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  nome      String
+  descricao String?
+
+  /// Some das telas sem apagar o histórico: respostas antigas continuam
+  /// existindo e continuam contando na comparação do mês passado.
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  criadoPorId String?
+
+  itens    ItemDeModelo[]
+  rotinas  RotinaDeChecklist[]
+  respostas RespostaDeChecklist[]
+
+  @@unique([organizacaoId, nome])
+  @@index([organizacaoId, ativo])
+  @@map("modelo_de_checklist")
+}
+
+/// Uma pergunta dentro do modelo.
+model ItemDeModelo {
+  id       String            @id @default(cuid())
+  modeloId String
+  modelo   ModeloDeChecklist @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+
+  /// A pergunta como ela é lida no celular: "As câmaras estão na temperatura?"
+  texto String
+
+  /// O bloco a que pertence: "Cozinha", "Salão", "Banheiros". Nulo cai num
+  /// bloco geral. É só agrupamento visual — quem responde de pé, no salão,
+  /// precisa que as perguntas do salão estejam juntas.
+  secao String?
+
+  tipo TipoDeResposta @default(SIM_NAO)
+
+  /// A ordem de caminhada pela loja. Menor responde primeiro.
+  ordem Int @default(0)
+
+  /// Item obrigatório não deixa fechar o checklist em branco. Nem tudo é:
+  /// "temperatura do freezer 2" não se aplica em loja que só tem um freezer.
+  obrigatorio Boolean @default(true)
+
+  /// Faixa aceitável, só para NUMERO. Fora dela o item vira não conformidade
+  /// sozinho — é assim que "temperatura da câmara" deixa de depender de alguém
+  /// lembrar que -18 é o limite.
+  minimo Decimal? @db.Decimal(14, 3)
+  maximo Decimal? @db.Decimal(14, 3)
+
+  /// A unidade que aparece ao lado do campo: "°C", "kg", "min".
+  rotuloUnidade String?
+
+  /// Quando marcado, responder "não" exige escrever o que houve. Sem isto o
+  /// histórico enche de "não" sem motivo, e três meses depois ninguém sabe o
+  /// que estava quebrado.
+  exigeObservacaoSeNao Boolean @default(true)
+
+  /// Pede foto como prova. O banco já guarda a intenção e a resposta guarda a
+  /// URL; o envio de arquivo entra quando houver onde armazenar.
+  exigeFoto Boolean @default(false)
+
+  respostas RespostaItem[]
+
+  @@index([modeloId, ordem])
+  @@map("item_de_modelo")
+}
+
+/// A ROTINA: o modelo, uma loja, uma agenda e um responsável.
+///
+/// A mesma "Abertura" pode ser cobrada às 7h no Vitaliano e às 10h no Texanos,
+/// de pessoas diferentes. Por isso a agenda mora aqui e não no modelo.
+///
+/// O status ("em dia", "aguardando", "atrasada") não é guardado — é calculado
+/// da última resposta fechada contra a agenda, pela mesma função que o Estoque
+/// usa. Guardar criaria um campo que mente assim que a meia-noite passa.
+model RotinaDeChecklist {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  modeloId String
+  modelo   ModeloDeChecklist @relation(fields: [modeloId], references: [id], onDelete: Cascade)
+
+  recorrencia Recorrencia
+
+  /// 0 = domingo … 6 = sábado. Só faz sentido na SEMANAL.
+  diaDaSemana Int?
+
+  /// 1–28. Só faz sentido na MENSAL. Até 28 de propósito: "dia 31" não existe
+  /// em fevereiro e a rotina sumiria do mês.
+  diaDoMes Int?
+
+  /// "07:00" — informativo, aparece na lista do dia. A cobrança é por DIA:
+  /// atrasar vinte minutos não é atraso, pular o dia é.
+  horario String?
+
+  /// De quem se cobra. Nulo é "de quem estiver de plantão" — a lista aparece
+  /// para todo mundo que tem a permissão.
+  responsavelId String?
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  respostas RespostaDeChecklist[]
+
+  @@unique([unidadeId, modeloId])
+  @@index([unidadeId, ativo])
+  @@map("rotina_de_checklist")
+}
+
+/// Aberta aceita edição. Fechada congela as respostas e a nota — vira o
+/// histórico contra o qual o mês é comparado.
+enum StatusResposta {
+  ABERTA
+  FECHADA
+  CANCELADA
+}
+
+/// Um checklist respondido num dia, numa loja.
+///
+/// Guarda a NOTA calculada no fechamento em vez de recalcular na leitura. Não
+/// é otimização: o modelo pode ganhar um item novo amanhã, e a abertura de
+/// ontem não pode passar de 100% para 93% porque alguém acrescentou uma
+/// pergunta depois. A nota de ontem é de ontem.
+model RespostaDeChecklist {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  modeloId String
+  modelo   ModeloDeChecklist @relation(fields: [modeloId], references: [id])
+
+  /// A rotina que cobrou. Nulo quando alguém abriu o checklist avulso.
+  rotinaId String?
+  rotina   RotinaDeChecklist? @relation(fields: [rotinaId], references: [id])
+
+  /// O dia que a resposta representa. Separado de criadoEm porque o
+  /// fechamento das 23h costuma ser lançado depois da meia-noite.
+  referencia DateTime
+
+  status StatusResposta @default(ABERTA)
+
+  /// Congelados no fechamento.
+  itensConformes    Int @default(0)
+  itensNaoConformes Int @default(0)
+  /// 0 a 100, com uma casa. Nulo quando não houve nenhum item de conformidade
+  /// — checklist só de temperatura não tem nota, e inventar uma seria mentira.
+  pontuacao Decimal? @db.Decimal(5, 1)
+
+  observacao String?
+
+  abertaPorId  String?
+  fechadaPorId String?
+  fechadaEm    DateTime?
+  canceladaEm  DateTime?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  itens      RespostaItem[]
+  pendencias Pendencia[]
+
+  @@index([unidadeId, referencia])
+  @@index([unidadeId, status])
+  @@index([modeloId, referencia])
+  @@map("resposta_de_checklist")
+}
+
+/// A resposta de UMA pergunta.
+///
+/// O texto da pergunta é copiado para cá no momento em que o checklist abre.
+/// Custa uma coluna e resolve o problema que destrói histórico de checklist:
+/// corrigir a redação de um item não pode reescrever o que foi respondido mês
+/// passado.
+model RespostaItem {
+  id         String              @id @default(cuid())
+  respostaId String
+  resposta   RespostaDeChecklist @relation(fields: [respostaId], references: [id], onDelete: Cascade)
+
+  itemId String
+  item   ItemDeModelo @relation(fields: [itemId], references: [id])
+
+  /// Congelados na abertura, junto com o texto.
+  textoItem String
+  secao     String?
+  tipo      TipoDeResposta @default(SIM_NAO)
+  ordem     Int            @default(0)
+
+  /// SIM_NAO: nulo = ninguém respondeu, true = conforme, false = não conforme.
+  /// Diferente de "não se aplica", que é o campo abaixo — e a diferença muda a
+  /// nota, porque N/A sai da conta em vez de zerá-la.
+  conforme Boolean?
+
+  naoSeAplica Boolean @default(false)
+
+  /// NUMERO: o valor lido. TEXTO: o texto escrito.
+  valorNumero Decimal? @db.Decimal(14, 3)
+  valorTexto  String?
+
+  observacao String?
+  fotoUrl    String?
+
+  respondidoPorId String?
+  respondidoEm    DateTime?
+
+  pendencias Pendencia[]
+
+  @@unique([respostaId, itemId])
+  @@index([itemId])
+  @@map("resposta_item")
+}
+
+enum StatusPendencia {
+  ABERTA
+  RESOLVIDA
+  CANCELADA
+}
+
+/// O que sobrou do checklist para alguém consertar.
+///
+/// É a razão de o módulo existir. Marcar "não conforme" e seguir a vida
+/// transforma o checklist em ritual: todo dia se anota que a coifa está suja e
+/// todo dia ela continua suja. A pendência tem dono, prazo e só sai da tela
+/// quando alguém diz que resolveu.
+model Pendencia {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  /// De onde veio. Nulo quando alguém abriu a pendência à mão, sem checklist.
+  respostaId String?
+  resposta   RespostaDeChecklist? @relation(fields: [respostaId], references: [id])
+
+  respostaItemId String?
+  respostaItem   RespostaItem? @relation(fields: [respostaItemId], references: [id])
+
+  descricao String
+
+  responsavelId String?
+
+  /// Nulo é "sem prazo" — aparece na lista, mas não vira atraso.
+  prazo DateTime?
+
+  status StatusPendencia @default(ABERTA)
+
+  resolucao   String?
+  resolvidaEm DateTime?
+  resolvidaPorId String?
+
+  criadaPorId String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([unidadeId, status])
+  @@index([unidadeId, prazo])
+  @@map("pendencia")
+}

@@ -3,10 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { excluirPapelAcao } from "@/core/configuracoes/acoes";
 import { ListaPessoas } from "@/core/configuracoes/componentes/lista-pessoas";
-import {
-  listarPapeis,
-  listarPessoas,
-} from "@/core/configuracoes/servicos";
+import { listarPapeis, listarPessoas } from "@/core/configuracoes/servicos";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { Botao } from "@/design-system/botao";
 
