@@ -42,6 +42,7 @@ const PAPEIS = [
     permissoes: [
       "cardapio.ver",
       "cardapio.editar",
+      "cardapio.custos",
       "estoque.ver",
       "estoque.contar",
       "compras.ver",
@@ -68,6 +69,10 @@ const PAPEIS = [
      * Responde checklist, mas NÃO resolve pendência. Quem encontra o problema
      * quase nunca é quem conserta, e deixar a mesma pessoa apontar e dar baixa
      * transforma a pendência em autoavaliação.
+     *
+     * Vê a ficha técnica e NÃO vê o custo. O pizzaiolo precisa saber que a
+     * margherita leva 200 g de mussarela; não precisa saber que ela custa
+     * R$ 12,40 e sai por R$ 55.
      */
     nome: "Cozinha",
     descricao: "Produção e conferência de insumos",
@@ -82,7 +87,13 @@ const PAPEIS = [
   {
     nome: "Financeiro",
     descricao: "Contas a pagar, receber e fluxo de caixa",
-    permissoes: ["financeiro.ver", "financeiro.lancar", "compras.ver"],
+    permissoes: [
+      "financeiro.ver",
+      "financeiro.lancar",
+      "compras.ver",
+      "cardapio.ver",
+      "cardapio.custos",
+    ],
   },
 ] as const;
 

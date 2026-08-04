@@ -76,8 +76,124 @@ model Insumo {
   itensDeNota     NotaEntradaItem[]
   itensDeContagem ContagemItem[]
   posicoes        PosicaoEstoque[]
+  itensDeFicha    ItemDeFicha[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])
   @@map("insumo")
+}
+
+// ---------------------------------------------------------------------------
+// FICHAS TÉCNICAS — a receita, e o custo que sai dela
+// ---------------------------------------------------------------------------
+//
+// A ficha responde "quanto custa fazer isto?". O Estoque responde "quanto
+// saiu?". Os dois juntos, quando houver PDV para dizer quanto foi vendido,
+// respondem a pergunta que fecha o mês: o que consumi bate com o que deveria
+// ter consumido? Enquanto o PDV não existe, a ficha já entrega sozinha o custo
+// e a margem de cada prato — que é o que muda decisão de preço hoje.
+
+/// O que a ficha é.
+///
+/// PRATO vai para o cliente e tem preço de venda. PREPARO é etapa: massa,
+/// molho, mix de temperos. Um preparo não se vende — ele vira ingrediente de
+/// outra ficha.
+///
+/// Os dois são a MESMA tabela de propósito. A conta é idêntica, as telas são
+/// idênticas, e a massa que hoje é só etapa pode virar produto amanhã (venda
+/// de disco cru). Separar em duas tabelas obrigaria a duplicar tudo para
+/// depois descobrir que a diferença cabia num campo.
+enum TipoDeFicha {
+  PRATO
+  PREPARO
+}
+
+/// Uma ficha técnica: o que entra, quanto rende, quanto custa.
+///
+/// Pertence à ORGANIZAÇÃO. A receita da margherita é padrão da rede — é
+/// justamente isso que torna comparável o custo entre as lojas. O que muda de
+/// loja para loja é o PREÇO do insumo, e esse já mora no lugar certo.
+model FichaTecnica {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  nome      String
+  categoria String?
+
+  tipo TipoDeFicha @default(PRATO)
+
+  /// O passo a passo, para quem vai produzir. Texto livre de propósito: quem
+  /// escreve receita escreve em frases, não em campos.
+  modoDePreparo String?
+
+  /// Quanto a receita rende, na unidade abaixo. É o que torna o PREPARO
+  /// utilizável: a massa custa R$ 16 e rende 8 discos, então o disco custa
+  /// R$ 2. Sem rendimento, uma sub-receita não tem preço unitário e a conta
+  /// da pizza fica impossível.
+  rendimento        Decimal       @default(1) @db.Decimal(14, 3)
+  unidadeRendimento UnidadeMedida @default(UN)
+
+  /// Só faz sentido no PRATO. É contra ele que o custo vira margem — e o CMV
+  /// teórico de um prato é custo ÷ preço, sem depender de venda nenhuma.
+  precoVenda Decimal? @db.Decimal(14, 2)
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  criadoPorId     String?
+  atualizadoPorId String?
+
+  itens   ItemDeFicha[]
+  /// Onde esta ficha é usada como ingrediente. É o que permite responder
+  /// "mexer na massa afeta quantas pizzas?" antes de mexer.
+  usadaEm ItemDeFicha[] @relation("SubFicha")
+
+  @@unique([organizacaoId, nome])
+  @@index([organizacaoId, tipo, ativo])
+  @@map("ficha_tecnica")
+}
+
+/// Uma linha da receita.
+///
+/// Aponta para um INSUMO ou para outra FICHA, nunca para os dois. É o que faz
+/// a sub-receita existir: a pizza usa "1 disco de massa", e o disco tem receita
+/// própria. Sem isso, mudar a receita da massa exigiria editar as quarenta
+/// pizzas que a usam — o que ninguém faz, e a ficha vira ficção.
+model ItemDeFicha {
+  id      String       @id @default(cuid())
+  fichaId String
+  ficha   FichaTecnica @relation(fields: [fichaId], references: [id], onDelete: Cascade)
+
+  insumoId String?
+  insumo   Insumo? @relation(fields: [insumoId], references: [id])
+
+  subFichaId String?
+  subFicha   FichaTecnica? @relation("SubFicha", fields: [subFichaId], references: [id])
+
+  /// Quanto vai NO PRATO, já limpo e pronto — o peso líquido.
+  quantidade Decimal @db.Decimal(14, 4)
+
+  /// A unidade em que a receita fala, que quase nunca é a de compra. A
+  /// mussarela é comprada em KG e a receita pede 200 G. A conversão é feita na
+  /// hora de custear; guardar já convertido esconderia o que foi escrito.
+  unidade UnidadeMedida
+
+  /// Perda no preparo, em porcentagem. O tomate perde 20% ao ser limpo, então
+  /// para 1 kg no molho é preciso comprar 1,25 kg.
+  ///
+  /// Zero na maioria das linhas, e é por isso que ele é opcional na tela: um
+  /// campo obrigatório de perda em toda linha faria ninguém preencher ficha
+  /// nenhuma.
+  perdaPercentual Decimal @default(0) @db.Decimal(5, 2)
+
+  observacao String?
+  ordem      Int     @default(0)
+
+  @@index([fichaId, ordem])
+  @@index([insumoId])
+  @@index([subFichaId])
+  @@map("item_de_ficha")
 }
