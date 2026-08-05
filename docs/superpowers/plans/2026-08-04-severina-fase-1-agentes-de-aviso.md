@@ -66,8 +66,15 @@ GEMINI_MODELO=<confirmar o id atual na documentação do Google>
 
 **Interfaces:**
 
-- Consome: `Organizacao`, `Unidade`, `Usuario` de `core.prisma`
+- Consome: `organizacaoId`, `unidadeId` e `usuarioId` **como texto**, nunca como `@relation`
 - Produz: os modelos `InstanciaWhatsapp`, `VinculoWhatsapp`, `AgenteSeverina`, `ConversaWhatsapp`, `MensagemWhatsapp` no cliente do Prisma
+
+> **A regra que este schema obedece, e que custa caro descobrir depois.**
+> Nenhum módulo do Tetteo declara `@relation` para tabela do Core. `estoque.prisma:33` e `checklists.prisma:42` guardam `unidadeId String` e `organizacaoId String` como campo simples, e `core.prisma` não tem contra-relação para App nenhum.
+>
+> É a regra nº 2 virando banco: se `core.prisma` ganhasse `agentes AgenteSeverina[]`, o Core passaria a conhecer um App — e a próxima instalação de módulo exigiria migrar o Kernel.
+>
+> O preço é real e aceito: sem integridade referencial no banco para `usuarioId`, e sem `include: { usuario: true }`. Quem precisa do nome busca em `db.usuario` por id, como os outros módulos já fazem. Relação **dentro** do módulo (conversa → mensagem) continua sendo `@relation` normal.
 
 - [ ] **Passo 1: Escrever o schema**
 

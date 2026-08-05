@@ -1,0 +1,251 @@
+// ===========================================================================
+// APP: SEVERINA (assistente)
+//
+// A Severina não guarda regra de negócio de nenhum App. Ela guarda CONVERSA:
+// quem falou, quando, o que foi dito, e o que está para ser dito.
+//
+// Repare que NENHUMA tabela aqui declara `@relation` para `Organizacao`,
+// `Unidade` ou `Usuario`. Os identificadores são texto simples — do mesmo
+// jeito que em `estoque.prisma` e `checklists.prisma`. É a regra nº 2 do
+// projeto virando banco: se `core.prisma` precisasse ganhar uma contra-relação
+// para cada App instalado, o Kernel conheceria os Apps, e instalar módulo
+// novo viraria migração do Core.
+//
+// O preço é aceito conscientemente: sem integridade referencial no banco para
+// `usuarioId`, e sem `include`. Quem precisa do nome da pessoa busca em
+// `db.usuario` por id. Relação DENTRO do módulo continua relação de verdade.
+// ===========================================================================
+
+/// O número de WhatsApp. Uma linha, hoje.
+///
+/// Existe como tabela por dois motivos concretos, não por simetria: o botão de
+/// desligar precisa de um lugar para morar, e a queda de conexão precisa
+/// aparecer numa tela em vez de ser descoberta pela reclamação de quem não
+/// recebeu o aviso das 7h.
+model InstanciaWhatsapp {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  /// O nome da instância na Evolution API — "severina-teste"
+  nome          String
+  numeroProprio String?
+
+  ativa          Boolean   @default(true)
+  conectadaEm    DateTime?
+  desconectadaEm DateTime?
+  ultimoErro     String?
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  conversas ConversaWhatsapp[]
+
+  @@unique([organizacaoId, nome])
+  @@map("instancia_whatsapp")
+}
+
+/// QUEM EXISTE PARA A SEVERINA.
+///
+/// O WhatsApp migrou para o LID: quem escreve chega como "223170845999336@lid",
+/// sem telefone dentro. Comparar com `Usuario.telefone` deixou de funcionar —
+/// por isso o vínculo é GRAVADO, não deduzido.
+///
+/// E ela é, ao mesmo tempo, a lista de quem a Severina enxerga: sem linha
+/// aqui, a pessoa não existe, e a mensagem é descartada sem ser gravada. É o
+/// que impede os contatos pessoais do número de entrarem no banco de gestão.
+model VinculoWhatsapp {
+  id            String @id @default(cuid())
+  organizacaoId String
+  usuarioId     String
+
+  /// O identificador que a Evolution entrega: "…@lid" ou "…@s.whatsapp.net"
+  remoteJid String
+
+  /// O telefone em E.164 sem o "+" — "5584981336549"
+  telefone String
+
+  confirmadoEm DateTime?
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  @@unique([organizacaoId, remoteJid])
+  @@index([organizacaoId, telefone])
+  @@index([organizacaoId, usuarioId])
+  @@map("vinculo_whatsapp")
+}
+
+enum TipoAgente {
+  AVISO
+  COLETA
+  MODULO
+}
+
+enum GatilhoAgente {
+  HORARIO
+  ROTINA_VENCIDA
+  MENSAGEM_RECEBIDA
+}
+
+/// O que o dono cria na tela — a peça que faz a Severina não depender de
+/// programador para mudar horário, destinatário ou jeito de falar.
+///
+/// A divisão entre `instrucoes` e `limites` é a regra que sustenta a
+/// segurança disso: instrução é texto livre e INFLUENCIA o modelo; limite é
+/// campo estruturado e é conferido pelo código ANTES de agir.
+///
+/// "Nunca feche contagem acima de R$ 5.000" escrito na caixa de instruções é
+/// um pedido — o modelo quase sempre obedece. Quase. O mesmo limite como campo
+/// é uma parede: o modelo não convence um `if`.
+///
+/// Nada que não se pode perder mora na caixa de texto.
+model AgenteSeverina {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  /// Vazio = vale para a rede inteira
+  unidadeId String?
+
+  nome  String
+  tipo  TipoAgente @default(AVISO)
+  ativo Boolean    @default(true)
+
+  gatilho GatilhoAgente
+
+  /// HORARIO        → { "horario": "07:00", "diasDaSemana": [1,2,3,4,5] }
+  /// ROTINA_VENCIDA → { "modulo": "estoque" }
+  gatilhoConfig Json @default("{}")
+
+  destinatariosPapeis   String[] @default([])
+  destinatariosUsuarios String[] @default([])
+
+  /// MOLE — orienta o Gemini na redação
+  instrucoes String
+
+  /// Fases seguintes. Declarados agora para não migrar de novo depois.
+  perguntas            Json     @default("[]")
+  ferramentasLiberadas String[] @default([])
+
+  /// DURO — { "janelaInicio": "06:00", "janelaFim": "22:00",
+  ///          "maxAcoesPorConversa": 8, "aceitaAudio": true }
+  limites Json @default("{}")
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  excluidoEm   DateTime?
+
+  conversas ConversaWhatsapp[]
+
+  @@index([organizacaoId, ativo])
+  @@map("agente_severina")
+}
+
+enum EstadoConversa {
+  ABERTA
+  AGUARDANDO_CONFIRMACAO
+  ENCERRADA
+}
+
+/// O assunto em aberto com uma pessoa.
+///
+/// `unidadeId` é o que resolve o problema do número único da rede: a resposta
+/// "12 kg" sabe de qual estoque é porque a CONVERSA sabe — não porque o
+/// telefone sabe. Quem trabalha em duas lojas não precisa ser perguntado.
+model ConversaWhatsapp {
+  id          String            @id @default(cuid())
+  instanciaId String
+  instancia   InstanciaWhatsapp @relation(fields: [instanciaId], references: [id])
+  agenteId    String
+  agente      AgenteSeverina    @relation(fields: [agenteId], references: [id])
+
+  organizacaoId String
+  unidadeId     String?
+  remoteJid     String
+  usuarioId     String
+
+  referenciaTipo String?
+  referenciaId   String?
+
+  estado EstadoConversa @default(ABERTA)
+
+  /// Congela ferramenta, argumentos e prazo enquanto espera a palavra de
+  /// confirmação. Fase 3 — declarado agora para não migrar de novo.
+  acaoPendente Json?
+
+  ultimaMensagemEm DateTime @default(now())
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  mensagens MensagemWhatsapp[]
+
+  @@index([organizacaoId, ultimaMensagemEm])
+  @@index([agenteId, estado])
+  @@index([usuarioId])
+  @@map("conversa_whatsapp")
+}
+
+enum DirecaoMensagem {
+  ENTRADA
+  SAIDA
+}
+
+enum TipoMensagem {
+  TEXTO
+  IMAGEM
+  DOCUMENTO
+  AUDIO
+}
+
+enum StatusMensagem {
+  PENDENTE
+  ENVIADA
+  ENTREGUE
+  FALHOU
+}
+
+/// Tudo que entra e tudo que sai, numa tabela só.
+///
+/// É ela que vira a linha do tempo da aba Conversas, e a fila de saída é só
+/// `direcao=SAIDA AND status=PENDENTE`. Duas tabelas dariam duas metades de
+/// uma história que se lê junto.
+///
+/// `idExterno` ÚNICO é a trava contra webhook repetido: a Evolution reenvia
+/// quando não tem certeza de que chegou, e sem isso "entrou 12kg" viraria
+/// 24kg. É a mesma lógica da `entrega_evento` do Core, escrita pelo mesmo
+/// motivo.
+model MensagemWhatsapp {
+  id         String           @id @default(cuid())
+  conversaId String
+  conversa   ConversaWhatsapp @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+
+  direcao DirecaoMensagem
+  tipo    TipoMensagem    @default(TEXTO)
+
+  /// O id da mensagem na Evolution. Nulo enquanto a nossa não foi enviada.
+  idExterno String? @unique
+
+  texto    String?
+  midiaUrl String?
+
+  status     StatusMensagem @default(PENDENTE)
+  tentativas Int            @default(0)
+  erro       String?
+
+  /// POR QUE a Severina falou — "agente:clx91…" ou "agente:clx91…:rotina:clx8…".
+  /// Responde a pergunta do primeiro dia em que algo sair errado.
+  origem String?
+
+  agendadaPara DateTime?
+  enviadaEm    DateTime?
+  recebidaEm   DateTime?
+
+  criadoEm DateTime @default(now())
+
+  @@index([status, direcao, agendadaPara])
+  @@index([conversaId, criadoEm])
+  @@index([origem])
+  @@map("mensagem_whatsapp")
+}
