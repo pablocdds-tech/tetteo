@@ -10,17 +10,41 @@
 
 A Severina passa a conversar por WhatsApp com **a equipe** — não com o cliente.
 
-Ela faz três coisas, e a diferença entre elas é o que organiza este documento inteiro:
+E o que ela é, na definição do dono:
+
+> **Um auditor.** Confere, cobra, alerta, lembra — para que a loja funcione.
+
+A palavra importa, porque separa duas coisas que se parecem:
+
+|                | Dispara por   | Se ninguém contar a praça por 3 dias   |
+| -------------- | ------------- | -------------------------------------- |
+| **Mensageira** | relógio       | manda o mesmo bom-dia no quarto dia    |
+| **Auditora**   | **diferença** | _"a praça não é contada há três dias"_ |
+
+Quatro coisas, então, e a ordem é a de quanto cada uma custa para construir:
 
 1. **Avisa** — cobra a contagem, lembra do ASO, alerta que o fornecedor passa hoje
-2. **Coleta** — faz perguntas e guarda as respostas (o checklist de fechamento, a ronda, a pesquisa)
-3. **Age nos módulos** — anota a contagem, lança a nota
+2. **Confere** — compara o que devia ter acontecido com o que aconteceu, e fala só quando há diferença
+3. **Coleta** — faz perguntas e guarda as respostas
+4. **Age nos módulos** — anota a contagem, lança a nota
 
 E o requisito que reorganizou o projeto:
 
 > **Pablo cria e configura agentes sozinho, numa tela, sem programador.**
 
 Isso não é conveniência. É a diferença entre um sistema que ele opera e um sistema que depende de terceiro para mudar um horário.
+
+### A regra que protege tudo isso
+
+**Auditor que grita todo dia é auditor mudo em duas semanas.** A equipe silencia o número — e aí se perdem também os avisos que importavam.
+
+Por isso o desenho é o contrário do instinto:
+
+- **Uma mensagem por assunto por dia, no máximo.** Três problemas na mesma loja viram **uma** mensagem com três linhas, nunca três mensagens.
+- **O que já foi avisado e ninguém resolveu não vira lembrete diário** — vira escalonamento para o nível de cima.
+- O `MAX_POR_RODADA` e o intervalo entre mensagens nasceram para proteger o número contra ban (§12). Servem também aqui: são o teto natural contra a Severina virar praga.
+
+Uma Severina que fala pouco e certo vale mais do que uma que fala tudo.
 
 ---
 
@@ -465,7 +489,9 @@ _"Nunca feche contagem acima de R$ 5.000"_ escrito na caixa de instruções é *
 
 ## 10 · As fases
 
-**Cada fase vira um plano de implementação próprio.** Este documento é o desenho das quatro; o plano detalhado se escreve uma fase por vez, com o aprendizado da anterior dentro. Escrever o plano das quatro agora seria planejar em cima de suposições que o uso real vai desmentir.
+**Cada fase vira um plano de implementação próprio.** Este documento é o desenho das cinco; o plano detalhado se escreve uma fase por vez, com o aprendizado da anterior dentro. Escrever o plano das cinco agora seria planejar em cima de suposições que o uso real vai desmentir.
+
+A ordem não é por valor, é por **risco crescente**: a 1 e a 1.5 só leem; a 2 escreve em tabela própria; a 3 mexe no CMV; a 4 depende de uma medição que ainda não foi feita.
 
 ### Fase 1 — Agentes de Aviso
 
@@ -474,6 +500,25 @@ Tabelas `InstanciaWhatsapp`, `VinculoWhatsapp`, `AgenteSeverina`, `ConversaWhats
 **Entrega:** Pablo cria agentes que cobram e lembram, sozinho. A cobrança de contagem — que hoje só acontece quando alguém abre a tela — passa a acontecer no horário.
 
 Sem webhook, sem ferramentas, sem interpretar nada. **Se a fase 1 for tudo que existir por três meses, ela já se paga.**
+
+### Fase 1.5 — O auditor
+
+Gatilho `DISCREPANCIA` · `discrepancias(contexto, agora)` declarado pelos módulos, ao lado de `avisos` · escalonamento como campo de primeira classe · agrupamento por loja · o resumo do gerente.
+
+**É aqui que ela deixa de ser mensageira.** O módulo não responde mais "venceu?", e sim "o que está fora do lugar?":
+
+- _"A praça não é contada há 3 dias."_ — Estoque
+- _"O fechamento de ontem não foi respondido na Centro. Na Zona Sul foi."_ — Checklists
+- _"A pendência da coifa está aberta há 9 dias, com prazo de 2."_ — Checklists
+- _"Você fechou 4 contagens este mês. No mês passado foram 12."_ — Estoque
+
+E o **resumo do gerente**, que junta tudo numa mensagem só por loja:
+
+> _Bom dia. Ontem na Centro: fechamento não respondido, 2 pendências vencidas, praça atrasada há 3 dias. Na Zona Sul, tudo em dia._
+
+**Por que vem antes da Coleta:** ela **só lê**. Não escreve em lugar nenhum, não depende do armazenamento de arquivo (§11), e não toca em número de dinheiro. É a fase de maior valor por unidade de risco do projeto inteiro — e é a que entrega a definição do §1.
+
+O `escalonamento` já existe como campo em `limites`; aqui ele ganha uso: _"avisei o João segunda, terça e quarta; quinta eu falo com o gerente"_.
 
 ### Fase 2 — Agentes de Coleta
 

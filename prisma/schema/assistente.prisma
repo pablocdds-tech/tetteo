@@ -86,6 +86,22 @@ enum TipoAgente {
 enum GatilhoAgente {
   HORARIO
   ROTINA_VENCIDA
+
+  /// O GATILHO DO AUDITOR — o que separa a Severina de uma mensageira.
+  ///
+  /// Os outros disparam por relógio: "são 7h, cobre a contagem". Se ninguém
+  /// contar a praça por três dias, uma mensageira manda o mesmo bom-dia no
+  /// quarto dia, sem notar nada.
+  ///
+  /// Este dispara por DIFERENÇA entre o que devia ter acontecido e o que
+  /// aconteceu: "a praça não é contada há três dias", "o fechamento de ontem
+  /// não foi respondido na Centro — na Zona Sul foi", "a pendência da coifa
+  /// está aberta há nove dias, com prazo de dois".
+  ///
+  /// Nenhuma dessas frases cabe num horário. Todas nascem de uma comparação,
+  /// e quem sabe fazê-la é o módulo dono do dado — a Severina só pergunta.
+  DISCREPANCIA
+
   MENSAGEM_RECEBIDA
 }
 
