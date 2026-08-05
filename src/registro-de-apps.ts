@@ -1,5 +1,6 @@
 import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
+import { manifestoSeverina } from "@/modules/assistente/manifest";
 import { manifestoCardapio } from "@/modules/cardapio/manifest";
 import { manifestoChecklists } from "@/modules/checklists/manifest";
 import { manifestoCompras } from "@/modules/compras/manifest";
@@ -69,25 +70,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     emConstrucao: true,
   },
 
-  {
-    chave: "assistente",
-    nome: "Severina",
-    subtitulo: "Atendimento virtual",
-    icone: "✨",
-    cor: { fundo: "#4F46E5", frente: "#FFFFFF" },
-    area: "apoio",
-    rota: "/assistente",
-    navegacao: [
-      { rota: "/assistente", nome: "Conversas" },
-      { rota: "/assistente/treinamento", nome: "Treinamento" },
-    ],
-    permissaoParaVer: "assistente.ver",
-    permissoes: [
-      { chave: "assistente.ver", descricao: "Ver conversas do atendimento" },
-    ],
-    comportamentoNaRede: "consolida",
-    emConstrucao: true,
-  },
+  manifestoSeverina,
 
   manifestoCompras,
 
