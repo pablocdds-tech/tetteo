@@ -79,6 +79,7 @@ model Insumo {
   itensDeFicha    ItemDeFicha[]
   itensDeCotacao  ItemDeCotacao[]
   itensDePedido   ItemDePedido[]
+  movimentos      MovimentoEstoque[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])

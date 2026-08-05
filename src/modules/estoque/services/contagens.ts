@@ -1,5 +1,7 @@
 import { pode, type ContextoSessao } from "@/core/sessao/contexto";
 import { ExigeUnidade, SemPermissao } from "@/lib/erros";
+import { Prisma } from "@prisma/client";
+
 import { db } from "@/server/db";
 
 import type { DadosNovaContagem } from "../schemas/contagem";
@@ -259,7 +261,9 @@ export async function fecharContagem(contexto: ContextoSessao, id: string) {
 
   const contagem = await db.contagem.findFirst({
     where: { id, unidadeId: unidade.id },
-    include: { itens: { select: { id: true, insumoId: true } } },
+    include: {
+      itens: { select: { id: true, insumoId: true, quantidade: true } },
+    },
   });
   if (!contagem) throw new Error("Contagem não encontrada.");
   if (contagem.status !== "ABERTA") {
@@ -272,22 +276,111 @@ export async function fecharContagem(contexto: ContextoSessao, id: string) {
   });
   const porInsumo = new Map(custos.map((c) => [c.id, c.custoMedio]));
 
-  await db.$transaction([
-    ...contagem.itens.map((item) =>
+  /**
+   * A CONTAGEM CORRIGE A POSIÇÃO — mas só quando ela sabe ONDE.
+   *
+   * Contar sem corrigir era fazer o trabalho e jogar fora o resultado: a
+   * pessoa contava 12 kg e o sistema seguia afirmando 40.
+   *
+   * A correção só acontece na contagem de um LUGAR. Na contagem da loja
+   * inteira o número contado é o total somado de várias prateleiras, e não há
+   * como dizer quanto disso está na câmara fria e quanto no depósito —
+   * escrever o total num lugar só criaria um saldo errado em dois lugares de
+   * uma vez. A tela avisa; o CMV, que é o que importa, não depende disso.
+   */
+  const ajustaPosicao = contagem.localId !== null;
+
+  const posicoes = ajustaPosicao
+    ? await db.posicaoEstoque.findMany({
+        where: {
+          localId: contagem.localId!,
+          insumoId: { in: contagem.itens.map((i) => i.insumoId) },
+        },
+        select: { insumoId: true, quantidade: true },
+      })
+    : [];
+  const saldoAtual = new Map(
+    posicoes.map((p) => [p.insumoId, Number(p.quantidade)]),
+  );
+
+  const agora = new Date();
+  const escritas: Prisma.PrismaPromise<unknown>[] = [];
+
+  for (const item of contagem.itens) {
+    const custo = porInsumo.get(item.insumoId) ?? 0;
+
+    escritas.push(
       db.contagemItem.update({
         where: { id: item.id },
-        data: { custoUnitario: porInsumo.get(item.insumoId) ?? 0 },
+        data: { custoUnitario: custo },
       }),
-    ),
+    );
+
+    // Em branco é "não contei", não "acabou": o item fica de fora do ajuste,
+    // exatamente como fica de fora do CMV.
+    if (!ajustaPosicao || item.quantidade === null) continue;
+
+    const contado = Number(item.quantidade);
+    const esperado = saldoAtual.get(item.insumoId) ?? 0;
+    const diferenca = Math.round((contado - esperado) * 1000) / 1000;
+
+    if (diferenca !== 0) {
+      escritas.push(
+        db.movimentoEstoque.create({
+          data: {
+            unidadeId: unidade.id,
+            insumoId: item.insumoId,
+            localId: contagem.localId!,
+            tipo: "AJUSTE",
+            // A quantidade é sempre positiva; o sinal do ajuste vive no motivo
+            // e na comparação, não num número negativo escondido no banco.
+            quantidade: Math.abs(diferenca),
+            custoUnitario: custo,
+            motivo:
+              diferenca < 0
+                ? `Faltou ${Math.abs(diferenca)} em relação ao sistema`
+                : `Sobrou ${diferenca} em relação ao sistema`,
+            contagemId: id,
+            ocorridoEm: contagem.referencia,
+            registradoPorId: contexto.usuario.id,
+          },
+        }),
+      );
+    }
+
+    escritas.push(
+      db.posicaoEstoque.upsert({
+        where: {
+          localId_insumoId: {
+            localId: contagem.localId!,
+            insumoId: item.insumoId,
+          },
+        },
+        // GRAVA o contado, não incrementa: a contagem física é a verdade, e o
+        // que o sistema achava passa a ser história.
+        update: { quantidade: contado },
+        create: {
+          unidadeId: unidade.id,
+          localId: contagem.localId!,
+          insumoId: item.insumoId,
+          quantidade: contado,
+        },
+      }),
+    );
+  }
+
+  escritas.push(
     db.contagem.update({
       where: { id },
       data: {
         status: "FECHADA",
-        fechadaEm: new Date(),
+        fechadaEm: agora,
         fechadaPorId: contexto.usuario.id,
       },
     }),
-  ]);
+  );
+
+  await db.$transaction(escritas);
 
   await registrarAuditoria(
     contexto,

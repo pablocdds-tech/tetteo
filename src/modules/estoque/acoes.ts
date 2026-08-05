@@ -12,6 +12,7 @@ import {
   esquemaRotina,
 } from "./schemas/contagem";
 import { analisarPlanilha, type PlanoDeImportacao } from "./schemas/importacao";
+import { esquemaSaida, esquemaTransferencia } from "./schemas/movimento";
 import { esquemaItem, esquemaNota } from "./schemas/nota";
 import {
   cancelarContagem,
@@ -20,6 +21,7 @@ import {
   salvarQuantidades,
 } from "./services/contagens";
 import { importarPlanilha } from "./services/importacao";
+import { registrarSaida, transferir } from "./services/movimentos";
 import {
   adicionarItem,
   cancelarNota,
@@ -462,4 +464,78 @@ export async function cancelarContagemAcao(dados: FormData) {
   await cancelarContagem(contexto, id);
   revalidatePath("/estoque/contagens");
   redirect("/estoque/contagens");
+}
+
+// ---------------------------------------------------------------------------
+// MOVIMENTOS: saídas e transferências
+// ---------------------------------------------------------------------------
+
+export async function registrarSaidaAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const analise = esquemaSaida.safeParse({
+    insumoId: dados.get("insumoId") ?? "",
+    localId: dados.get("localId") ?? "",
+    tipo: dados.get("tipo") ?? "",
+    quantidade: dados.get("quantidade") ?? "",
+    motivo: dados.get("motivo") ?? "",
+    ocorridoEm: dados.get("ocorridoEm") ?? "",
+  });
+  if (!analise.success) return { erros: coletarErros(analise.error.issues) };
+
+  try {
+    await registrarSaida(contexto, {
+      insumoId: analise.data.insumoId,
+      localId: analise.data.localId,
+      tipo: analise.data.tipo,
+      quantidade: analise.data.quantidade,
+      motivo: analise.data.motivo,
+      ocorridoEm: analise.data.ocorridoEm ?? new Date(),
+    });
+  } catch (erro) {
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message };
+    }
+    if (erro instanceof Error) return { erro: erro.message };
+    throw erro;
+  }
+
+  revalidatePath("/estoque");
+  revalidatePath("/estoque/movimentos");
+  return { salvos: 1 };
+}
+
+export async function transferirAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const analise = esquemaTransferencia.safeParse({
+    insumoId: dados.get("insumoId") ?? "",
+    localId: dados.get("localId") ?? "",
+    localDestinoId: dados.get("localDestinoId") ?? "",
+    quantidade: dados.get("quantidade") ?? "",
+    motivo: dados.get("motivo") ?? "",
+  });
+  if (!analise.success) return { erros: coletarErros(analise.error.issues) };
+
+  try {
+    await transferir(contexto, analise.data);
+  } catch (erro) {
+    if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
+      return { erro: erro.message };
+    }
+    if (erro instanceof Error) return { erro: erro.message };
+    throw erro;
+  }
+
+  revalidatePath("/estoque");
+  revalidatePath("/estoque/movimentos");
+  return { salvos: 1 };
 }

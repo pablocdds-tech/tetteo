@@ -45,6 +45,8 @@ model LocalEstoque {
   contagens Contagem[]
   rotinas   RotinaDeContagem[]
   notas     NotaEntrada[]
+  movimentos        MovimentoEstoque[] @relation("MovimentoLocal")
+  movimentosDestino MovimentoEstoque[] @relation("MovimentoDestino")
 
   @@unique([unidadeId, nome])
   @@index([unidadeId, ativo])
@@ -352,4 +354,89 @@ model ContagemItem {
   @@unique([contagemId, insumoId])
   @@index([insumoId])
   @@map("contagem_item")
+}
+
+// ---------------------------------------------------------------------------
+// MOVIMENTOS — o razão do estoque
+// ---------------------------------------------------------------------------
+//
+// Até aqui a posição só SUBIA: a nota somava, e nada nunca subtraía. Um saldo
+// que só cresce afirma, em duas semanas, que há 400 kg de mussarela na
+// geladeira — e ninguém confia num número desses de novo.
+//
+// Faltavam duas coisas, e são a mesma:
+//
+//   SAÍDA         o que foi para o lixo, para o funcionário, para a doação.
+//                 Numa pizzaria isso acontece todo dia e nunca é anotado, o
+//                 que faz a perda ser invisível justamente por ser rotineira.
+//
+//   AJUSTE        fechar a contagem não corrigia a posição. Você contava 12 kg
+//                 e o sistema continuava dizendo 40. Contar sem corrigir é
+//                 fazer o trabalho e jogar fora o resultado.
+//
+// Cada linha aqui é um FATO com dono, hora e custo congelado. A posição passa
+// a ser explicável: dá para perguntar "por que tem 12 kg?" e ver a lista.
+
+/// O que aconteceu com a mercadoria.
+enum TipoDeMovimento {
+  /// Chegou por nota de entrada.
+  ENTRADA
+  /// Foi para o lixo: vencido, estragado, queimado.
+  PERDA
+  /// Quebrou, caiu, derramou.
+  QUEBRA
+  /// Refeição de funcionário, degustação, cortesia.
+  CONSUMO_INTERNO
+  /// Saiu sem contrapartida.
+  DOACAO
+  /// Mudou de lugar dentro da mesma loja.
+  TRANSFERENCIA
+  /// Correção pela contagem física.
+  AJUSTE
+}
+
+/// Uma linha do razão de estoque.
+model MovimentoEstoque {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  /// Onde saiu (ou entrou, nas entradas).
+  localId String
+  local   LocalEstoque @relation("MovimentoLocal", fields: [localId], references: [id])
+
+  /// Só na TRANSFERENCIA: para onde foi. Uma linha só descreve a mudança
+  /// inteira — duas linhas espelhadas dobrariam o histórico e criariam a
+  /// chance de uma existir sem a outra.
+  localDestinoId String?
+  localDestino   LocalEstoque? @relation("MovimentoDestino", fields: [localDestinoId], references: [id])
+
+  tipo TipoDeMovimento
+
+  /// SEMPRE positiva. O sinal é dado pelo tipo, não pelo número — quantidade
+  /// negativa no banco é o tipo de dado que ninguém lembra de tratar.
+  quantidade Decimal @db.Decimal(14, 3)
+
+  /// Congelado no registro. A perda de terça foi de terça, mesmo que a
+  /// mussarela suba de preço na quinta.
+  custoUnitario Decimal @default(0) @db.Decimal(14, 4)
+
+  /// Por que aconteceu. Livre, e é o campo que transforma "R$ 800 de perda" em
+  /// "R$ 800 de perda porque a câmara fria está com defeito".
+  motivo String?
+
+  /// A contagem que gerou o ajuste, quando foi um.
+  contagemId String?
+
+  ocorridoEm      DateTime @default(now())
+  registradoPorId String?
+
+  criadoEm DateTime @default(now())
+
+  @@index([unidadeId, ocorridoEm])
+  @@index([unidadeId, tipo, ocorridoEm])
+  @@index([insumoId])
+  @@map("movimento_estoque")
 }

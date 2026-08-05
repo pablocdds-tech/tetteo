@@ -25,6 +25,7 @@ export const manifestoEstoque: ManifestoDoApp = {
     { rota: "/estoque", nome: "Posição" },
     { rota: "/estoque/contagens", nome: "Contagens" },
     { rota: "/estoque/entradas", nome: "Entradas" },
+    { rota: "/estoque/movimentos", nome: "Movimentos" },
     { rota: "/estoque/cmv", nome: "CMV", permissao: "estoque.custos" },
     {
       rota: "/estoque/importar",
