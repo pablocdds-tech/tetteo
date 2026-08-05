@@ -134,6 +134,93 @@ export const obterContexto = cache(async (): Promise<ContextoSessao | null> => {
 });
 
 /**
+ * O CONTEXTO SEM NAVEGADOR.
+ *
+ * `obterContexto` depende de duas coisas que só existem numa requisição de
+ * tela: a sessão do Auth.js e o cookie da unidade. O relógio da Severina roda
+ * sem nenhuma das duas — não há quem esteja logado às 7h da manhã.
+ *
+ * Esta função monta o MESMO `ContextoSessao` a partir do banco, para um
+ * usuário e uma unidade escolhidos. Daí em diante `pode()` funciona igual, e
+ * todo serviço do sistema continua sendo chamado do jeito que já era.
+ *
+ * É isso que faz "a Severina age como a pessoa" não custar código novo: não
+ * existe caminho paralelo de autorização, existe o mesmo caminho com outra
+ * origem.
+ *
+ * NÃO usa `cache` do React de propósito: o relógio monta contexto para várias
+ * pessoas na mesma execução, e o cache devolveria o primeiro para todos.
+ */
+export async function contextoDeFundo(
+  usuarioId: string,
+  unidadeId: string | null,
+): Promise<ContextoSessao | null> {
+  const acessos = await db.acesso.findMany({
+    where: {
+      usuarioId,
+      status: "ATIVO",
+      excluidoEm: null,
+      organizacao: { ativa: true, excluidoEm: null },
+    },
+    include: {
+      usuario: {
+        select: { id: true, nome: true, email: true, avatarUrl: true },
+      },
+      organizacao: { select: { id: true, nome: true } },
+      unidade: { select: { id: true, nome: true, codigo: true } },
+      papel: { include: { permissoes: { select: { chave: true } } } },
+    },
+    orderBy: { criadoEm: "asc" },
+  });
+
+  if (acessos.length === 0) return null;
+
+  const primeiro = acessos[0];
+  const organizacao = primeiro.organizacao;
+
+  const podeVerRedeInteira = acessos.some((a) => a.unidadeId === null);
+
+  const unidadesVisiveis: UnidadeVisivel[] = podeVerRedeInteira
+    ? await db.unidade.findMany({
+        where: { organizacaoId: organizacao.id, ativa: true, excluidoEm: null },
+        select: { id: true, nome: true, codigo: true },
+        orderBy: { nome: "asc" },
+      })
+    : acessos
+        .filter((a) => a.unidade !== null)
+        .map((a) => a.unidade!)
+        .filter((u, i, todas) => todas.findIndex((o) => o.id === u.id) === i);
+
+  // Unidade pedida que a pessoa não enxerga não vira "rede inteira" por
+  // descuido: devolve nada. Um agente configurado para uma loja não pode
+  // acabar cobrando as duas porque o destinatário foi transferido.
+  const unidadeAtiva = unidadeId
+    ? (unidadesVisiveis.find((u) => u.id === unidadeId) ?? null)
+    : null;
+  if (unidadeId && !unidadeAtiva) return null;
+
+  const relevantes = acessos.filter((a) => {
+    if (unidadeAtiva === null) return a.unidadeId === null;
+    return a.unidadeId === null || a.unidadeId === unidadeAtiva.id;
+  });
+
+  const permissoes = new Set<string>();
+  for (const acesso of relevantes) {
+    for (const p of acesso.papel.permissoes) permissoes.add(p.chave);
+  }
+
+  return {
+    usuario: primeiro.usuario,
+    organizacao,
+    unidadesVisiveis,
+    unidadeAtiva,
+    podeVerRedeInteira,
+    permissoes,
+    ehDiretor: permissoes.has("*"),
+  };
+}
+
+/**
  * O checador de permissão.
  *
  * O Core não sabe o que "cardapio.editar" significa — só confere se a string
