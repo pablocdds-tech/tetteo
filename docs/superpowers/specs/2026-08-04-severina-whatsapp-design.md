@@ -625,6 +625,7 @@ Nenhuma das outras fases depende deste número.
 - **Antes de escrever código:** este projeto usa Next.js 16, com mudanças que quebram convenções anteriores. Ler os guias em `node_modules/next/dist/docs/`, conforme [AGENTS.md](../../../AGENTS.md). Vale especialmente para o processamento assíncrono após a resposta do webhook
 - `npm run check` (tipos + fronteiras + formatação + testes) antes de todo commit
 - O relógio é tarefa agendada do Dokploy batendo em `/api/severina/tick` com segredo no cabeçalho. Se o agendador não servir, um contêiner de cron resolve. O endereço deve ser disparável à mão para depuração
-- Variáveis novas: `EVOLUTION_URL=http://evolution_api:8080`, `EVOLUTION_API_KEY`, `SEVERINA_TICK_SEGREDO`, `SEVERINA_WEBHOOK_SEGREDO`, `GEMINI_API_KEY`
+- Variáveis novas: `EVOLUTION_URL=http://evolution_api:8080`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCIA`, `SEVERINA_TICK_SEGREDO`, `SEVERINA_WEBHOOK_SEGREDO` (fase 2), `GEMINI_API_KEYS` (lista separada por vírgula; `GEMINI_API_KEY` no singular também vale), `GEMINI_MODELO`
+- **O `tick` precisa sair do matcher do `proxy.ts`.** O `auth` do Next.js intercepta antes e devolve 307 para `/login` — a tarefa agendada recebe o redirecionamento, sai com código zero, e a cobrança nunca sai. Sem erro em lugar nenhum. A rota tem autenticação própria por segredo no cabeçalho
 - A aba `/assistente/treinamento` já está declarada no manifesto: é o editor de agentes
 - `emConstrucao: true` sai do manifesto quando a fase 1 estiver de pé

@@ -1,6 +1,18 @@
 # Severina · Fase 1 — Agentes de Aviso · Plano de Implementação
 
-> **Para quem executa:** SUB-SKILL OBRIGATÓRIA — use `superpowers:subagent-driven-development` (recomendado) ou `superpowers:executing-plans` para implementar tarefa a tarefa. Os passos usam caixas (`- [ ]`) para marcação.
+> ## ✅ EXECUTADO em 05/08/2026 — branch `severina/fase-1`
+>
+> **Este documento é histórico. A verdade está no código.** Onde os dois divergirem, o código venceu — e a divergência costuma ser o próprio aprendizado:
+>
+> | O plano dizia                                               | O que era, de verdade                                                                               |
+> | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+> | Tabelas com `@relation` para o Core, e editar `core.prisma` | Módulo do Tetteo guarda `unidadeId` como texto solto. Contra-relação faria o Kernel conhecer um App |
+> | Status de rotina `"ATRASADA"` / `"HOJE"`                    | `"feita"`, `"aguardando"`, `"atrasada"` (`lib/agenda.ts`)                                           |
+> | `server-only` já instalado                                  | Não estava                                                                                          |
+> | Nada sobre o `proxy.ts`                                     | O `auth` engolia `/api/severina/tick` com 307 → `/login`. Só apareceu ao rodar                      |
+> | `GEMINI_API_KEY`, uma só                                    | `GEMINI_API_KEYS` aceita lista, com revezamento e failover                                          |
+>
+> **Para quem executa:** SUB-SKILL OBRIGATÓRIA — use `superpowers:subagent-driven-development` ou `superpowers:executing-plans`. Os passos usam caixas (`- [ ]`) para marcação.
 
 **Objetivo:** o dono cria, numa tela, agentes que mandam mensagem de WhatsApp para a equipe no horário certo — sem programador, sem receber resposta ainda.
 
