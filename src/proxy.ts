@@ -15,6 +15,25 @@ const { auth } = NextAuth(authConfigBase);
 
 export default auth;
 
+/**
+ * As exceções, e o motivo de cada uma.
+ *
+ * `api/auth`    — o próprio login precisa acontecer antes de haver sessão
+ * `_next/*`     — arquivos estáticos, sem dado dentro
+ * `login`       — a tela de entrar
+ * `api/severina` — MÁQUINA, não gente
+ *
+ * A última é a que merece explicação. O relógio da Severina é chamado por uma
+ * tarefa agendada às 7h da manhã: não existe navegador, não existe cookie, e
+ * não existe ninguém para ser redirecionado ao login. Sem esta exceção, a
+ * resposta é um 307 para `/login` — que o `curl` recebe calado, e a cobrança
+ * simplesmente nunca sai.
+ *
+ * Isso NÃO abre a rota: ela exige `x-severina-segredo` e recusa com 401 sem
+ * ele. A autenticação dela é outra, não é nenhuma.
+ */
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|login).*)"],
+  matcher: [
+    "/((?!api/auth|api/severina|_next/static|_next/image|favicon.ico|login).*)",
+  ],
 };
