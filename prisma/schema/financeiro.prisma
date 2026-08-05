@@ -1,0 +1,174 @@
+// ===========================================================================
+// APP: FINANCEIRO
+//
+// A resposta do dia 5: **tenho dinheiro para pagar o que vence?**
+//
+// É o último elo da corrente. Compras decide por quanto comprar, Estoque diz
+// quanto saiu, a Ficha diz quanto deveria custar — e aqui o dinheiro entra e
+// sai de verdade.
+//
+// ---------------------------------------------------------------------------
+// UMA DECISÃO QUE EVITA CONTAR DUAS VEZES.
+//
+// Este módulo trabalha em REGIME DE CAIXA: o que entrou e o que saiu, na data
+// em que aconteceu. Ele NÃO recalcula o CMV.
+//
+// A tentação seria somar "compras de insumo" como custo e chamar o resultado
+// de DRE. Estaria errado duas vezes: mercadoria comprada em julho e consumida
+// em agosto é custo de agosto, não de julho; e o CMV real já é calculado no
+// Estoque, contando o que efetivamente saiu da prateleira. Somar os dois
+// contaria o queijo duas vezes.
+//
+// Então aqui a pergunta é a do caixa — "sobrou dinheiro?" — e a pergunta do
+// resultado por competência continua sendo respondida no Estoque, com a
+// contagem. As telas dizem isso em voz alta, porque a confusão entre as duas
+// é o erro de leitura mais caro que um dono de restaurante comete.
+// ===========================================================================
+
+/// Para onde o dinheiro entra e de onde ele sai.
+///
+/// A gaveta do caixa é uma conta como qualquer outra: numa pizzaria uma parte
+/// relevante do movimento passa por ela, e deixá-la de fora faria o saldo do
+/// sistema nunca bater com o dinheiro real.
+enum TipoDeConta {
+  CAIXA
+  BANCO
+}
+
+model ContaFinanceira {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  nome String
+  tipo TipoDeConta @default(BANCO)
+
+  /// O saldo do dia em que a conta entrou no sistema. Sem ele, o saldo atual
+  /// seria a soma dos lançamentos digitados — que começa em zero e mente até
+  /// alguém ter lançado a história inteira.
+  saldoInicial Decimal  @default(0) @db.Decimal(14, 2)
+  iniciadaEm   DateTime @default(now())
+
+  ativa Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  lancamentos Lancamento[]
+
+  @@unique([unidadeId, nome])
+  @@index([unidadeId, ativa])
+  @@map("conta_financeira")
+}
+
+enum TipoDeCategoria {
+  RECEITA
+  DESPESA
+}
+
+/// A gaveta em que cada lançamento cai: Aluguel, Folha, Energia, Delivery.
+///
+/// Plana de propósito. Plano de contas em árvore é o que faz ninguém
+/// categorizar nada — e uma despesa sem categoria vale menos do que uma
+/// despesa na categoria errada.
+model CategoriaFinanceira {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  nome String
+  tipo TipoDeCategoria
+
+  /// Agrupa na hora de ler o resultado: "Ocupação", "Pessoal", "Mercadoria".
+  grupo String?
+
+  /// Categorias que o sistema criou sozinho no primeiro uso não podem ser
+  /// apagadas — só renomeadas. Sem elas, a importação de notas não teria onde
+  /// cair.
+  ehSistema Boolean @default(false)
+
+  ativa Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  lancamentos Lancamento[]
+
+  @@unique([organizacaoId, nome])
+  @@index([organizacaoId, tipo, ativa])
+  @@map("categoria_financeira")
+}
+
+/// A pagar ou a receber. A mesma tabela porque são a mesma coisa com o sinal
+/// trocado: alguém deve, tem valor, tem vencimento, e um dia quita. Duas
+/// tabelas obrigariam a duplicar cada consulta e cada tela.
+enum DirecaoDoLancamento {
+  PAGAR
+  RECEBER
+}
+
+enum StatusLancamento {
+  ABERTO
+  QUITADO
+  CANCELADO
+}
+
+/// Uma obrigação com data: a conta de luz, o boleto do fornecedor, a fatura do
+/// iFood a receber.
+model Lancamento {
+  id        String @id @default(cuid())
+  unidadeId String
+
+  direcao DirecaoDoLancamento
+  status  StatusLancamento    @default(ABERTO)
+
+  descricao String
+
+  categoriaId String?
+  categoria   CategoriaFinanceira? @relation(fields: [categoriaId], references: [id])
+
+  /// De quem se compra, quando o lançamento nasce de uma compra.
+  fornecedorId String?
+  fornecedor   Fornecedor? @relation(fields: [fornecedorId], references: [id])
+
+  /// Quando o lançamento nasce de uma nota de entrada lançada no Estoque.
+  ///
+  /// É a única costura entre os dois Apps, e ela é de DADO, não de código:
+  /// Financeiro lê o fato "chegou mercadoria por R$ X" e cria a obrigação de
+  /// pagar. O vínculo existe para o mesmo boleto não virar duas contas — que é
+  /// o erro que faz o fluxo de caixa mentir para baixo.
+  notaEntradaId String?      @unique
+  notaEntrada   NotaEntrada? @relation(fields: [notaEntradaId], references: [id])
+
+  valor Decimal @db.Decimal(14, 2)
+
+  vencimento DateTime
+
+  /// Preenchidos na quitação. `valorQuitado` é separado de `valor` porque a
+  /// realidade diverge: desconto por antecipação, juro por atraso, pagamento
+  /// parcial acordado. Sobrescrever o valor original apagaria a diferença
+  /// justamente quando ela interessa.
+  quitadoEm    DateTime?
+  valorQuitado Decimal?  @db.Decimal(14, 2)
+
+  contaId String?
+  conta   ContaFinanceira? @relation(fields: [contaId], references: [id])
+
+  /// Agrupa as parcelas de um mesmo compromisso: "Aluguel 3/12". Guardar o
+  /// grupo permite cancelar as futuras de uma vez quando o contrato acaba.
+  grupoParcelas String?
+  parcela       Int?
+  totalParcelas Int?
+
+  observacao String?
+
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  canceladoEm  DateTime?
+
+  criadoPorId  String?
+  quitadoPorId String?
+
+  @@index([unidadeId, status, vencimento])
+  @@index([unidadeId, direcao, vencimento])
+  @@index([grupoParcelas])
+  @@map("lancamento")
+}

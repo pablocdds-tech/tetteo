@@ -171,6 +171,10 @@ model NotaEntrada {
 
   itens NotaEntradaItem[]
 
+  /// A conta a pagar que nasceu desta nota, quando o Financeiro a importou.
+  /// Um-para-um: o mesmo boleto não pode virar duas contas.
+  contaAPagar Lancamento?
+
   /// Lançar a mesma nota duas vezes é o erro mais comum do mundo e infla o
   /// CMV sem deixar rastro. O banco recusa.
   @@unique([unidadeId, fornecedorId, numero, serie])

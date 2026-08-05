@@ -54,9 +54,10 @@ model Fornecedor {
 
   criadoPorId String?
 
-  notas     NotaEntrada[]
-  propostas PropostaDeCotacao[]
-  pedidos   Pedido[]
+  notas       NotaEntrada[]
+  propostas   PropostaDeCotacao[]
+  pedidos     Pedido[]
+  lancamentos Lancamento[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])

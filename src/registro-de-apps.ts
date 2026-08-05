@@ -4,6 +4,7 @@ import { manifestoCardapio } from "@/modules/cardapio/manifest";
 import { manifestoChecklists } from "@/modules/checklists/manifest";
 import { manifestoCompras } from "@/modules/compras/manifest";
 import { manifestoEstoque } from "@/modules/estoque/manifest";
+import { manifestoFinanceiro } from "@/modules/financeiro/manifest";
 
 /**
  * O REGISTRO DE APPS — "Módulos da Rede".
@@ -96,55 +97,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
 
   manifestoChecklists,
 
-  /**
-   * FINANCEIRO — a resposta do dia 5.
-   *
-   * Contas a pagar e a receber, fluxo de caixa, conferência do caixa do PDV e
-   * o resultado do mês. É o fim da corrente: compra criada vira conta a pagar,
-   * pedido entregue vira dinheiro a receber.
-   *
-   * Consolida: você quer o resultado da rede somado E de cada unidade.
-   */
-  {
-    chave: "financeiro",
-    nome: "Financeiro",
-    subtitulo: "Contas, caixa & resultado",
-    icone: "💰",
-    cor: { fundo: "#14365D", frente: "#FFFFFF" },
-    area: "gestao",
-    rota: "/financeiro",
-    navegacao: [
-      { rota: "/financeiro", nome: "Visão do caixa" },
-      { rota: "/financeiro/pagar", nome: "Contas a pagar" },
-      { rota: "/financeiro/receber", nome: "Contas a receber" },
-      { rota: "/financeiro/fechamento", nome: "Fechamento de caixa" },
-      {
-        rota: "/financeiro/resultado",
-        nome: "Resultado",
-        permissao: "financeiro.resultado",
-      },
-    ],
-    permissaoParaVer: "financeiro.ver",
-    permissoes: [
-      { chave: "financeiro.ver", descricao: "Ver contas e fluxo de caixa" },
-      {
-        chave: "financeiro.lancar",
-        descricao: "Lançar contas a pagar e a receber",
-      },
-      {
-        chave: "financeiro.baixar",
-        descricao: "Dar baixa em pagamentos e recebimentos",
-      },
-      {
-        chave: "financeiro.resultado",
-        descricao: "Ver o resultado (DRE) da rede",
-      },
-    ],
-    eventosQuePublica: ["conta.criada", "conta.paga", "caixa.fechado"],
-    eventosQueEscuta: ["compra.criada", "pedido.entregue"],
-    comportamentoNaRede: "consolida",
-    emConstrucao: true,
-  },
+  manifestoFinanceiro,
 
   {
     chave: "delivery",
