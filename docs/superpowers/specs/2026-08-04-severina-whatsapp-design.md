@@ -45,15 +45,15 @@ Tomadas na conversa de 04/08. Estão aqui para que ninguém — inclusive nós �
 
 Executado em 04/08, contra a instalação real.
 
-| Verificação                                             | Resultado                                                                           |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| Evolution API `v2.3.7` no Dokploy, HTTPS válido         | ✅                                                                                  |
-| Número conectado (`state: open`)                        | ✅                                                                                  |
-| **Recebe** mensagem e grava no banco                    | ✅ registros às 21:02:31 e 21:14:09, `fromMe: false`                                |
-| **Envia** mensagem pela API                             | ✅ registro às 21:13:02, `fromMe: true`                                             |
-| Grupos ignorados, histórico desligado, status desligado | ✅ aplicado em `/settings/set`                                                      |
-| Estabilidade da conexão                                 | ⚠️ **uma queda em 04/08 às 21:00:25**, motivo `401 device_removed`. Observar 7 dias |
-| Leitura de nota fiscal por foto                         | ⏸️ **portão aberto** — ver §13                                                      |
+| Verificação                                             | Resultado                                                                          |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Evolution API `v2.3.7` no Dokploy, HTTPS válido         | ✅                                                                                 |
+| Número conectado (`state: open`)                        | ✅                                                                                 |
+| **Recebe** mensagem e grava no banco                    | ✅ registros às 21:02:31 e 21:14:09, `fromMe: false`                               |
+| **Envia** mensagem pela API                             | ✅ registro às 21:13:02, `fromMe: true`                                            |
+| Grupos ignorados, histórico desligado, status desligado | ✅ aplicado em `/settings/set`                                                     |
+| Estabilidade da conexão                                 | ✅ nenhuma queda espontânea. A desconexão das 21:00:25 foi manual, feita pelo dono |
+| Leitura de nota fiscal por foto                         | ⏸️ **portão aberto** — ver §13                                                     |
 
 ### Achado que mudou o desenho: endereçamento LID
 
@@ -551,7 +551,11 @@ E o argumento legítimo a favor dele — autonomia de quem não programa — é 
 
 ### Estabilidade da conexão
 
-Uma queda em 04/08 (`401 device_removed`). Sob observação por 7 dias. Se as quedas forem frequentes, as opções são celular dedicado sempre ligado ou a API oficial da Meta — que é paga e exige aprovação prévia. `InstanciaWhatsapp.desconectadaEm` existe para tornar isso visível.
+O `401 device_removed` de 04/08 às 21:00:25 **foi manual** — o dono removeu o aparelho enquanto testava. Não houve nenhuma queda espontânea.
+
+Isso não elimina o risco, só remove a evidência contra: WhatsApp por QR Code depende de um celular ligado e com internet, e desconexão acontece. `InstanciaWhatsapp.desconectadaEm` existe para que a queda apareça numa tela em vez de ser descoberta por reclamação de quem não recebeu o aviso.
+
+Se as quedas se mostrarem frequentes no uso real, as saídas são celular dedicado sempre ligado ou a API oficial da Meta — paga e com aprovação prévia.
 
 ---
 
