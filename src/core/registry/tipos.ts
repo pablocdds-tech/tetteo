@@ -86,3 +86,35 @@ export type ManifestoDoApp = {
   /** Ainda em construção — aparece com um selo e só para quem é Diretor. */
   emConstrucao?: boolean;
 };
+
+/**
+ * O QUE UM APP TEM A AVISAR.
+ *
+ * A Severina não sabe o que é uma rotina de contagem, e não pode saber — um
+ * App nunca importa de outro. Ela pergunta "tem algo a avisar?" e cada App
+ * responde neste formato, no vocabulário dela.
+ *
+ * O Core define a FORMA, nunca o significado — a mesma divisão que ele já faz
+ * com permissão, que guarda como string sem saber o que "estoque.contar"
+ * quer dizer.
+ */
+export type AvisoDoModulo = {
+  /**
+   * Identifica o aviso para não repetir: "rotina:clx91…".
+   *
+   * É esta chave que impede a equipe de receber a mesma cobrança a cada
+   * batida do relógio — sessenta vezes entre 7h e 8h.
+   */
+  chave: string;
+
+  /**
+   * O fato, em português, que a Severina vai transformar em mensagem.
+   *
+   * Frase inteira, não fragmento: é o que sai no WhatsApp quando o redator
+   * estiver fora do ar, e "contagem praça atrasada" não é uma mensagem.
+   */
+  assunto: string;
+
+  referenciaTipo: string;
+  referenciaId: string;
+};
