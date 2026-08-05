@@ -37,7 +37,15 @@ export default async function PaginaCadastros() {
 
       <div className="mt-6">
         <Cadastros
-          categorias={categorias}
+          categorias={categorias.map((c) => ({
+            id: c.id,
+            nome: c.nome,
+            tipo: c.tipo,
+            grupo: c.grupo,
+            grupoDre: c.grupoDre,
+            ehSistema: c.ehSistema,
+            ativa: c.ativa,
+          }))}
           contas={contas.map((c) => ({
             id: c.id,
             nome: c.nome,

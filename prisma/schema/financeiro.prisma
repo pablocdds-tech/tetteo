@@ -65,6 +65,32 @@ enum TipoDeCategoria {
   DESPESA
 }
 
+/// Em que LINHA do DRE a categoria entra.
+///
+/// O `tipo` acima responde "entra ou sai"; este responde "onde na conta do
+/// lucro". São perguntas diferentes, e é a segunda que faz o DRE existir:
+/// aluguel e taxa de cartão são as duas despesas, mas uma é custo de ocupação
+/// e a outra é dedução da receita — somá-las na mesma linha esconde a única
+/// comparação que o mercado usa ("folha é 28% do faturamento").
+///
+/// MERCADORIA é a linha perigosa. Compra de insumo NÃO entra no DRE como
+/// despesa: quem responde pelo custo da comida é o CMV, calculado no Estoque
+/// sobre o que efetivamente saiu da prateleira. Contar os dois somaria o
+/// queijo duas vezes — comprado em julho, consumido em agosto.
+///
+/// INVESTIMENTO também fica fora do resultado: comprar um forno é troca de
+/// dinheiro por bem, não despesa do mês. Ele sai do caixa e não do lucro.
+enum GrupoDre {
+  RECEITA
+  DEDUCAO
+  MERCADORIA
+  PESSOAL
+  OCUPACAO
+  OPERACIONAL
+  FINANCEIRA
+  INVESTIMENTO
+}
+
 /// A gaveta em que cada lançamento cai: Aluguel, Folha, Energia, Delivery.
 ///
 /// Plana de propósito. Plano de contas em árvore é o que faz ninguém
@@ -77,8 +103,12 @@ model CategoriaFinanceira {
   nome String
   tipo TipoDeCategoria
 
-  /// Agrupa na hora de ler o resultado: "Ocupação", "Pessoal", "Mercadoria".
+  /// Rótulo livre para agrupar na lista. Cosmético.
   grupo String?
+
+  /// A linha do DRE. Sem ela a categoria ainda funciona no fluxo de caixa —
+  /// só não aparece no resultado, e a tela avisa quanto ficou de fora.
+  grupoDre GrupoDre?
 
   /// Categorias que o sistema criou sozinho no primeiro uso não podem ser
   /// apagadas — só renomeadas. Sem elas, a importação de notas não teria onde

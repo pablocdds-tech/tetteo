@@ -13,6 +13,18 @@ import {
   type EstadoFinanceiro,
 } from "../acoes";
 
+/** O nome de cada linha do DRE, do jeito que aparece na tela. */
+const ROTULO_DRE: Record<string, string> = {
+  RECEITA: "Receita bruta",
+  DEDUCAO: "Dedução da venda (imposto, taxa de app)",
+  MERCADORIA: "Compra de mercadoria (fora do DRE — vira CMV)",
+  PESSOAL: "Pessoal",
+  OCUPACAO: "Ocupação",
+  OPERACIONAL: "Operacional",
+  FINANCEIRA: "Financeira",
+  INVESTIMENTO: "Investimento (fora do resultado)",
+};
+
 const ESTILO_SELECT =
   "border-line-2 bg-surface text-ink focus:border-accent h-10 w-full rounded-md border px-3 text-base focus:shadow-[0_0_0_3px_var(--accent-sub)] focus:outline-none";
 
@@ -33,6 +45,7 @@ export function Cadastros({
     nome: string;
     tipo: string;
     grupo: string | null;
+    grupoDre: string | null;
     ehSistema: boolean;
     ativa: boolean;
   }[];
@@ -169,9 +182,9 @@ export function Cadastros({
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate">{c.nome}</span>
-                {c.grupo && (
-                  <span className="text-ink-3 block text-xs">{c.grupo}</span>
-                )}
+                <span className="text-ink-3 block text-xs">
+                  {c.grupoDre ? ROTULO_DRE[c.grupoDre] : "⚠ fora do DRE"}
+                </span>
               </span>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -229,12 +242,37 @@ export function Cadastros({
             </div>
           </div>
 
+          <div className="flex w-full flex-col gap-1.5">
+            <label
+              htmlFor="grupoDre"
+              className="text-ink-2 text-sm font-semibold"
+            >
+              Linha do DRE
+            </label>
+            <select
+              id="grupoDre"
+              name="grupoDre"
+              defaultValue="OPERACIONAL"
+              className={ESTILO_SELECT}
+            >
+              {Object.entries(ROTULO_DRE).map(([valor, rotulo]) => (
+                <option key={valor} value={valor}>
+                  {rotulo}
+                </option>
+              ))}
+              <option value="">Fora do DRE</option>
+            </select>
+            <span className="text-ink-3 text-sm">
+              Onde ela entra no resultado. &quot;Mercadoria&quot; fica de fora
+              de propósito — quem responde pelo custo da comida é o CMV.
+            </span>
+          </div>
+
           <Campo
-            rotulo="Grupo"
+            rotulo="Grupo (rótulo livre)"
             name="grupo"
             placeholder="Ex.: Administrativo"
             erro={estadoCat.erros?.grupo}
-            ajuda="Opcional. Junta categorias parecidas na tela de resultado."
           />
 
           {estadoCat.erro && (

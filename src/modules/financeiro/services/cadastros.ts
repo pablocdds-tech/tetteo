@@ -1,4 +1,5 @@
 import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import type { GrupoDre } from "../schemas/dre";
 import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
 
@@ -17,16 +18,67 @@ import { exigirUnidade } from "./lancamentos";
  * depois, sem perder nada.
  */
 const PADRAO = [
-  { nome: "Vendas no salão", tipo: "RECEITA", grupo: "Vendas" },
-  { nome: "Delivery", tipo: "RECEITA", grupo: "Vendas" },
-  { nome: "Mercadoria", tipo: "DESPESA", grupo: "Mercadoria" },
-  { nome: "Folha e encargos", tipo: "DESPESA", grupo: "Pessoal" },
-  { nome: "Aluguel", tipo: "DESPESA", grupo: "Ocupação" },
-  { nome: "Energia, água e gás", tipo: "DESPESA", grupo: "Ocupação" },
-  { nome: "Taxas de cartão e apps", tipo: "DESPESA", grupo: "Vendas" },
-  { nome: "Impostos", tipo: "DESPESA", grupo: "Impostos" },
-  { nome: "Manutenção", tipo: "DESPESA", grupo: "Operação" },
-  { nome: "Outras despesas", tipo: "DESPESA", grupo: "Operação" },
+  {
+    nome: "Vendas no salão",
+    tipo: "RECEITA",
+    grupo: "Vendas",
+    grupoDre: "RECEITA",
+  },
+  { nome: "Delivery", tipo: "RECEITA", grupo: "Vendas", grupoDre: "RECEITA" },
+  // Taxa de app e imposto sobre venda NÃO são despesa operacional: saem antes,
+  // como dedução. Jogá-las junto com aluguel esconderia a receita líquida, que
+  // é a base de tudo que vem depois.
+  {
+    nome: "Taxas de cartão e apps",
+    tipo: "DESPESA",
+    grupo: "Vendas",
+    grupoDre: "DEDUCAO",
+  },
+  { nome: "Impostos", tipo: "DESPESA", grupo: "Impostos", grupoDre: "DEDUCAO" },
+  // Fica FORA do DRE: quem responde pelo custo da comida é o CMV do Estoque.
+  {
+    nome: "Mercadoria",
+    tipo: "DESPESA",
+    grupo: "Mercadoria",
+    grupoDre: "MERCADORIA",
+  },
+  {
+    nome: "Folha e encargos",
+    tipo: "DESPESA",
+    grupo: "Pessoal",
+    grupoDre: "PESSOAL",
+  },
+  { nome: "Aluguel", tipo: "DESPESA", grupo: "Ocupação", grupoDre: "OCUPACAO" },
+  {
+    nome: "Energia, água e gás",
+    tipo: "DESPESA",
+    grupo: "Ocupação",
+    grupoDre: "OCUPACAO",
+  },
+  {
+    nome: "Manutenção",
+    tipo: "DESPESA",
+    grupo: "Operação",
+    grupoDre: "OPERACIONAL",
+  },
+  {
+    nome: "Outras despesas",
+    tipo: "DESPESA",
+    grupo: "Operação",
+    grupoDre: "OPERACIONAL",
+  },
+  {
+    nome: "Juros e tarifas",
+    tipo: "DESPESA",
+    grupo: "Financeiro",
+    grupoDre: "FINANCEIRA",
+  },
+  {
+    nome: "Investimentos",
+    tipo: "DESPESA",
+    grupo: "Investimento",
+    grupoDre: "INVESTIMENTO",
+  },
 ] as const;
 
 export async function listarCategorias(contexto: ContextoSessao) {
@@ -45,6 +97,7 @@ export async function listarCategorias(contexto: ContextoSessao) {
         nome: c.nome,
         tipo: c.tipo,
         grupo: c.grupo,
+        grupoDre: c.grupoDre,
         ehSistema: true,
       })),
       skipDuplicates: true,
@@ -60,7 +113,12 @@ export async function listarCategorias(contexto: ContextoSessao) {
 export async function salvarCategoria(
   contexto: ContextoSessao,
   id: string | null,
-  dados: { nome: string; tipo: "RECEITA" | "DESPESA"; grupo: string | null },
+  dados: {
+    nome: string;
+    tipo: "RECEITA" | "DESPESA";
+    grupo: string | null;
+    grupoDre: GrupoDre | null;
+  },
 ) {
   if (!pode(contexto, "financeiro.lancar")) {
     throw new SemPermissao("cadastrar categorias");
@@ -82,7 +140,12 @@ export async function salvarCategoria(
   // "Aluguel" de despesa para receita inverteria o sinal de todo o histórico.
   return db.categoriaFinanceira.update({
     where: { id },
-    data: antes.ehSistema ? { nome: dados.nome, grupo: dados.grupo } : dados,
+    // Categoria do sistema pode ser renomeada e reclassificada no DRE — o que
+    // ela não pode é trocar de lado (despesa vira receita), porque isso
+    // inverteria o sinal de todo o histórico.
+    data: antes.ehSistema
+      ? { nome: dados.nome, grupo: dados.grupo, grupoDre: dados.grupoDre }
+      : dados,
   });
 }
 

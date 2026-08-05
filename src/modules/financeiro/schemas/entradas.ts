@@ -103,6 +103,21 @@ export const esquemaCategoria = z.object({
     .max(40)
     .optional()
     .transform((v) => v || null),
+  /** A linha do DRE. Em branco, a categoria não entra no resultado. */
+  grupoDre: z
+    .enum([
+      "RECEITA",
+      "DEDUCAO",
+      "MERCADORIA",
+      "PESSOAL",
+      "OCUPACAO",
+      "OPERACIONAL",
+      "FINANCEIRA",
+      "INVESTIMENTO",
+    ])
+    .optional()
+    .or(z.literal("").transform(() => undefined))
+    .transform((v) => v ?? null),
 });
 
 export const esquemaConta = z.object({

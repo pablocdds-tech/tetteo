@@ -151,6 +151,7 @@ export async function salvarCategoriaAcao(
     nome: dados.get("nome") ?? "",
     tipo: dados.get("tipo") ?? "DESPESA",
     grupo: dados.get("grupo") ?? "",
+    grupoDre: dados.get("grupoDre") ?? "",
   });
   if (!analise.success) return { erros: coletarErros(analise.error.issues) };
 

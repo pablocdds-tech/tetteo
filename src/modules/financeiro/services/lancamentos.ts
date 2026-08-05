@@ -402,3 +402,55 @@ async function registrar(
     },
   });
 }
+
+/**
+ * Os movimentos do período para o DRE.
+ *
+ * A BASE é uma escolha, e ela muda o número:
+ *
+ *   competência  pela data de VENCIMENTO — o mês a que a conta pertence.
+ *                É o DRE de verdade, e é o que se compara com o mercado.
+ *                Aproximação honesta: o aluguel que vence dia 5 é do mês, mas
+ *                a luz que vence dia 10 é do consumo do mês anterior. Para uma
+ *                pizzaria a diferença é pequena e o ganho de leitura é grande.
+ *
+ *   caixa        pela data de PAGAMENTO — o que efetivamente saiu.
+ *                Responde "sobrou dinheiro", não "deu lucro".
+ *
+ * Duas perguntas diferentes, e a tela deixa escolher em vez de decidir
+ * escondido — porque decidir escondido é como um relatório engana.
+ */
+export async function movimentosParaDre(
+  contexto: ContextoSessao,
+  de: Date,
+  ate: Date,
+  base: "competencia" | "caixa" = "competencia",
+) {
+  if (!pode(contexto, "financeiro.resultado")) {
+    throw new SemPermissao("ver o resultado");
+  }
+  const unidade = exigirUnidade(contexto);
+
+  const linhas = await db.lancamento.findMany({
+    where: {
+      unidadeId: unidade.id,
+      canceladoEm: null,
+      ...(base === "caixa"
+        ? { status: "QUITADO", quitadoEm: { gte: de, lte: ate } }
+        : { status: { not: "CANCELADO" }, vencimento: { gte: de, lte: ate } }),
+    },
+    select: {
+      valor: true,
+      valorQuitado: true,
+      categoria: { select: { nome: true, grupoDre: true } },
+    },
+  });
+
+  return linhas.map((l) => ({
+    // No caixa vale o que saiu; na competência, o que foi combinado — o
+    // desconto de antecipação é ganho financeiro, não desconto de aluguel.
+    valor:
+      base === "caixa" ? Number(l.valorQuitado ?? l.valor) : Number(l.valor),
+    categoria: l.categoria,
+  }));
+}

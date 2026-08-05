@@ -5,13 +5,42 @@ import { obterContexto, pode } from "@/core/sessao/contexto";
 import { hojeParaCampo, lerDataLocal } from "@/lib/data";
 import { formatarMoeda } from "@/lib/numero";
 import { AvisoUnidade } from "@/modules/financeiro/components/aviso-unidade";
-import { resultadoDoPeriodo } from "@/modules/financeiro/services/lancamentos";
-import type { LinhaDoResultado } from "@/modules/financeiro/schemas/dinheiro";
+import { QuadroDre } from "@/modules/financeiro/components/quadro-dre";
+import { montarDre } from "@/modules/financeiro/schemas/dre";
+import { movimentosParaDre } from "@/modules/financeiro/services/lancamentos";
+import {
+  calcularCmvDoPeriodo,
+  contagensParaCmv,
+} from "@/modules/estoque/services/cmv";
 
+const data = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+});
+
+/**
+ * O DRE.
+ *
+ * Esta rota é o lugar CERTO para a composição entre dois Apps: a camada de
+ * roteamento pode falar com qualquer módulo, enquanto um módulo não pode falar
+ * com outro. O Financeiro monta a demonstração e recebe o CMV pronto; quem
+ * calcula o CMV continua sendo o Estoque, onde a contagem mora.
+ *
+ * Sem isso, ou o Financeiro reimplementaria a conta do CMV — duas versões da
+ * mesma regra, esperando para divergir — ou somaria as compras como custo, que
+ * é o erro que o DRE inteiro existe para não cometer.
+ */
 export default async function PaginaResultado({
   searchParams,
 }: {
-  searchParams: Promise<{ de?: string; ate?: string }>;
+  searchParams: Promise<{
+    de?: string;
+    ate?: string;
+    base?: string;
+    inicial?: string;
+    final?: string;
+  }>;
 }) {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
@@ -19,7 +48,7 @@ export default async function PaginaResultado({
 
   if (!contexto.unidadeAtiva) {
     return (
-      <div className="mx-auto w-full max-w-4xl">
+      <div className="mx-auto w-full max-w-3xl">
         <AvisoUnidade acao="Ver o resultado" />
       </div>
     );
@@ -33,23 +62,47 @@ export default async function PaginaResultado({
     ? (lerDataLocal(params.de) ?? primeiroDoMes)
     : primeiroDoMes;
   const ate = params.ate ? (lerDataLocal(params.ate) ?? agora) : agora;
-  // Inclui o dia inteiro do fim: quem digita 31/08 quer o dia 31 junto.
   const ateFim = new Date(ate);
   ateFim.setHours(23, 59, 59, 999);
 
-  const r = await resultadoDoPeriodo(contexto, de, ateFim);
+  const base = params.base === "caixa" ? "caixa" : "competencia";
+
+  // As contagens fechadas que podem delimitar o CMV. O período do estoque é o
+  // que existe entre duas contagens — quase nunca o mês do calendário, e forçar
+  // as datas do DRE sobre ele daria um número inventado.
+  const contagens = pode(contexto, "estoque.custos")
+    ? await contagensParaCmv(contexto)
+    : [];
+
+  const inicialId = params.inicial ?? contagens[1]?.id;
+  const finalId = params.final ?? contagens[0]?.id;
+
+  const cmv =
+    inicialId && finalId && inicialId !== finalId
+      ? await calcularCmvDoPeriodo(contexto, inicialId, finalId)
+      : null;
+
+  const movimentos = await movimentosParaDre(contexto, de, ateFim, base);
+  const dre = montarDre(movimentos, cmv?.cmv ?? 0);
 
   return (
-    <div className="mx-auto w-full max-w-4xl">
+    <div className="mx-auto w-full max-w-3xl">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Resultado</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Resultado (DRE)
+          </h1>
           <p className="text-ink-3 mt-1 text-sm">
-            O que entrou e saiu de verdade · {contexto.unidadeAtiva.nome}
+            {contexto.unidadeAtiva.nome} ·{" "}
+            {base === "competencia"
+              ? "por competência (vencimento)"
+              : "por caixa (pagamento)"}
           </p>
         </div>
 
         <form className="flex flex-wrap items-end gap-2 text-sm">
+          <input type="hidden" name="inicial" value={inicialId ?? ""} />
+          <input type="hidden" name="final" value={finalId ?? ""} />
           <label className="flex flex-col gap-1">
             <span className="text-ink-2 text-xs font-semibold">De</span>
             <input
@@ -68,6 +121,17 @@ export default async function PaginaResultado({
               className="border-line-2 bg-surface text-ink h-9 rounded-md border px-2"
             />
           </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-ink-2 text-xs font-semibold">Base</span>
+            <select
+              name="base"
+              defaultValue={base}
+              className="border-line-2 bg-surface text-ink h-9 rounded-md border px-2"
+            >
+              <option value="competencia">Competência</option>
+              <option value="caixa">Caixa</option>
+            </select>
+          </label>
           <button
             type="submit"
             className="border-line-2 hover:bg-surface-2 h-9 rounded-md border px-3 font-semibold"
@@ -77,123 +141,70 @@ export default async function PaginaResultado({
         </form>
       </div>
 
-      {/* A ressalva vem ANTES do número, não num rodapé. Confundir caixa com
-          competência é o erro de leitura mais caro que um dono de restaurante
-          comete — e ele acontece justamente porque a ressalva fica escondida. */}
-      <p className="border-line bg-surface-2 text-ink-2 mt-4 rounded-xl border px-4 py-3 text-sm">
-        Isto é <strong>regime de caixa</strong>: o que foi efetivamente pago e
-        recebido, na data em que aconteceu. Não é o custo do que foi consumido —
-        mercadoria comprada em julho e usada em agosto é custo de agosto. Essa
-        pergunta quem responde é o{" "}
-        <Link href="/estoque/cmv" className="text-accent font-semibold">
-          CMV do Estoque
-        </Link>
-        , com a contagem na mão.
-      </p>
-
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        <Cartao titulo="Entrou" valor={r.totalReceitas} cor="text-ok" />
-        <Cartao titulo="Saiu" valor={r.totalDespesas} />
-        <Cartao
-          titulo="Sobrou"
-          valor={r.sobra}
-          cor={r.sobra < 0 ? "text-bad" : "text-ok"}
-          detalhe={
-            r.margem !== null
-              ? `${r.margem.toLocaleString("pt-BR")}% da receita`
-              : undefined
-          }
-        />
-      </div>
-
-      {r.semCategoria > 0 && (
-        <p className="bg-warn-sub text-warn mt-4 rounded-md px-3 py-2 text-sm">
-          {formatarMoeda(r.semCategoria)} movimentados sem categoria — não
-          entram em nenhuma linha abaixo. Categorize para o resultado fechar.
+      {/* O CMV vem do Estoque e depende de DUAS contagens fechadas. Sem elas o
+          DRE ainda fecha — só que com a linha mais importante em zero, e a tela
+          precisa dizer isso alto em vez de mostrar um lucro bruto fantasioso. */}
+      {cmv ? (
+        <p className="border-line bg-surface-2 text-ink-2 mt-4 rounded-xl border px-4 py-3 text-sm">
+          CMV de <strong>{formatarMoeda(cmv.cmv)}</strong>, calculado entre as
+          contagens de{" "}
+          {data.format(contagens.find((c) => c.id === inicialId)!.referencia)} e{" "}
+          {data.format(contagens.find((c) => c.id === finalId)!.referencia)}.{" "}
+          <Link href="/estoque/cmv" className="text-accent font-semibold">
+            Ver o cálculo →
+          </Link>
+        </p>
+      ) : (
+        <p className="bg-warn-sub text-warn mt-4 rounded-xl px-4 py-3 text-sm">
+          <strong>O CMV está zerado</strong> porque não há duas contagens de
+          estoque fechadas nesta unidade. Sem elas, o lucro bruto abaixo ignora
+          o custo da comida — que costuma ser o maior de todos.{" "}
+          <Link href="/estoque/contagens" className="font-semibold underline">
+            Fazer uma contagem →
+          </Link>
         </p>
       )}
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-2">
-        <Bloco
-          titulo="Entradas"
-          linhas={r.receitas}
-          vazio="Nada recebido no período."
-        />
-        <Bloco
-          titulo="Saídas"
-          linhas={r.despesas}
-          vazio="Nada pago no período."
-        />
+      <div className="mt-6">
+        <QuadroDre dre={dre} />
       </div>
-    </div>
-  );
-}
 
-function Bloco({
-  titulo,
-  linhas,
-  vazio,
-}: {
-  titulo: string;
-  linhas: LinhaDoResultado[];
-  vazio: string;
-}) {
-  return (
-    <section>
-      <h2 className="font-semibold">{titulo}</h2>
-      {linhas.length === 0 ? (
-        <p className="text-ink-3 mt-2 text-sm">{vazio}</p>
-      ) : (
-        <div className="border-line divide-line mt-2 divide-y rounded-xl border">
-          {linhas.map((l) => (
-            <div
-              key={l.categoria}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm"
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{l.categoria}</span>
-                {l.grupo && (
-                  <span className="text-ink-3 block text-xs">{l.grupo}</span>
-                )}
-              </span>
-              <span className="text-ink-3 w-14 text-right text-xs tabular-nums">
-                {l.percentual !== null
-                  ? `${l.percentual.toLocaleString("pt-BR")}%`
-                  : ""}
-              </span>
-              <span className="w-28 text-right tabular-nums">
-                {formatarMoeda(l.valor)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function Cartao({
-  titulo,
-  valor,
-  cor,
-  detalhe,
-}: {
-  titulo: string;
-  valor: number;
-  cor?: string;
-  detalhe?: string;
-}) {
-  return (
-    <div className="border-line bg-surface-2 rounded-xl border p-4">
-      <span className="text-ink-3 block text-xs font-semibold tracking-wide uppercase">
-        {titulo}
-      </span>
-      <span
-        className={`mt-1 block text-2xl font-semibold tabular-nums ${cor ?? ""}`}
-      >
-        {formatarMoeda(valor)}
-      </span>
-      {detalhe && <span className="text-ink-3 block text-xs">{detalhe}</span>}
+      <div className="text-ink-3 mt-4 flex flex-col gap-1 text-xs">
+        {dre.comprasIgnoradas > 0 && (
+          <p>
+            Compras de mercadoria no período:{" "}
+            <strong className="tabular-nums">
+              {formatarMoeda(dre.comprasIgnoradas)}
+            </strong>{" "}
+            — fora do DRE de propósito. O custo da comida é o CMV (o que foi
+            consumido), não o que foi comprado. A diferença entre os dois é
+            estoque que subiu ou desceu.
+          </p>
+        )}
+        {dre.investimentos > 0 && (
+          <p>
+            Investimentos:{" "}
+            <strong className="tabular-nums">
+              {formatarMoeda(dre.investimentos)}
+            </strong>{" "}
+            — saem do caixa, não do lucro.
+          </p>
+        )}
+        {dre.semClassificacao > 0 && (
+          <p className="text-warn">
+            {formatarMoeda(dre.semClassificacao)} em categorias sem linha de DRE
+            — não entram em nenhuma conta acima.{" "}
+            <Link href="/financeiro/categorias" className="underline">
+              Classificar
+            </Link>
+          </p>
+        )}
+        <p className="mt-2">
+          {base === "competencia"
+            ? "Competência usa a data de vencimento — o mês a que a conta pertence. É uma aproximação: a luz que vence dia 10 é do consumo do mês anterior."
+            : "Caixa usa a data de pagamento. Responde “sobrou dinheiro”, não “deu lucro”."}
+        </p>
+      </div>
     </div>
   );
 }
