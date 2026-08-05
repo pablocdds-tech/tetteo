@@ -28,16 +28,16 @@ Isso não é conveniência. É a diferença entre um sistema que ele opera e um 
 
 Tomadas na conversa de 04/08. Estão aqui para que ninguém — inclusive nós — as reabra por engano daqui a seis meses.
 
-| Decisão | Escolha | Por quê |
-|---|---|---|
-| **Público** | Equipe interna | Público pequeno e conhecido; erro não vira reclamação de cliente; não depende de Cardápio/Delivery/CRM, que não existem |
-| **Poder de escrita** | Escreve direto, sem teto de valor nem janela de aprovação | Decisão do dono. Mitigada por: a Severina age **como a pessoa**, com as permissões dela |
-| **Números de WhatsApp** | Um só para a rede | A loja vem do contexto da conversa, não do telefone |
-| **Modelo de IA** | Gemini (Google) | Lê imagem e PDF nativamente. Exceção consciente ao "sem serviço pago externo" do README — ver §12 |
-| **n8n / ferramenta externa** | Descartado | Não elimina o trabalho difícil (ver §12), e quebra auditoria e identidade |
-| **DESFAZER por WhatsApp** | Descartado | Segundo caminho de escrita. Substituído por eco com link + confirmação por palavra-chave no que é perigoso |
-| **Áudio** | Aceito, com devolutiva escrita obrigatória antes de gravar | É como a cozinha fala de verdade. A confirmação é o preço de aceitar voz com dinheiro no meio |
-| **Criar agentes do zero** | Sim para Aviso e Coleta; não para agentes que escrevem em módulo | Ver §4 |
+| Decisão                      | Escolha                                                          | Por quê                                                                                                                 |
+| ---------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Público**                  | Equipe interna                                                   | Público pequeno e conhecido; erro não vira reclamação de cliente; não depende de Cardápio/Delivery/CRM, que não existem |
+| **Poder de escrita**         | Escreve direto, sem teto de valor nem janela de aprovação        | Decisão do dono. Mitigada por: a Severina age **como a pessoa**, com as permissões dela                                 |
+| **Números de WhatsApp**      | Um só para a rede                                                | A loja vem do contexto da conversa, não do telefone                                                                     |
+| **Modelo de IA**             | Gemini (Google)                                                  | Lê imagem e PDF nativamente. Exceção consciente ao "sem serviço pago externo" do README — ver §12                       |
+| **n8n / ferramenta externa** | Descartado                                                       | Não elimina o trabalho difícil (ver §12), e quebra auditoria e identidade                                               |
+| **DESFAZER por WhatsApp**    | Descartado                                                       | Segundo caminho de escrita. Substituído por eco com link + confirmação por palavra-chave no que é perigoso              |
+| **Áudio**                    | Aceito, com devolutiva escrita obrigatória antes de gravar       | É como a cozinha fala de verdade. A confirmação é o preço de aceitar voz com dinheiro no meio                           |
+| **Criar agentes do zero**    | Sim para Aviso e Coleta; não para agentes que escrevem em módulo | Ver §4                                                                                                                  |
 
 ---
 
@@ -45,15 +45,15 @@ Tomadas na conversa de 04/08. Estão aqui para que ninguém — inclusive nós �
 
 Executado em 04/08, contra a instalação real.
 
-| Verificação | Resultado |
-|---|---|
-| Evolution API `v2.3.7` no Dokploy, HTTPS válido | ✅ |
-| Número conectado (`state: open`) | ✅ |
-| **Recebe** mensagem e grava no banco | ✅ registros às 21:02:31 e 21:14:09, `fromMe: false` |
-| **Envia** mensagem pela API | ✅ registro às 21:13:02, `fromMe: true` |
-| Grupos ignorados, histórico desligado, status desligado | ✅ aplicado em `/settings/set` |
-| Estabilidade da conexão | ⚠️ **uma queda em 04/08 às 21:00:25**, motivo `401 device_removed`. Observar 7 dias |
-| Leitura de nota fiscal por foto | ⏸️ **portão aberto** — ver §13 |
+| Verificação                                             | Resultado                                                                           |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Evolution API `v2.3.7` no Dokploy, HTTPS válido         | ✅                                                                                  |
+| Número conectado (`state: open`)                        | ✅                                                                                  |
+| **Recebe** mensagem e grava no banco                    | ✅ registros às 21:02:31 e 21:14:09, `fromMe: false`                                |
+| **Envia** mensagem pela API                             | ✅ registro às 21:13:02, `fromMe: true`                                             |
+| Grupos ignorados, histórico desligado, status desligado | ✅ aplicado em `/settings/set`                                                      |
+| Estabilidade da conexão                                 | ⚠️ **uma queda em 04/08 às 21:00:25**, motivo `401 device_removed`. Observar 7 dias |
+| Leitura de nota fiscal por foto                         | ⏸️ **portão aberto** — ver §13                                                      |
 
 ### Achado que mudou o desenho: endereçamento LID
 
@@ -81,7 +81,7 @@ Um **agente** é uma linha no banco que Pablo cria e edita numa tela. O tipo def
 ### Tipo AVISO — só fala
 
 Gatilho + destinatários + instruções. Não espera resposta.
-*"Todo dia 25, lembrar o gerente de pedir o ASO do pessoal novo."*
+_"Todo dia 25, lembrar o gerente de pedir o ASO do pessoal novo."_
 
 **Pablo cria quantos quiser.** Não depende de módulo nenhum.
 
@@ -91,22 +91,34 @@ Uma lista de perguntas que Pablo escreve, cada uma com um formato (`texto`, `num
 
 **Pablo cria quantos quiser.** Não toca em estoque, financeiro ou qualquer número de dinheiro — é exatamente por isso que é seguro deixá-lo criar à vontade.
 
-> **Fronteira com o futuro módulo Checklists:** a Coleta da Severina é a versão leve, por WhatsApp. O módulo Checklists, quando existir, é a versão pesada — auditoria formal, evidência, assinatura, plano de ação. Registrado aqui para não virar duplicação por acidente.
+> **Duplicação consciente com o módulo Checklists.** Este documento nasceu quando `modules/checklists/` era só um ícone no painel. Durante a própria conversa que o gerou, o módulo ficou pronto (commit `e3775e3`): modelos, rotinas, respostas, pontuação e pendências com dono e prazo.
+>
+> A alternativa seria a Coleta morrer e o checklist por WhatsApp virar agente do tipo MÓDULO, gravando no Checklists de verdade. **Foi apresentada e recusada pelo dono; a Coleta fica.**
+>
+> O custo, escrito para não ser redescoberto por acidente:
+>
+> - Resposta coletada pela Severina **não entra na nota da loja** nem na comparação entre unidades — que é a razão de o Checklists ser `comportamentoNaRede: "compara"`
+> - "Não conforme" pela Severina **não vira pendência** com responsável e prazo; vira uma linha em `RespostaDeAgente`
+> - Duas telas para consultar respostas, e a pergunta "cadastro em qual?" — o mesmo erro que duplicou trinta produtos no sistema antigo
+>
+> Se um dia a Coleta for descontinuada, o caminho é `modules/checklists/assistente.ts` expondo `listarDoDia`, `obterResposta`, `salvarRespostas` e `fecharResposta` como ferramentas. Os serviços já existem e já recebem `ContextoSessao`.
 
 ### Tipo MÓDULO — age no sistema
 
-Usa ferramentas declaradas em código por um módulo (hoje, só o Estoque). Pablo **configura quais** ferramentas o agente pode usar, mas **não inventa ferramenta nova**.
+Usa ferramentas declaradas em código por um módulo. Pablo **configura quais** ferramentas o agente pode usar, mas **não inventa ferramenta nova**.
 
-**Por que essa parede existe.** "Fechar a contagem" não é um comando; é um pacote: validar que o insumo pertence àquela contagem, conferir a unidade, checar `estoque.contar`, gravar no fuso certo, auditar de-para, e recalcular o CMV. Isso não cabe num formulário. Se fosse possível digitar numa tela *"a Severina agora pode dar baixa no estoque"*, essa baixa não teria validação, permissão nem auditoria — e todo o cuidado do sistema estaria contornado por um campo de texto.
+Módulos com serviços prontos para virar ferramenta, em 04/08: **Estoque** (contagem, notas, CMV), **Checklists** (respostas, pendências), **Cardápio** (insumos, fichas técnicas) e **Compras**. A fase 3 abre só o Estoque; os demais entram quando houver motivo, um de cada vez.
+
+**Por que essa parede existe.** "Fechar a contagem" não é um comando; é um pacote: validar que o insumo pertence àquela contagem, conferir a unidade, checar `estoque.contar`, gravar no fuso certo, auditar de-para, e recalcular o CMV. Isso não cabe num formulário. Se fosse possível digitar numa tela _"a Severina agora pode dar baixa no estoque"_, essa baixa não teria validação, permissão nem auditoria — e todo o cuidado do sistema estaria contornado por um campo de texto.
 
 A parede é o que mantém o CMV confiável.
 
 ### A divisão de responsabilidade
 
-| | Quem faz | Muda com |
-|---|---|---|
+|                                                                           | Quem faz                                      | Muda com    |
+| ------------------------------------------------------------------------- | --------------------------------------------- | ----------- |
 | **O que é possível** — as ferramentas, o que cada uma valida, como audita | programador, em `modules/<app>/assistente.ts` | código novo |
-| **O que é permitido, para quem, quando, e falando como** | **Pablo**, na tela | um clique |
+| **O que é permitido, para quem, quando, e falando como**                  | **Pablo**, na tela                            | um clique   |
 
 ---
 
@@ -250,7 +262,7 @@ agendadaPara, enviadaEm, recebidaEm
 
 Uma tabela para as duas direções, de propósito: é ela que vira a linha do tempo da aba **Conversas**, e a fila de saída é só `direcao=SAIDA AND status=PENDENTE`.
 
-`origem` (ex.: `"agente:clx91…"`) responde a pergunta do primeiro dia em que algo sair errado: *por que a Severina mandou isso?*
+`origem` (ex.: `"agente:clx91…"`) responde a pergunta do primeiro dia em que algo sair errado: _por que a Severina mandou isso?_
 
 ### `RespostaDeAgente` — o resultado da Coleta
 
@@ -340,7 +352,7 @@ export const assistenteDoEstoque = {
       }),
       executar: (contexto, args) => anotarItem(contexto, args),
     },
-    { nome: "fechar_contagem", permissao: "estoque.contar", /* … */ },
+    { nome: "fechar_contagem", permissao: "estoque.contar" /* … */ },
   ],
 
   avisos: (contexto, agora) => rotinasVencidas(contexto, agora),
@@ -384,15 +396,15 @@ chegou "a mussarela deu 12 quilos e meio"
    └─ ele escreve a resposta → SAIDA/PENDENTE
 ```
 
-A quantidade nunca vem de texto interpretado solto: vem de chamada de ferramenta com formato tipado. *"Doze quilos e meio"* só vira `12.5` se passar pelo Zod. **O modelo traduz; o sistema valida.**
+A quantidade nunca vem de texto interpretado solto: vem de chamada de ferramenta com formato tipado. _"Doze quilos e meio"_ só vira `12.5` se passar pelo Zod. **O modelo traduz; o sistema valida.**
 
-A permissão não é decisão do modelo. Ele *pede*; quem decide é o `pode()`.
+A permissão não é decisão do modelo. Ele _pede_; quem decide é o `pode()`.
 
 ### Áudio
 
 Áudio é transcrito pelo Gemini e **sempre devolvido por escrito antes de gravar**:
 
-> *"Entendi: 12,5 kg de mussarela. Responde OK ou corrige."*
+> _"Entendi: 12,5 kg de mussarela. Responde OK ou corrige."_
 
 Na prática vira uma confirmação por item. É o preço de aceitar voz com dinheiro no meio, e foi aceito conscientemente.
 
@@ -415,17 +427,17 @@ Os argumentos ficam **congelados** em `acaoPendente`: nem uma confirmação mal 
 
 ## 9 · As travas
 
-| Trava | Onde | Contra o quê |
-|---|---|---|
-| **`idExterno` único** | entrada, passo 2 | Webhook repetido. A Evolution reenvia quando não tem certeza que chegou — sem isso, "entrou 12kg" vira 24kg. Mesma lógica da `EntregaEvento` já existente |
-| **Vínculo obrigatório** | entrada, passo 3 | Desconhecido agindo no sistema, e dado pessoal entrando no banco |
-| **Duas peneiras** | laço | Modelo usando ferramenta que Pablo não liberou, ou que a pessoa não pode |
-| **Zod antes de executar** | laço | Valor mal interpretado virando número torto |
-| **Janela de horário** | laço | Ação fora do expediente |
-| **Teto de ações por conversa** | laço | Laço infinito com dinheiro no meio |
-| **Palavra-chave congelada** | laço | Fechamento acidental |
-| **Ritmo na fila** | saída | Ban. Uma mensagem de cada vez, com intervalo e teto por rodada |
-| **`InstanciaWhatsapp.ativa = false`** | tudo | O botão de desligar corta tudo, inclusive a fila |
+| Trava                                 | Onde             | Contra o quê                                                                                                                                              |
+| ------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`idExterno` único**                 | entrada, passo 2 | Webhook repetido. A Evolution reenvia quando não tem certeza que chegou — sem isso, "entrou 12kg" vira 24kg. Mesma lógica da `EntregaEvento` já existente |
+| **Vínculo obrigatório**               | entrada, passo 3 | Desconhecido agindo no sistema, e dado pessoal entrando no banco                                                                                          |
+| **Duas peneiras**                     | laço             | Modelo usando ferramenta que Pablo não liberou, ou que a pessoa não pode                                                                                  |
+| **Zod antes de executar**             | laço             | Valor mal interpretado virando número torto                                                                                                               |
+| **Janela de horário**                 | laço             | Ação fora do expediente                                                                                                                                   |
+| **Teto de ações por conversa**        | laço             | Laço infinito com dinheiro no meio                                                                                                                        |
+| **Palavra-chave congelada**           | laço             | Fechamento acidental                                                                                                                                      |
+| **Ritmo na fila**                     | saída            | Ban. Uma mensagem de cada vez, com intervalo e teto por rodada                                                                                            |
+| **`InstanciaWhatsapp.ativa = false`** | tudo             | O botão de desligar corta tudo, inclusive a fila                                                                                                          |
 
 ### O que a Severina nunca faz
 
@@ -445,7 +457,7 @@ INSTRUÇÃO  (texto livre)          →  MOLE. Influencia o modelo.
 LIMITE     (campo estruturado)    →  DURO. Conferido pelo código.
 ```
 
-*"Nunca feche contagem acima de R$ 5.000"* escrito na caixa de instruções é **pedido**. O mesmo limite como campo é **parede**. O modelo não convence um `if`.
+_"Nunca feche contagem acima de R$ 5.000"_ escrito na caixa de instruções é **pedido**. O mesmo limite como campo é **parede**. O modelo não convence um `if`.
 
 **Nada que não se pode perder mora na caixa de texto.**
 
@@ -467,9 +479,13 @@ Sem webhook, sem ferramentas, sem interpretar nada. **Se a fase 1 for tudo que e
 
 Webhook · resolução de identidade LID↔telefone · laço de conversa · `RespostaDeAgente` · editor de perguntas · tela de respostas com exportação · escalonamento.
 
-Inclui **guardar foto**, porque a pergunta de tipo `foto` é da Coleta: baixar a mídia da Evolution, armazenar e exibir na tela de respostas. É só arquivar — **entender** o que está na imagem é a fase 4. A distinção importa: guardar uma foto é download; ler uma nota fiscal é modelo de visão com margem de erro.
+A pergunta de tipo `foto` **fica fora desta fase** — depende do pré-requisito abaixo. Vale a distinção, porque as duas coisas costumam ser confundidas: **guardar** uma foto é download e armazenamento; **entender** o que está nela é modelo de visão com margem de erro, e isso é a fase 4.
 
-**Entrega:** os checklists por WhatsApp — o pedido original — sem depender do módulo Checklists.
+**Entrega:** perguntas e respostas por WhatsApp — o pedido original — em tabela própria da Severina. Sobre a relação com o módulo Checklists, ver a nota do §4.
+
+> **Pré-requisito não resolvido: onde guardar arquivo.** A pergunta de tipo `foto` depende de armazenamento persistente, que o Tetteo não tem — o contêiner é recriado a cada deploy. O commit do Checklists (`e3775e3`) esbarrou no mesmo muro e deixou a coluna da URL sem uso, pelo mesmo motivo.
+>
+> É um bloqueio **compartilhado** entre foto de checklist e foto de nota fiscal, e precisa de decisão própria: volume persistente no Dokploy, MinIO na VPS, ou serviço externo de objetos. Enquanto não houver, a pergunta de tipo `foto` fica fora da fase 2 — metade de um upload é pior do que nenhum.
 
 ### Fase 3 — Agentes de Módulo
 
@@ -489,14 +505,14 @@ Download de mídia · ferramentas de nota · conferência.
 
 ## 11 · Fora de escopo
 
-| Fora | Por quê | Quando volta |
-|---|---|---|
-| **Atendimento a cliente** | Exige Cardápio, Delivery e CRM, que são ícone sem código | Quando esses módulos existirem |
-| **Vários números** | O banco aguarda; a tela de administrar não se paga para um número | No dia do segundo número |
-| **DESFAZER por WhatsApp** | Segundo caminho de escrita, para um problema que a tela já resolve | Se a equipe reclamar de corrigir pela tela |
-| **n8n** | Ver §12 | Não volta |
-| **Barramento de eventos** | Peça de Kernel; construir de brinde, com um único consumidor para validar, é nascer torto | Quando Financeiro precisar reagir a `nota.lancada` |
-| **Módulo Checklists** | A Coleta entrega o essencial por WhatsApp | Quando exigirem auditoria formal, evidência e plano de ação |
+| Fora                       | Por quê                                                                                   | Quando volta                                       |
+| -------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| **Atendimento a cliente**  | Exige Cardápio, Delivery e CRM, que são ícone sem código                                  | Quando esses módulos existirem                     |
+| **Vários números**         | O banco aguarda; a tela de administrar não se paga para um número                         | No dia do segundo número                           |
+| **DESFAZER por WhatsApp**  | Segundo caminho de escrita, para um problema que a tela já resolve                        | Se a equipe reclamar de corrigir pela tela         |
+| **n8n**                    | Ver §12                                                                                   | Não volta                                          |
+| **Barramento de eventos**  | Peça de Kernel; construir de brinde, com um único consumidor para validar, é nascer torto | Quando Financeiro precisar reagir a `nota.lancada` |
+| **Integrar ao Checklists** | O módulo ficou pronto em 04/08 (`e3775e3`), mas a Coleta foi mantida separada — ver §4    | Se a duplicação incomodar na prática               |
 
 ---
 
@@ -508,18 +524,18 @@ O número conectado é `558481336549`, conta pessoal, com 1016 contatos e conver
 
 Consequências, e o que o desenho faz sobre cada uma:
 
-| Risco | Mitigação no desenho |
-|---|---|
-| Ban derruba a conta e o histórico pessoal | Fila com ritmo: uma mensagem por vez, com intervalo e teto por rodada. Nunca rajada |
-| Mensagens pessoais entrando no banco de gestão | Passo 3 da entrada: sem vínculo, **descarta sem gravar** |
-| Grupos de família virando conversa da Severina | `groupsIgnore: true` aplicado na instância; e a regra nº 1 do §9 |
-| Histórico pessoal copiado para a VPS | `syncFullHistory: false` e `DATABASE_SAVE_DATA_HISTORIC=false` aplicados |
+| Risco                                          | Mitigação no desenho                                                                |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Ban derruba a conta e o histórico pessoal      | Fila com ritmo: uma mensagem por vez, com intervalo e teto por rodada. Nunca rajada |
+| Mensagens pessoais entrando no banco de gestão | Passo 3 da entrada: sem vínculo, **descarta sem gravar**                            |
+| Grupos de família virando conversa da Severina | `groupsIgnore: true` aplicado na instância; e a regra nº 1 do §9                    |
+| Histórico pessoal copiado para a VPS           | `syncFullHistory: false` e `DATABASE_SAVE_DATA_HISTORIC=false` aplicados            |
 
 Pendente: os 1016 contatos já sincronizados antes do ajuste continuam no banco da Evolution. Limpá-los é opcional e não bloqueia nada.
 
 ### Dependência de serviço pago externo
 
-O README declara *"tudo roda em VPS própria, sem dependência de serviço pago externo"*. O Gemini é serviço externo pago. **Exceção consciente:** modelo de linguagem em VPS própria exige GPU e entrega bem menos. O adaptador vive num arquivo só (`server/ia/`) — trocar de provedor é reescrever esse arquivo.
+O README declara _"tudo roda em VPS própria, sem dependência de serviço pago externo"_. O Gemini é serviço externo pago. **Exceção consciente:** modelo de linguagem em VPS própria exige GPU e entrega bem menos. O adaptador vive num arquivo só (`server/ia/`) — trocar de provedor é reescrever esse arquivo.
 
 ### Por que o n8n foi descartado
 
@@ -545,11 +561,11 @@ Uma queda em 04/08 (`401 device_removed`). Sob observação por 7 dias. Se as qu
 
 Pablo submete **10 notas fiscais reais** da cozinha — amassadas, tortas, mal iluminadas, de fornecedor pequeno — ao Gemini no Google AI Studio, e conta os acertos de fornecedor, total e itens.
 
-| Placar | Escopo da fase 4 |
-|---|---|
-| **8–10** | A Severina lança a nota. Ferramenta de escrita completa |
-| **5–7** | Ela preenche o rascunho; um humano confere e confirma na tela |
-| **abaixo de 5** | Ela só arquiva a foto e avisa *"chegou nota do Frigorífico X, precisa lançar"* |
+| Placar          | Escopo da fase 4                                                               |
+| --------------- | ------------------------------------------------------------------------------ |
+| **8–10**        | A Severina lança a nota. Ferramenta de escrita completa                        |
+| **5–7**         | Ela preenche o rascunho; um humano confere e confirma na tela                  |
+| **abaixo de 5** | Ela só arquiva a foto e avisa _"chegou nota do Frigorífico X, precisa lançar"_ |
 
 Nenhuma das outras fases depende deste número.
 
