@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 
-import { Botao } from "@/design-system/botao";
+import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 
 import { abrirContagem, type EstadoFormulario } from "../acoes";
@@ -115,10 +115,11 @@ export function FormularioNovaContagem({
         <Botao type="submit" carregando={enviando}>
           Abrir contagem
         </Botao>
-        <Link href="/estoque/contagens">
-          <Botao type="button" peso="fantasma">
-            Cancelar
-          </Botao>
+        <Link
+          href="/estoque/contagens"
+          className={estiloDeBotao("fantasma", "medio")}
+        >
+          Cancelar
         </Link>
       </div>
     </form>

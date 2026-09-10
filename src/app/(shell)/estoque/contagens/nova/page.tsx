@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
 import { obterContexto, pode } from "@/core/sessao/contexto";
+import { CabecalhoDePagina } from "@/design-system/cabecalho-de-pagina";
 import { agoraParaCampo } from "@/lib/data";
 import { AvisoUnidade } from "@/modules/estoque/components/aviso-unidade";
 import { FormularioNovaContagem } from "@/modules/estoque/components/formulario-nova-contagem";
@@ -14,11 +15,9 @@ export default async function PaginaNovaContagem() {
 
   if (!contexto.unidadeAtiva) {
     return (
-      <div className="mx-auto w-full max-w-5xl">
-        <h1 className="text-2xl font-semibold tracking-tight">Nova contagem</h1>
-        <div className="mt-6">
-          <AvisoUnidade acao="Contar estoque" />
-        </div>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+        <CabecalhoDePagina titulo="Nova contagem" />
+        <AvisoUnidade acao="Contar estoque" />
       </div>
     );
   }
@@ -29,11 +28,15 @@ export default async function PaginaNovaContagem() {
   ]);
 
   return (
-    <div className="mx-auto w-full max-w-5xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Nova contagem</h1>
-      <p className="text-ink-3 mt-1 text-sm">{contexto.unidadeAtiva.nome}</p>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+      {/* O que a pessoa precisa saber antes de abrir: nada muda no estoque
+          enquanto a contagem estiver aberta. É um rascunho até ser fechada. */}
+      <CabecalhoDePagina
+        titulo="Nova contagem"
+        contexto={`${contexto.unidadeAtiva.nome} · abre como rascunho — o saldo só muda quando ela for fechada`}
+      />
 
-      <div className="mt-6">
+      <div>
         <FormularioNovaContagem
           categorias={categorias}
           locais={locais}

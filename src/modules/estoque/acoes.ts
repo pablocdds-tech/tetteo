@@ -11,6 +11,10 @@ import {
   esquemaQuantidade,
   esquemaRotina,
 } from "./schemas/contagem";
+import type {
+  ConflitoNaFolha,
+  EdicaoRecebida,
+} from "./schemas/edicao-de-contagem";
 import { analisarPlanilha, type PlanoDeImportacao } from "./schemas/importacao";
 import { esquemaSaida, esquemaTransferencia } from "./schemas/movimento";
 import { esquemaItem, esquemaNota } from "./schemas/nota";
@@ -39,10 +43,19 @@ export type EstadoFormulario = {
   erro?: string;
   erros?: Record<string, string>;
   salvos?: number;
+  /** Linhas que outra pessoa mudou enquanto esta folha estava aberta. */
+  conflitos?: ConflitoNaFolha[];
 };
 
 /** Prefixo dos campos de quantidade na folha: `qtd:<id do insumo>`. */
 const PREFIXO = "qtd:";
+
+/**
+ * Prefixo da BASE de cada campo: `base:<id do insumo>`, o número que o campo
+ * mostrava quando a folha foi desenhada. É o que permite saber se a pessoa
+ * mexeu no campo — e se alguém mexeu no banco enquanto isso.
+ */
+const PREFIXO_BASE = "base:";
 
 export async function abrirContagem(
   _anterior: EstadoFormulario,
@@ -87,11 +100,13 @@ export async function abrirContagem(
 /**
  * Lê a folha inteira do formulário.
  *
- * Só devolve o que a pessoa efetivamente mexeu ou preencheu — campos em branco
- * que continuam em branco não viram escrita no banco à toa.
+ * Devolve cada campo com a sua base. Quem decide o que de fato vira escrita é
+ * `salvarQuantidades`: campo que ninguém mexeu não é gravado, e campo que
+ * outra pessoa mudou enquanto esta folha estava aberta vira conflito em vez
+ * de ser sobrescrito.
  */
 function lerFolha(dados: FormData) {
-  const valores = new Map<string, number | null>();
+  const edicoes: EdicaoRecebida[] = [];
   const erros: Record<string, string> = {};
 
   for (const [chave, bruto] of dados.entries()) {
@@ -103,10 +118,19 @@ function lerFolha(dados: FormData) {
       erros[insumoId] = analise.error.issues[0]?.message ?? "Número inválido.";
       continue;
     }
-    valores.set(insumoId, analise.data);
+
+    // A base foi escrita pelo próprio sistema (`paraCampo`), então sempre é
+    // legível. Se não for, o formulário foi mexido por fora — e o campo é
+    // tratado como intocado, que é o lado seguro.
+    const base = esquemaQuantidade.safeParse(
+      String(dados.get(`${PREFIXO_BASE}${insumoId}`) ?? ""),
+    );
+    if (!base.success) continue;
+
+    edicoes.push({ insumoId, valor: analise.data, base: base.data });
   }
 
-  return { valores, erros };
+  return { edicoes, erros };
 }
 
 export async function salvarFolha(
@@ -119,7 +143,7 @@ export async function salvarFolha(
   const id = String(dados.get("contagemId") ?? "");
   if (!id) return { erro: "Contagem não informada." };
 
-  const { valores, erros } = lerFolha(dados);
+  const { edicoes, erros } = lerFolha(dados);
   if (Object.keys(erros).length > 0) {
     return {
       erro: `${Object.keys(erros).length} ${Object.keys(erros).length === 1 ? "quantidade não foi entendida" : "quantidades não foram entendidas"}. Use apenas números, com vírgula para os decimais.`,
@@ -127,8 +151,9 @@ export async function salvarFolha(
     };
   }
 
+  let resultado: Awaited<ReturnType<typeof salvarQuantidades>>;
   try {
-    await salvarQuantidades(contexto, id, valores);
+    resultado = await salvarQuantidades(contexto, id, edicoes);
   } catch (erro) {
     if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
       return { erro: erro.message };
@@ -138,7 +163,15 @@ export async function salvarFolha(
   }
 
   revalidatePath(`/estoque/contagens/${id}`);
-  return { salvos: valores.size };
+
+  if (resultado.conflitos.length > 0) {
+    return {
+      salvos: resultado.salvos,
+      conflitos: resultado.conflitos,
+      erro: avisoDeConflito(resultado.conflitos.length, "salvar"),
+    };
+  }
+  return { salvos: resultado.salvos };
 }
 
 /**
@@ -146,6 +179,11 @@ export async function salvarFolha(
  *
  * Sem isso, quem digitasse as últimas quantidades e fosse direto em "Fechar"
  * perderia justamente elas, e a contagem fecharia errada sem avisar.
+ *
+ * E se, ao gravar, aparecer uma linha que outra pessoa mudou nesse meio tempo,
+ * a contagem NÃO fecha. Fechar corrige o saldo e congela o custo — fazer isso
+ * em cima de um número que ninguém conferiu transformaria um desencontro de
+ * cinco minutos num CMV errado para sempre.
  */
 export async function fecharFolha(
   _anterior: EstadoFormulario,
@@ -157,7 +195,7 @@ export async function fecharFolha(
   const id = String(dados.get("contagemId") ?? "");
   if (!id) return { erro: "Contagem não informada." };
 
-  const { valores, erros } = lerFolha(dados);
+  const { edicoes, erros } = lerFolha(dados);
   if (Object.keys(erros).length > 0) {
     return {
       erro: "Há quantidades que o sistema não entendeu. Corrija antes de fechar.",
@@ -166,7 +204,17 @@ export async function fecharFolha(
   }
 
   try {
-    await salvarQuantidades(contexto, id, valores);
+    const resultado = await salvarQuantidades(contexto, id, edicoes);
+
+    if (resultado.conflitos.length > 0) {
+      revalidatePath(`/estoque/contagens/${id}`);
+      return {
+        salvos: resultado.salvos,
+        conflitos: resultado.conflitos,
+        erro: avisoDeConflito(resultado.conflitos.length, "fechar"),
+      };
+    }
+
     await fecharContagem(contexto, id);
   } catch (erro) {
     if (erro instanceof SemPermissao || erro instanceof ExigeUnidade) {
@@ -178,6 +226,17 @@ export async function fecharFolha(
 
   revalidatePath("/estoque/contagens");
   redirect(`/estoque/contagens/${id}`);
+}
+
+function avisoDeConflito(quantos: number, ao: "salvar" | "fechar") {
+  const inicio =
+    quantos === 1
+      ? "Uma quantidade foi mudada por outra pessoa enquanto você contava, e não foi sobrescrita."
+      : `${quantos} quantidades foram mudadas por outra pessoa enquanto você contava, e não foram sobrescritas.`;
+
+  return ao === "fechar"
+    ? `${inicio} A contagem NÃO foi fechada — confira abaixo e feche de novo.`
+    : `${inicio} O resto foi salvo. Confira abaixo.`;
 }
 
 export type EstadoImportacao = {

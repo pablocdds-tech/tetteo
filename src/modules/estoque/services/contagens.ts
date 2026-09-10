@@ -5,6 +5,11 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
 
 import type { DadosNovaContagem } from "../schemas/contagem";
+import {
+  classificarEdicoes,
+  type ConflitoNaFolha,
+  type EdicaoRecebida,
+} from "../schemas/edicao-de-contagem";
 
 /**
  * As regras da contagem de estoque.
@@ -73,6 +78,7 @@ export async function obterContagem(contexto: ContextoSessao, id: string) {
     // unidade não aparece.
     where: { id, unidadeId: unidade.id },
     include: {
+      local: { select: { id: true, nome: true } },
       itens: {
         include: {
           insumo: {
@@ -209,8 +215,8 @@ export async function criarContagem(
 export async function salvarQuantidades(
   contexto: ContextoSessao,
   contagemId: string,
-  valores: Map<string, number | null>,
-) {
+  edicoes: EdicaoRecebida[],
+): Promise<{ salvos: number; conflitos: ConflitoNaFolha[] }> {
   if (!pode(contexto, "estoque.contar")) {
     throw new SemPermissao("preencher contagens");
   }
@@ -218,29 +224,117 @@ export async function salvarQuantidades(
 
   const contagem = await db.contagem.findFirst({
     where: { id: contagemId, unidadeId: unidade.id },
-    select: { id: true, status: true },
+    select: {
+      id: true,
+      status: true,
+      itens: {
+        select: {
+          insumoId: true,
+          quantidade: true,
+          contadoPorId: true,
+          contadoEm: true,
+          insumo: { select: { nome: true, unidadeMedida: true } },
+        },
+      },
+    },
   });
   if (!contagem) throw new Error("Contagem não encontrada.");
   if (contagem.status !== "ABERTA") {
     throw new Error("Esta contagem já foi fechada e não aceita alterações.");
   }
 
-  const agora = new Date();
-
-  await db.$transaction(
-    [...valores].map(([insumoId, quantidade]) =>
-      db.contagemItem.update({
-        where: { contagemId_insumoId: { contagemId, insumoId } },
-        data: {
-          quantidade,
-          contadoPorId: quantidade === null ? null : contexto.usuario.id,
-          contadoEm: quantidade === null ? null : agora,
-        },
-      }),
-    ),
+  const noBanco = new Map(
+    contagem.itens.map((i) => [
+      i.insumoId,
+      {
+        quantidade: i.quantidade === null ? null : Number(i.quantidade),
+        contadoPorId: i.contadoPorId,
+        contadoEm: i.contadoEm,
+      },
+    ]),
   );
 
-  return valores.size;
+  // A regra de quem pode escrever o quê mora numa função pura, testada caso a
+  // caso em `schemas/edicao-de-contagem.test.ts`.
+  const { gravar, conflitos } = classificarEdicoes(edicoes, noBanco);
+
+  const agora = new Date();
+  const resultados =
+    gravar.length === 0
+      ? []
+      : await db.$transaction(
+          gravar.map(({ insumoId, valor, base }) =>
+            db.contagemItem.updateMany({
+              // A BASE vai no filtro. Se entre a leitura acima e esta escrita
+              // uma terceira pessoa salvou, o filtro não casa, nada é gravado
+              // e a linha vira conflito logo abaixo — em vez de sobrescrever.
+              where: { contagemId, insumoId, quantidade: base },
+              data: {
+                quantidade: valor,
+                contadoPorId: valor === null ? null : contexto.usuario.id,
+                contadoEm: valor === null ? null : agora,
+              },
+            }),
+          ),
+        );
+
+  const perdidas = gravar.filter((_, i) => resultados[i]?.count === 0);
+
+  if (perdidas.length > 0) {
+    const relidas = await db.contagemItem.findMany({
+      where: {
+        contagemId,
+        insumoId: { in: perdidas.map((p) => p.insumoId) },
+      },
+      select: {
+        insumoId: true,
+        quantidade: true,
+        contadoPorId: true,
+        contadoEm: true,
+      },
+    });
+    for (const r of relidas) {
+      conflitos.push({
+        insumoId: r.insumoId,
+        tentado: perdidas.find((p) => p.insumoId === r.insumoId)!.valor,
+        noBanco: r.quantidade === null ? null : Number(r.quantidade),
+        contadoPorId: r.contadoPorId,
+        contadoEm: r.contadoEm,
+      });
+    }
+  }
+
+  // O nome, não o id. "Alguém mudou" não ajuda a decidir; "a Ana contou às
+  // 10h05" diz com quem conferir.
+  const ids = [
+    ...new Set(
+      conflitos.map((c) => c.contadoPorId).filter((id): id is string => !!id),
+    ),
+  ];
+  const pessoas =
+    ids.length === 0
+      ? []
+      : await db.usuario.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, nome: true },
+        });
+  const nomePorId = new Map(pessoas.map((p) => [p.id, p.nome]));
+  const insumoPorId = new Map(
+    contagem.itens.map((i) => [i.insumoId, i.insumo]),
+  );
+
+  return {
+    salvos: gravar.length - perdidas.length,
+    conflitos: conflitos.map((c) => ({
+      insumoId: c.insumoId,
+      nome: insumoPorId.get(c.insumoId)?.nome ?? "Insumo",
+      unidade: insumoPorId.get(c.insumoId)?.unidadeMedida ?? "",
+      tentado: c.tentado,
+      noBanco: c.noBanco,
+      porQuem: c.contadoPorId ? (nomePorId.get(c.contadoPorId) ?? null) : null,
+      quando: c.contadoEm ? c.contadoEm.toISOString() : null,
+    })),
+  };
 }
 
 /**

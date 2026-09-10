@@ -331,3 +331,122 @@ O teste de contraste (`src/app/contraste.test.ts`) confere **60 pares de cor**
 nos dois temas e garante que os dois caminhos para o tema escuro
 (`prefers-color-scheme` e `data-theme`) não divergem. Ele pegou sete pares
 reprovados na primeira execução — nenhum deles parecia errado a olho nu.
+
+---
+
+## 9. A Despensa (Estoque)
+
+Escrito em 10/09/2026. A primeira tela do Estoque deixou de ser "Posição" —
+uma linha por prateleira — e virou a **Despensa**: uma linha por insumo, com o
+total da loja, e a lista de compras ao lado. Rota, permissões e regras do
+Estoque continuam as mesmas; as cores e a tipografia são as da Aurora, acima.
+
+### O que ela responde, e para quem
+
+Quem conta pergunta "quanto tem na câmara fria?". Quem compra pergunta "quanto
+tem na loja?". A Posição respondia a primeira, e com o mesmo insumo em três
+linhas ninguém somava de cabeça na hora de pedir. A Despensa responde a segunda
+— e a divisão por prateleira mora no painel de detalhe, onde ela é resposta e
+não ruído.
+
+```
+┌ Despensa ─────────────────────────────────── [Nova contagem] ┐
+│ Para repor · Nunca contados · Sem mínimo · Valor em estoque   │
+├───────────────────────────────────────┬──────────────────────┤
+│ O que existe              [Categoria] │ Lista de compras     │
+│ [Buscar…] (Todos)(Repor)(…)           │ Rascunho — ainda não │
+│ Item · Categoria · Disponível ·       │ salvo                │
+│ Mínimo · Situação · Lista             │ …                    │
+│                 70%                   │         30%          │
+└───────────────────────────────────────┴──────────────────────┘
+```
+
+Abaixo de 1180 px a lista desce para baixo da tabela; no celular a tabela vira
+cartões com o rótulo de cada campo.
+
+### As três unidades, que não são a mesma coisa
+
+| Unidade    | De onde vem                                           | Exemplo             |
+| ---------- | ----------------------------------------------------- | ------------------- |
+| Contagem   | `Insumo.unidadeMedida` (e o `unidadeRotulo`)          | 12,5 kg · 46 pct    |
+| Compra     | `EmbalagemCompra`, com o `fator`                      | Caixa 10 kg = 10 kg |
+| Disponível | soma das `PosicaoEstoque` da loja, na de **contagem** | 7,6 kg              |
+
+**Caixa só vira quilo quando o cadastro diz quantos quilos ela tem.** Sem
+embalagem cadastrada, o detalhe escreve isso — não inventa uma caixa.
+
+### As quatro situações
+
+| Situação      | Quando                                                  | Tom     |
+| ------------- | ------------------------------------------------------- | ------- |
+| Repor         | tem mínimo, e o disponível está abaixo dele             | `aviso` |
+| Suficiente    | tem mínimo, e o disponível chega nele                   | `ok`    |
+| Sem mínimo    | tem saldo, mas não tem mínimo — **nunca vira saudável** | neutro  |
+| Nunca contado | nenhuma posição nesta loja — **em branco não é zero**   | `info`  |
+
+"Nunca contado" mostra "—" e fica de fora do valor em estoque — e o indicador
+diz quantos ficaram de fora, senão o total parece completo e não é.
+
+### A lista de compras
+
+- **É rascunho.** Mora no `sessionStorage`, por unidade: sobrevive a filtro,
+  detalhe e recarregar; morre quando a aba fecha. É lida com
+  `useSyncExternalStore`, não com `useEffect` — sem pulo na primeira pintura e
+  sem divergência de hidratação.
+- **A sugestão tem dono.** "Mínimo 15 kg − disponível 3,5 kg" aparece embaixo
+  do número; mexeu no campo, a origem some. Sem mínimo ou sem saldo conhecido,
+  o campo entra **vazio**.
+- **Vira Cotação em Compras.** A ação mora em
+  `src/app/(shell)/estoque/acoes-da-despensa.ts`, e não no App de Estoque: um
+  App nunca importa de outro. Ela usa o `criarCotacao` e o `adicionarItem` do
+  próprio Compras, e grava a origem na cotação e em cada item.
+- **Um envio por vez.** A trava é um `ref`, que vale já no segundo clique de um
+  duplo clique. Se a ação falhar no meio dos itens, a cotação parcial é
+  **cancelada** (`cancelarCotacao`), e a lista continua na tela.
+- **Depois de virar cotação, o rascunho some**, para a mesma lista não ser
+  mandada de novo amanhã.
+
+### A contagem
+
+| Proteção       | O que evita                                                                                                                         |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Rascunho       | "Salvar" não mexe em saldo; só "Fechar" corrige a posição e congela o custo                                                         |
+| Confirmação    | Fechar não tem volta: a janela diz quantos foram contados, quantos ficam em branco e se o saldo do lugar será corrigido             |
+| Conflito       | Campo não mexido não é gravado; o que outra pessoa mudou enquanto a folha estava aberta vira aviso com nome e hora, e não é apagado |
+| Não salvo      | Sair pelo menu ou fechar a aba com campo alterado pergunta antes                                                                    |
+| Erro não apaga | O envio sai pelo `onSubmit`; com `action`, o React 19 limpa os campos não controlados até quando a ação volta com erro              |
+
+A regra do conflito é uma função pura (`schemas/edicao-de-contagem.ts`) com dez
+testes, e a escrita repete a checagem no próprio banco (`updateMany` com a base
+no filtro) — entre ler e gravar, uma terceira pessoa pode salvar.
+
+### Dados de demonstração da Despensa
+
+```bash
+npm run demo:despensa          # 12 insumos, cobrindo as quatro situações
+npm run demo:despensa:limpar   # tira os insumos e o rastro dos testes
+```
+
+Recusa rodar fora de um banco local. Apague **antes** de importar o catálogo
+real, ou haverá dois cadastros de mussarela. Se um insumo de demonstração tiver
+ido parar numa nota, num pedido ou numa ficha técnica, o `limpar` para e
+explica, em vez de apagar dinheiro em silêncio.
+
+### O que ficou pendente na Despensa
+
+**1. Altura da linha.** A especificação pede 56 px; a tabela compartilhada dá
+isso nas linhas com o botão "Adicionar". Não foi criada uma tabela só para
+acertar a medida.
+
+**2. O Estoque ainda está `emConstrucao`.** Só o Diretor vê o módulo. Liberar
+para a equipe é decisão de quem manda na operação, não da tela.
+
+**3. Cancelar ou descartar contagem não pede confirmação.** Descartar uma
+contagem fechada tira uma base do CMV — merece a mesma janela do "Fechar".
+
+**4. O filtro por prateleira da antiga Posição** virou a seção "Onde está" do
+detalhe. O link antigo `?faltando=1` continua abrindo a Despensa em "Repor".
+
+**5. Lista longa.** Segue o padrão das outras telas: tudo filtrado na memória,
+com o total à vista ("12 de 12 insumos"). Para catálogos de milhares de itens,
+paginar.

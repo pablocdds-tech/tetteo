@@ -1,3 +1,7 @@
+import { Cartao, TituloDeSecao } from "@/design-system/cartao";
+import { Icone } from "@/design-system/icones";
+import { Indicador } from "@/design-system/indicador";
+import { Tabela, type Coluna } from "@/design-system/tabela";
 import { formatarMoeda, formatarQuantidade } from "@/lib/numero";
 import { sigla } from "@/lib/unidades";
 
@@ -30,13 +34,24 @@ type ItemDoResumo = {
  *
  * O valor só aparece para quem tem permissão de custos. Quem conta a câmara
  * fria vê quilos; não precisa saber quanto a mussarela custa.
+ *
+ * O topo diz O QUE MUDOU ao fechar — e é diferente conforme a contagem. A de
+ * um lugar corrigiu o saldo daquele lugar; a da loja inteira não corrigiu
+ * saldo nenhum, só entrou no CMV. Uma confirmação genérica ("fechada com
+ * sucesso") deixaria a pessoa achando que o estoque foi acertado quando não
+ * foi.
  */
 export function ResumoContagem({
   itens,
   podeVerCustos,
+  local,
+  fechadaEm,
 }: {
   itens: ItemDoResumo[];
   podeVerCustos: boolean;
+  local: string | null;
+  /** Já formatada no fuso da operação. */
+  fechadaEm: string | null;
 }) {
   const contados = itens.filter((i) => i.quantidade !== null);
   const emBranco = itens.length - contados.length;
@@ -47,91 +62,128 @@ export function ResumoContagem({
   // confere na calculadora encontra a diferença e para de confiar no número.
   const total = contados.reduce((soma, i) => soma + valorDaLinha(i), 0);
 
+  const colunas: Coluna<ItemDoResumo>[] = [
+    {
+      chave: "insumo",
+      titulo: "Insumo",
+      principal: true,
+      celula: (i) => (
+        <span className="block">
+          <span className="block">{i.nome}</span>
+          {i.categoria && (
+            <span className="text-ink-3 block text-xs leading-4 font-normal">
+              {i.categoria}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    {
+      chave: "contado",
+      titulo: "Contado",
+      numerica: true,
+      celula: (i) =>
+        i.quantidade === null ? (
+          // Não é zero. É "ninguém contou" — e a diferença muda o CMV.
+          <span className="text-ink-3">não contado</span>
+        ) : (
+          <>
+            {formatarQuantidade(i.quantidade)}{" "}
+            <span className="text-ink-3">{sigla(i.unidadeMedida)}</span>
+          </>
+        ),
+    },
+    ...(podeVerCustos
+      ? ([
+          {
+            chave: "custo",
+            titulo: "Custo congelado",
+            numerica: true,
+            celula: (i) => (
+              <>
+                {formatarMoeda(i.custoUnitario)}{" "}
+                <span className="text-ink-3">/ {sigla(i.unidadeMedida)}</span>
+              </>
+            ),
+          },
+          {
+            chave: "valor",
+            titulo: "Valor",
+            numerica: true,
+            celula: (i) =>
+              i.quantidade === null ? (
+                <span className="text-ink-3">—</span>
+              ) : (
+                <span className="text-ink font-medium">
+                  {formatarMoeda(valorDaLinha(i))}
+                </span>
+              ),
+          },
+        ] satisfies Coluna<ItemDoResumo>[])
+      : []),
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      {podeVerCustos && (
-        <div className="border-line bg-surface-2 flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-xl border px-5 py-4">
-          <div>
-            <p className="text-ink-3 font-mono text-[11px] tracking-[0.14em] uppercase">
-              Valor do estoque contado
-            </p>
-            <p className="text-2xl font-semibold tabular-nums">
-              {formatarMoeda(total)}
-            </p>
-          </div>
-          <p className="text-ink-3 text-sm">
-            {contados.length} {contados.length === 1 ? "item" : "itens"}
-            {emBranco > 0 && ` · ${emBranco} em branco, fora da conta`}
-          </p>
-        </div>
-      )}
+      <p
+        role="status"
+        className="border-ok/25 bg-ok-sub text-ink flex items-start gap-2.5 rounded-lg border px-4 py-3 text-sm leading-5"
+      >
+        <Icone nome="check" tamanho={18} className="text-ok mt-px flex-none" />
+        <span>
+          <strong className="font-semibold">
+            Contagem fechada{fechadaEm ? ` em ${fechadaEm}` : ""}.
+          </strong>{" "}
+          {local
+            ? `O saldo de ${local} passou a ser o que foi contado, e as diferenças viraram ajustes em Movimentos.`
+            : "Ela entrou no CMV. Por ser da loja inteira, o saldo de cada prateleira não foi corrigido."}
+        </span>
+      </p>
 
-      <div className="border-line overflow-x-auto rounded-xl border">
-        <table className="w-full min-w-[520px] text-sm">
-          <thead>
-            <tr className="bg-surface-2 border-line border-b">
-              <th className="text-ink-3 px-4 py-2.5 text-left text-xs font-semibold tracking-wider uppercase">
-                Insumo
-              </th>
-              <th className="text-ink-3 px-4 py-2.5 text-right text-xs font-semibold tracking-wider uppercase">
-                Contado
-              </th>
-              {podeVerCustos && (
-                <>
-                  <th className="text-ink-3 px-4 py-2.5 text-right text-xs font-semibold tracking-wider uppercase">
-                    Custo
-                  </th>
-                  <th className="text-ink-3 px-4 py-2.5 text-right text-xs font-semibold tracking-wider uppercase">
-                    Valor
-                  </th>
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {itens.map((i) => (
-              <tr
-                key={i.insumoId}
-                className="border-line border-b last:border-b-0"
-              >
-                <td className="px-4 py-2.5">
-                  <span className="text-ink block font-medium">{i.nome}</span>
-                  {i.categoria && (
-                    <span className="text-ink-3 block text-xs">
-                      {i.categoria}
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums">
-                  {i.quantidade === null ? (
-                    // Não é zero. É "ninguém contou" — e a diferença muda o CMV.
-                    <span className="text-ink-3">não contado</span>
-                  ) : (
-                    <>
-                      {formatarQuantidade(i.quantidade)}{" "}
-                      <span className="text-ink-3">
-                        {sigla(i.unidadeMedida)}
-                      </span>
-                    </>
-                  )}
-                </td>
-                {podeVerCustos && (
-                  <>
-                    <td className="text-ink-2 px-4 py-2.5 text-right tabular-nums">
-                      {formatarMoeda(i.custoUnitario)}
-                    </td>
-                    <td className="text-ink px-4 py-2.5 text-right font-medium tabular-nums">
-                      {i.quantidade === null
-                        ? "—"
-                        : formatarMoeda(valorDaLinha(i))}
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div
+        className={`grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 ${
+          podeVerCustos ? "desk:grid-cols-3" : ""
+        }`}
+      >
+        <Indicador
+          rotulo="Contados"
+          valor={`${contados.length} de ${itens.length}`}
+          apoio="itens com quantidade nesta contagem"
+          comparacao={emBranco === 0 ? "A folha foi preenchida inteira" : null}
+        />
+        <Indicador
+          rotulo="Em branco"
+          valor={String(emBranco)}
+          tom={emBranco > 0 ? "atencao" : "normal"}
+          apoio="ninguém contou — ficam de fora do CMV"
+          comparacao="Em branco não é zero: não vira “acabou”"
+        />
+        {podeVerCustos && (
+          <Indicador
+            rotulo="Valor do estoque contado"
+            valor={formatarMoeda(total)}
+            apoio="quantidade × custo congelado no fechamento"
+            comparacao="Só os itens contados entram na soma"
+          />
+        )}
       </div>
+
+      <Cartao como="section" className="min-w-0 overflow-hidden">
+        <TituloDeSecao apoio="Como ficou no fechamento. Só leitura — o CMV pode já ter usado estes números.">
+          O que foi contado
+        </TituloDeSecao>
+        <Tabela
+          legenda="Quantidades desta contagem, como foram fechadas"
+          colunas={colunas}
+          linhas={itens}
+          chaveDaLinha={(i) => i.insumoId}
+          vazio={
+            <p className="text-ink-3 px-4 py-8 text-center text-sm">
+              Esta contagem não tinha nenhum item.
+            </p>
+          }
+        />
+      </Cartao>
     </div>
   );
 }

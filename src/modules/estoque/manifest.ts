@@ -22,7 +22,7 @@ export const manifestoEstoque: ManifestoDoApp = {
   area: "operacao",
   rota: "/estoque",
   navegacao: [
-    { rota: "/estoque", nome: "Posição" },
+    { rota: "/estoque", nome: "Despensa" },
     { rota: "/estoque/contagens", nome: "Contagens" },
     { rota: "/estoque/entradas", nome: "Entradas" },
     { rota: "/estoque/movimentos", nome: "Movimentos" },
