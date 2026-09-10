@@ -30,7 +30,7 @@ export async function registrar(
   dados: {
     entidade: string;
     entidadeId: string;
-    acao: "CRIOU" | "ALTEROU" | "EXCLUIU";
+    acao: "CRIOU" | "ALTEROU" | "EXCLUIU" | "ACESSOU";
     unidadeId?: string | null;
     antes?: unknown;
     depois?: unknown;
