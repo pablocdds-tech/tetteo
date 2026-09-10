@@ -256,21 +256,39 @@ async function limpar(organizacaoId: string) {
     process.exit(1);
   }
 
-  const [linhasDeCotacao, linhasDeContagem] = await Promise.all([
-    db.itemDeCotacao.findMany({
-      where: { insumoId: { in: ids } },
-      select: { cotacaoId: true },
-    }),
-    db.contagemItem.findMany({
-      where: { insumoId: { in: ids } },
-      select: { contagemId: true },
-    }),
-  ]);
-  const cotacoes = [...new Set(linhasDeCotacao.map((l) => l.cotacaoId))];
+  // A cotação de 04/08 virou RODADA (Compras, 10/09/2026): o rastro de
+  // demonstração agora mora nas linhas de requisição e na lista da rodada.
+  const [linhasDeRodada, linhasDeRequisicao, linhasDeContagem] =
+    await Promise.all([
+      db.itemDaRodada.findMany({
+        where: { insumoId: { in: ids } },
+        select: { rodadaId: true },
+      }),
+      db.itemDeRequisicao.findMany({
+        where: { insumoId: { in: ids } },
+        select: { requisicao: { select: { rodadaId: true } } },
+      }),
+      db.contagemItem.findMany({
+        where: { insumoId: { in: ids } },
+        select: { contagemId: true },
+      }),
+    ]);
+  const rodadas = [
+    ...new Set([
+      ...linhasDeRodada.map((l) => l.rodadaId),
+      ...linhasDeRequisicao.map((l) => l.requisicao.rodadaId),
+    ]),
+  ];
   const contagens = [...new Set(linhasDeContagem.map((l) => l.contagemId))];
 
   const apagado = await db.$transaction(async (tx) => {
-    const itensDeCotacao = await tx.itemDeCotacao.deleteMany({
+    const itensDeRequisicao = await tx.itemDeRequisicao.deleteMany({
+      where: { insumoId: { in: ids } },
+    });
+    const itensDaRodada = await tx.itemDaRodada.deleteMany({
+      where: { insumoId: { in: ids } },
+    });
+    await tx.fornecedorInsumo.deleteMany({
       where: { insumoId: { in: ids } },
     });
     const itensDeContagem = await tx.contagemItem.deleteMany({
@@ -279,9 +297,16 @@ async function limpar(organizacaoId: string) {
     const movimentos = await tx.movimentoEstoque.deleteMany({
       where: { insumoId: { in: ids } },
     });
-    // Só os documentos que ficaram VAZIOS. O que ainda tem item de verdade fica.
-    const cotacoesVazias = await tx.cotacao.deleteMany({
-      where: { id: { in: cotacoes }, itens: { none: {} } },
+    // Só os documentos que ficaram VAZIOS. O que ainda tem item de verdade fica
+    // — inclusive a rodada cuja requisição tem insumo de verdade ainda não
+    // consolidado.
+    const rodadasVazias = await tx.rodadaDeCompra.deleteMany({
+      where: {
+        id: { in: rodadas },
+        itens: { none: {} },
+        pedidos: { none: {} },
+        requisicoes: { none: { itens: { some: {} } } },
+      },
     });
     const contagensVazias = await tx.contagem.deleteMany({
       where: { id: { in: contagens }, itens: { none: {} } },
@@ -293,8 +318,8 @@ async function limpar(organizacaoId: string) {
 
     return {
       insumos: removidos.count,
-      itensDeCotacao: itensDeCotacao.count,
-      cotacoes: cotacoesVazias.count,
+      itensDeCompra: itensDeRequisicao.count + itensDaRodada.count,
+      rodadas: rodadasVazias.count,
       itensDeContagem: itensDeContagem.count,
       contagens: contagensVazias.count,
       movimentos: movimentos.count,
@@ -303,9 +328,9 @@ async function limpar(organizacaoId: string) {
 
   console.log(`removidos ${apagado.insumos} insumos de demonstração.`);
   console.log(
-    `e o rastro dos testes: ${apagado.cotacoes} cotação(ões) e ` +
+    `e o rastro dos testes: ${apagado.rodadas} rodada(s) de compra e ` +
       `${apagado.contagens} contagem(ns) que só tinham demonstração, ` +
-      `${apagado.itensDeCotacao + apagado.itensDeContagem} linha(s) e ` +
+      `${apagado.itensDeCompra + apagado.itensDeContagem} linha(s) e ` +
       `${apagado.movimentos} movimento(s).`,
   );
 }

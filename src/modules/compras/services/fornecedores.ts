@@ -1,4 +1,4 @@
-import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
 
@@ -29,7 +29,7 @@ export async function listarFornecedores(
       ...(incluirInativos ? {} : { ativo: true }),
     },
     include: {
-      _count: { select: { notas: true, propostas: true, pedidos: true } },
+      _count: { select: { notas: true, solicitacoes: true, pedidos: true } },
     },
     orderBy: [{ ativo: "desc" }, { nome: "asc" }],
   });
@@ -44,9 +44,11 @@ export async function listarFornecedores(
     prazoEntregaDias: f.prazoEntregaDias,
     condicaoPagamento: f.condicaoPagamento,
     observacao: f.observacao,
+    telefonePedidos: f.telefonePedidos,
+    autorizadoMensagens: f.autorizadoMensagens,
     ativo: f.ativo,
     notas: f._count.notas,
-    cotacoes: f._count.propostas,
+    cotacoes: f._count.solicitacoes,
     pedidos: f._count.pedidos,
   }));
 }
@@ -121,54 +123,6 @@ export async function alternarFornecedor(contexto: ContextoSessao, id: string) {
     { ativo: fornecedor.ativo },
     { ativo: !fornecedor.ativo },
   );
-}
-
-/**
- * O histórico de preço de um insumo, por fornecedor.
- *
- * Sai das cotações já respondidas — não existe tabela separada de catálogo.
- * Uma tabela paralela precisaria ser sincronizada a cada cotação, e a cópia
- * desatualizada acabaria valendo mais do que o original.
- */
-export async function historicoDePreco(
-  contexto: ContextoSessao,
-  insumoId: string,
-) {
-  if (!pode(contexto, "compras.ver")) throw new SemPermissao("ver compras");
-
-  const precos = await db.precoProposto.findMany({
-    where: {
-      naoAtende: false,
-      item: {
-        insumoId,
-        cotacao: {
-          unidadeId: contexto.unidadeAtiva?.id,
-          canceladaEm: null,
-        },
-      },
-      proposta: { status: "RESPONDIDA" },
-    },
-    include: {
-      proposta: {
-        select: {
-          respondidaEm: true,
-          fornecedor: { select: { id: true, nome: true } },
-        },
-      },
-      item: { select: { cotacao: { select: { descricao: true } } } },
-    },
-    orderBy: { proposta: { respondidaEm: "desc" } },
-    take: 40,
-  });
-
-  return precos.map((p) => ({
-    fornecedorId: p.proposta.fornecedor.id,
-    fornecedor: p.proposta.fornecedor.nome,
-    precoUnitario: Number(p.precoUnitario),
-    embalagem: p.embalagem,
-    cotacao: p.item.cotacao.descricao,
-    quando: p.proposta.respondidaEm,
-  }));
 }
 
 async function registrar(

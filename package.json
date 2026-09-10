@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "tsx --test \"src/**/*.test.ts\"",
+    "test:integracao": "tsx --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 \"src/**/*.integracao.ts\"",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "seed": "tsx prisma/seed.ts",
     "demo:despensa": "tsx prisma/despensa-demo.ts",

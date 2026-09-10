@@ -3,24 +3,30 @@
 //
 // O Estoque responde "quanto saiu". A Ficha responde "quanto deveria custar".
 // Compras responde a pergunta que vem antes das duas: **por quanto dá para
-// comprar?**
+// comprar?** — e, desde 10/09/2026, também as que vêm depois: quem aprovou,
+// se o fornecedor recebeu, e o que de fato chegou.
 //
-// É onde o dinheiro é economizado de verdade. Ajustar preço de cardápio mexe
-// na receita; trocar de fornecedor mexe no custo — e num restaurante o segundo
-// costuma valer mais e doer menos.
+// O caminho inteiro, na ordem em que acontece:
 //
-// A peça central é a COTAÇÃO: a mesma lista de itens enviada a vários
-// fornecedores, com as respostas lado a lado. Hoje isso é feito no WhatsApp, e
-// a comparação acontece de cabeça, item a item, quase sempre errada — porque
-// um vende a caixa de 10 kg e o outro vende o quilo, e comparar R$ 300 com
-// R$ 31 sem dividir por dez leva à conclusão oposta da certa.
+//   RODADA        a "semana de compra" da rede: prazos, lojas, responsável
+//   REQUISIÇÃO    o que cada loja precisa, na unidade de estoque
+//   SOLICITAÇÃO   o que cada fornecedor foi convidado a cotar, com link próprio
+//   PROPOSTA      o que ele respondeu — em versões, nunca sobrescrito
+//   ESCOLHA       de quem comprar cada item, e por quê
+//   PEDIDO        o que foi aprovado, congelado, por loja e fornecedor
+//   MENSAGEM      a fila durável que leva o pedido ao fornecedor
+//   RECEBIMENTO   o que chegou, conferido — e que entra pelo Estoque
+//
+// Desenho completo: docs/superpowers/specs/2026-09-10-compras-fluxo-design.md
+//
+// Como `assistente.prisma`, nenhuma tabela aqui declara relação com Organizacao,
+// Unidade ou Usuario: os ids são texto. O Core não conhece Apps.
 // ===========================================================================
 
 /// De quem se compra.
 ///
 /// Vocabulário compartilhado: Compras cadastra, Estoque lança a nota dele e
-/// Financeiro paga. Veio do arquivo do Estoque quando este App nasceu, exatamente
-/// como estava previsto lá.
+/// Financeiro paga.
 model Fornecedor {
   id            String @id @default(cuid())
   organizacaoId String
@@ -31,20 +37,29 @@ model Fornecedor {
   telefone  String?
   email     String?
 
-  /// Quem atende o telefone. Numa distribuidora o vendedor é a relação toda —
-  /// e é o nome que alguém procura às seis da manhã quando falta mussarela.
+  /// Quem atende o telefone. Numa distribuidora o vendedor é a relação toda.
   contato String?
 
-  /// Em quantos dias costuma entregar depois do pedido. Informativo: entra na
-  /// tela de pedido para não prometer ao cliente o que o fornecedor não cumpre.
+  /// Em quantos dias costuma entregar depois do pedido. Informativo.
   prazoEntregaDias Int?
 
-  /// "30 dias", "à vista", "boleto 15/30". Texto livre porque a realidade é
-  /// livre: cada fornecedor negocia o seu, e engessar em enum criaria um campo
-  /// que ninguém consegue preencher direito.
+  /// "30 dias", "à vista", "boleto 15/30". Texto livre porque a realidade é.
   condicaoPagamento String?
 
   observacao String?
+
+  /// PARA ONDE VÃO OS PEDIDOS — em E.164 sem "+" ("5584999990000").
+  ///
+  /// Separado de `telefone` porque não é a mesma coisa: o telefone do cadastro
+  /// é para alguém ligar; este é o destino de mensagens automáticas, e é o
+  /// SERVIDOR que o usa. A tela nunca manda um número para a fila.
+  telefonePedidos String?
+
+  /// O fornecedor concordou em receber pedidos e convites por mensagem.
+  /// Sem isto a mensagem nasce BLOQUEADA — e aparece no painel.
+  autorizadoMensagens Boolean   @default(false)
+  autorizadoPorId     String?
+  autorizadoEm        DateTime?
 
   ativo Boolean @default(true)
 
@@ -54,217 +69,664 @@ model Fornecedor {
 
   criadoPorId String?
 
-  notas       NotaEntrada[]
-  propostas   PropostaDeCotacao[]
-  pedidos     Pedido[]
-  lancamentos Lancamento[]
+  notas        NotaEntrada[]
+  solicitacoes SolicitacaoDeCotacao[]
+  pedidos      Pedido[]
+  lancamentos  Lancamento[]
+  produtos     FornecedorInsumo[]
+  mensagens    MensagemAoFornecedor[]
+  escolhas     EscolhaDeItem[]
+  itensFixos   ItemDaRodada[]         @relation("FornecedorFixoDoItem")
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, ativo])
   @@map("fornecedor")
 }
 
-enum StatusCotacao {
-  ABERTA
-  FECHADA
-  CANCELADA
-}
-
-/// Uma rodada de cotação: uma lista de itens, vários fornecedores.
+/// O que um fornecedor vende de um insumo, e em que embalagem.
 ///
-/// Pertence à UNIDADE. Preço de hortifrúti no Centro não é preço na Zona Sul,
-/// e uma cotação de rede esconderia justamente a diferença que importa.
-model Cotacao {
-  id        String @id @default(cuid())
-  unidadeId String
+/// É onde mora o `supplierLocked` da referência: o insumo com fornecedor FIXO
+/// não entra em disputa aberta — vira compra direcionada, com o preço de
+/// referência dito em voz alta ("preço de referência de 02/09").
+model FornecedorInsumo {
+  id            String @id @default(cuid())
+  organizacaoId String
 
-  /// Como a pessoa chama: "Semana 32", "Compra do mês", "Hortifrúti agosto".
-  descricao String
-
-  /// Até quando os preços valem. Cotação de hortifrúti vence em dias; a de
-  /// descartáveis dura o mês. Sem isso, alguém compara em setembro um preço
-  /// que foi dado em julho.
-  validaAte DateTime?
-
-  status StatusCotacao @default(ABERTA)
-
-  observacao String?
-
-  criadoEm     DateTime  @default(now())
-  atualizadoEm DateTime  @updatedAt
-  fechadaEm    DateTime?
-  canceladaEm  DateTime?
-
-  criadoPorId String?
-
-  itens     ItemDeCotacao[]
-  propostas PropostaDeCotacao[]
-  pedidos   Pedido[]
-
-  @@index([unidadeId, status])
-  @@index([unidadeId, criadoEm])
-  @@map("cotacao")
-}
-
-/// Uma linha da lista de compra: o que se quer e quanto.
-model ItemDeCotacao {
-  id        String  @id @default(cuid())
-  cotacaoId String
-  cotacao   Cotacao @relation(fields: [cotacaoId], references: [id], onDelete: Cascade)
+  fornecedorId String
+  fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
 
   insumoId String
   insumo   Insumo @relation(fields: [insumoId], references: [id])
 
-  /// Quanto se pretende comprar, na unidade BASE do insumo. É esta quantidade
-  /// que multiplica o preço unitário para dar o total de cada fornecedor —
-  /// sem ela, comparar preço unitário premiaria quem é barato no que você
-  /// compra pouco.
+  /// Como ele chama: "Caixa", "Saco", "Fardo".
+  nomeEmbalagem String
+
+  /// A embalagem pelas partes impressas nela. O fator é CALCULADO a partir
+  /// daqui (schemas/embalagem.ts) — nunca digitado.
+  pecas           Int            @default(1)
+  conteudo        Decimal?       @db.Decimal(14, 4)
+  unidadeConteudo UnidadeMedida?
+  fracionavel     Boolean        @default(false)
+
+  /// Unidades de estoque por embalagem. Nulo = desconhecido: bloqueia a
+  /// comparação automática até alguém conferir.
+  fator       Decimal? @db.Decimal(14, 4)
+  fatorOrigem String?
+  fatorVersao Int      @default(1)
+
+  fixo Boolean @default(false)
+
+  /// "<organizacaoId>:<insumoId>" enquanto fixo e ativo; nulo senão. A
+  /// unicidade garante, no banco, um fornecedor fixo por insumo.
+  chaveFixo String? @unique
+
+  /// Por EMBALAGEM, com a origem e a data ditas junto.
+  precoReferencia       Decimal?  @db.Decimal(14, 2)
+  precoReferenciaOrigem String?
+  precoReferenciaEm     DateTime?
+
+  ativo Boolean @default(true)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
+
+  @@unique([fornecedorId, insumoId, nomeEmbalagem])
+  @@index([organizacaoId, insumoId])
+  @@map("fornecedor_insumo")
+}
+
+/// O relógio das rodadas: "toda segunda às 7h, Centro e Sul".
+model AgendaDeRodada {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  nome String
+
+  /// 0 = domingo … 6 = sábado.
+  diaDaSemana  Int
+  /// "07:00", no fuso da organização.
+  horaAbertura String
+
+  horasParaRequisicao Int @default(24)
+  horasParaCotacao    Int @default(48)
+  entregaDeDias       Int @default(2)
+  entregaAteDias      Int @default(3)
+
+  unidadeIds    String[] @default([])
+  responsavelId String?
+
+  ativa  Boolean @default(true)
+  versao Int     @default(1)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
+
+  rodadas RodadaDeCompra[]
+
+  @@unique([organizacaoId, nome])
+  @@map("agenda_de_rodada")
+}
+
+enum EstadoRodada {
+  RASCUNHO
+  COLETANDO
+  COTANDO
+  REVISAO
+  APROVADA
+  DESPACHANDO
+  FECHADA
+  CANCELADA
+}
+
+/// A rodada de compra — a "semana de compra" da rede.
+///
+/// Era a `Cotacao` de 04/08 (mesma tabela conceitual, mesmos ids depois da
+/// migração). Pertence à ORGANIZAÇÃO: é aqui que a matriz consolida as lojas.
+/// O que é físico — requisição, pedido, recebimento — continua por loja.
+model RodadaDeCompra {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  /// Número para gente: "Rodada 12". O id continua aleatório.
+  numero Int @unique @default(autoincrement())
+
+  descricao String
+
+  estado EstadoRodada @default(RASCUNHO)
+
+  /// Sobe a cada mudança de estado. Toda transição é condicional a ela — dois
+  /// cliques ao mesmo tempo não viram duas transições.
+  versao Int @default(1)
+
+  prazoRequisicao DateTime?
+  prazoCotacao    DateTime?
+  entregaDe       DateTime?
+  entregaAte      DateTime?
+
+  responsavelId String?
+
+  /// A agenda e a ocorrência ("2026-W37") que abriram a rodada, quando foi o
+  /// relógio. A unicidade é o que impede a mesma semana de abrir duas vezes.
+  agendaId   String?
+  agenda     AgendaDeRodada? @relation(fields: [agendaId], references: [id])
+  ocorrencia String?
+
+  observacao             String?
+  motivoUltimaReabertura String?
+
+  criadoEm           DateTime  @default(now())
+  atualizadoEm       DateTime  @updatedAt
+  criadoPorId        String?
+  consolidadaEm      DateTime?
+  cotacaoEncerradaEm DateTime?
+  fechadaEm          DateTime?
+  canceladaEm        DateTime?
+
+  requisicoes  Requisicao[]
+  itens        ItemDaRodada[]
+  solicitacoes SolicitacaoDeCotacao[]
+  escolhas     EscolhaDeItem[]
+  pedidos      Pedido[]
+
+  @@unique([agendaId, ocorrencia])
+  @@index([organizacaoId, estado])
+  @@index([organizacaoId, criadoEm])
+  @@map("rodada_de_compra")
+}
+
+enum StatusRequisicao {
+  RASCUNHO
+  ENVIADA
+  DEVOLVIDA
+}
+
+/// O que UMA loja precisa, numa rodada.
+model Requisicao {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  rodadaId String
+  rodada   RodadaDeCompra @relation(fields: [rodadaId], references: [id], onDelete: Cascade)
+
+  unidadeId String
+
+  status StatusRequisicao @default(RASCUNHO)
+  versao Int              @default(1)
+
+  observacao String?
+
+  enviadaEm       DateTime?
+  enviadaPorId    String?
+  devolvidaEm     DateTime?
+  devolvidaPorId  String?
+  motivoDevolucao String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
+
+  itens ItemDeRequisicao[]
+
+  @@unique([rodadaId, unidadeId])
+  @@index([unidadeId, status])
+  @@map("requisicao")
+}
+
+/// Uma linha da requisição: o que a loja precisa, na unidade de ESTOQUE.
+///
+/// Guarda a sugestão ao lado do número escolhido, com a conta escrita. Daqui a
+/// um mês, quem abrir precisa saber se "6,5 kg" saiu do mínimo ou do dedo.
+model ItemDeRequisicao {
+  id String @id @default(cuid())
+
+  requisicaoId String
+  requisicao   Requisicao @relation(fields: [requisicaoId], references: [id], onDelete: Cascade)
+
+  unidadeId String
+
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
   quantidade Decimal @db.Decimal(14, 3)
+
+  embalagemPreferida String?
+  /// Nulo = desconhecido. Nunca 1 por omissão.
+  fatorConhecido     Decimal? @db.Decimal(14, 4)
+
+  /// Cópia do cadastro no momento — a categoria do insumo pode mudar depois.
+  categoria  String?
+  observacao String?
+
+  sugestaoQuantidade Decimal? @db.Decimal(14, 3)
+  sugestaoFormula    String?
+  alertas            String[] @default([])
+
+  /// Entrou depois do primeiro envio dos pedidos: vira adendo, não pedido novo.
+  tardio Boolean @default(false)
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
+
+  @@unique([requisicaoId, insumoId])
+  @@index([insumoId])
+  @@map("item_de_requisicao")
+}
+
+enum ModoDoItem {
+  COTAVEL
+  DIRECIONADO
+}
+
+/// A lista CONSOLIDADA da rodada: um insumo, a soma das lojas.
+///
+/// Era o `ItemDeCotacao` de 04/08. A origem de cada quantidade não se perde —
+/// ela é a lista de `ItemDeRequisicao` desta rodada e deste insumo.
+model ItemDaRodada {
+  id String @id @default(cuid())
+
+  rodadaId String
+  rodada   RodadaDeCompra @relation(fields: [rodadaId], references: [id], onDelete: Cascade)
+
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  quantidadeTotal Decimal @db.Decimal(14, 3)
+
+  modo             ModoDoItem  @default(COTAVEL)
+  fornecedorFixoId String?
+  fornecedorFixo   Fornecedor? @relation("FornecedorFixoDoItem", fields: [fornecedorFixoId], references: [id])
+
+  /// Exceção autorizada: item de fornecedor fixo colocado em disputa.
+  excecaoMotivo String?
+  excecaoPorId  String?
+  excecaoEm     DateTime?
 
   observacao String?
   ordem      Int     @default(0)
 
-  precos PrecoProposto[]
+  itensSolicitados ItemDaSolicitacao[]
+  escolha          EscolhaDeItem?
 
-  @@unique([cotacaoId, insumoId])
-  @@index([cotacaoId, ordem])
-  @@map("item_de_cotacao")
+  @@unique([rodadaId, insumoId])
+  @@index([rodadaId, ordem])
+  @@map("item_da_rodada")
 }
 
-enum StatusProposta {
-  AGUARDANDO
+enum StatusSolicitacao {
+  RASCUNHO
+  CONVIDADO
   RESPONDIDA
-  RECUSADA
+  RECUSOU
+  ENCERRADA_SEM_RESPOSTA
+  ENCERRADA
 }
 
-/// O que UM fornecedor respondeu numa cotação.
-model PropostaDeCotacao {
-  id        String  @id @default(cuid())
-  cotacaoId String
-  cotacao   Cotacao @relation(fields: [cotacaoId], references: [id], onDelete: Cascade)
+/// O pedido de cotação a UM fornecedor, numa rodada.
+///
+/// Era a `PropostaDeCotacao` de 04/08 — que misturava o convite com a resposta.
+/// Agora o convite é isto, e cada resposta é uma `VersaoDeProposta`.
+model SolicitacaoDeCotacao {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  rodadaId String
+  rodada   RodadaDeCompra @relation(fields: [rodadaId], references: [id], onDelete: Cascade)
 
   fornecedorId String
   fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
 
-  status StatusProposta @default(AGUARDANDO)
+  status StatusSolicitacao @default(RASCUNHO)
+  prazo  DateTime?
 
-  /// O que ele cobra de entrega, se cobrar. Entra no total: um fornecedor 2%
-  /// mais barato que cobra R$ 80 de frete não é mais barato.
-  frete Decimal @default(0) @db.Decimal(14, 2)
+  /// O LINK. O código em texto puro nunca é gravado: o hash serve para achar,
+  /// e o cifrado (AES-256-GCM) serve para quem tem permissão copiar de novo.
+  tokenHash       String?   @unique
+  tokenCifrado    String?
+  tokenExpiraEm   DateTime?
+  tokenRevogadoEm DateTime?
+  motivoRevogacao String?
 
-  /// Abaixo disto ele não entrega. É a informação que transforma "o mais
-  /// barato" em "o mais barato que aceita o meu pedido".
-  pedidoMinimo Decimal? @db.Decimal(14, 2)
+  tentativasInvalidas Int       @default(0)
+  ultimoEnvioEm       DateTime?
 
-  observacao String?
-
-  respondidaEm DateTime?
+  convidadoEm DateTime?
+  versaoAtual Int       @default(0)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
 
-  precos PrecoProposto[]
+  itens   ItemDaSolicitacao[]
+  versoes VersaoDeProposta[]
 
-  @@unique([cotacaoId, fornecedorId])
+  @@unique([rodadaId, fornecedorId])
   @@index([fornecedorId])
-  @@map("proposta_de_cotacao")
+  @@map("solicitacao_de_cotacao")
 }
 
-/// O preço de UM item na proposta de UM fornecedor.
-///
-/// Guarda a embalagem porque é assim que o fornecedor fala: "a caixa de 10 kg
-/// sai por 300". Comparar R$ 300 com o R$ 31 do quilo de outro fornecedor sem
-/// dividir por dez leva à conclusão oposta da certa — e essa é a conta que
-/// mais se erra de cabeça, no WhatsApp, às seis da manhã.
-model PrecoProposto {
+/// Os itens que ESTE fornecedor foi convidado a cotar. É a lista contra a qual
+/// o servidor confere cada resposta — id de outra solicitação é recusado.
+model ItemDaSolicitacao {
   id String @id @default(cuid())
 
-  propostaId String
-  proposta   PropostaDeCotacao @relation(fields: [propostaId], references: [id], onDelete: Cascade)
+  solicitacaoId String
+  solicitacao   SolicitacaoDeCotacao @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
 
-  itemId String
-  item   ItemDeCotacao @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  itemDaRodadaId String
+  itemDaRodada   ItemDaRodada @relation(fields: [itemDaRodadaId], references: [id], onDelete: Cascade)
 
-  /// Como ele vende: "Caixa 10kg", "Fardo c/ 12", "Quilo".
-  embalagem String?
+  /// Item do fornecedor fixo, enviado para confirmar preço — não é disputa.
+  direcionado Boolean @default(false)
 
-  /// Quantas unidades-base cabem na embalagem. Caixa de 10 kg de um insumo
-  /// medido em KG tem fator 10; quem vende a granel tem fator 1.
-  fatorConversao Decimal @default(1) @db.Decimal(14, 4)
+  ofertas ItemDeProposta[]
 
-  /// O que ele cobra pela EMBALAGEM — o número que ele mandou no WhatsApp.
-  precoEmbalagem Decimal @db.Decimal(14, 4)
+  @@unique([solicitacaoId, itemDaRodadaId])
+  @@index([itemDaRodadaId])
+  @@map("item_da_solicitacao")
+}
 
-  /// Já dividido pelo fator: o preço por unidade base. É o único número
-  /// comparável entre fornecedores, e é por isso que ele é guardado em vez de
-  /// recalculado — se o fator for corrigido amanhã, a cotação de ontem
-  /// continua sendo a de ontem.
-  precoUnitario Decimal @db.Decimal(14, 4)
+enum OrigemDaVersao {
+  FORNECEDOR_LINK
+  COMPRADOR_DIGITOU
+  NEGOCIACAO
+}
 
-  /// Fornecedor que não trabalha com o item deixa a linha em branco. Diferente
-  /// de preço zero, que seria brinde — e diferente de não ter respondido nada.
-  naoAtende Boolean @default(false)
+/// Uma resposta do fornecedor. Nova resposta é versão nova — nada é
+/// sobrescrito, e a comparação usa a última.
+model VersaoDeProposta {
+  id String @id @default(cuid())
+
+  solicitacaoId String
+  solicitacao   SolicitacaoDeCotacao @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+
+  numero Int
+  origem OrigemDaVersao
+
+  registradaPorId String?
+  /// Obrigatório na NEGOCIACAO: por que o preço mudou depois de encerrado.
+  motivo          String?
+
+  /// POR ENTREGA. Nulo = não informado — diferente de zero.
+  frete            Decimal?  @db.Decimal(14, 2)
+  pedidoMinimo     Decimal?  @db.Decimal(14, 2)
+  prazoEntregaDias Int?
+  validaAte        DateTime?
+  observacao       String?
+
+  recebidaEm DateTime @default(now())
+
+  itens ItemDeProposta[]
+
+  @@unique([solicitacaoId, numero])
+  @@map("versao_de_proposta")
+}
+
+enum SituacaoDaOferta {
+  COTADO
+  INDISPONIVEL
+}
+
+/// O preço de UM item numa versão da proposta.
+///
+/// Três coisas diferentes que a tela nunca mistura: SEM RESPOSTA (não existe
+/// linha), INDISPONÍVEL (linha com situação própria) e PREÇO ZERO (só com
+/// autorização explícita, gravada com motivo).
+model ItemDeProposta {
+  id String @id @default(cuid())
+
+  versaoId String
+  versao   VersaoDeProposta @relation(fields: [versaoId], references: [id], onDelete: Cascade)
+
+  itemDaSolicitacaoId String
+  itemDaSolicitacao   ItemDaSolicitacao @relation(fields: [itemDaSolicitacaoId], references: [id], onDelete: Cascade)
+
+  situacao SituacaoDaOferta
+
+  nomeEmbalagem   String?
+  pecas           Int            @default(1)
+  conteudo        Decimal?       @db.Decimal(14, 4)
+  unidadeConteudo UnidadeMedida?
+  fracionavel     Boolean        @default(false)
+
+  /// Calculado no servidor. Nulo quando desconhecido ou incompatível — e o
+  /// motivo fica escrito ao lado.
+  fator       Decimal? @db.Decimal(14, 4)
+  fatorMotivo String?
+
+  /// Pela EMBALAGEM, como o fornecedor falou.
+  precoEmbalagem Decimal? @db.Decimal(14, 2)
+  /// Por unidade de estoque. Só para comparar — nunca multiplica total.
+  precoUnitario  Decimal? @db.Decimal(14, 6)
+
+  precoZeroAutorizado Boolean @default(false)
+  precoZeroMotivo     String?
+  precoZeroPorId      String?
+
+  /// Quanto ele consegue entregar, na unidade de estoque. Nulo = não disse.
+  disponivel Decimal? @db.Decimal(14, 3)
 
   observacao String?
 
-  @@unique([propostaId, itemId])
-  @@index([itemId])
-  @@map("preco_proposto")
+  escolhas EscolhaDeItem[]
+
+  @@unique([versaoId, itemDaSolicitacaoId])
+  @@index([itemDaSolicitacaoId])
+  @@map("item_de_proposta")
+}
+
+/// De quem comprar UM item da rodada, e por quê.
+///
+/// A sugestão do sistema nunca vira compra sozinha. Escolher diferente dela é
+/// permitido — o comprador conhece o fornecedor que atrasa — mas a razão fica
+/// escrita.
+model EscolhaDeItem {
+  id String @id @default(cuid())
+
+  rodadaId String
+  rodada   RodadaDeCompra @relation(fields: [rodadaId], references: [id], onDelete: Cascade)
+
+  itemDaRodadaId String       @unique
+  itemDaRodada   ItemDaRodada @relation(fields: [itemDaRodadaId], references: [id], onDelete: Cascade)
+
+  fornecedorId String
+  fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
+
+  /// Nulo quando o preço é o de referência do fornecedor fixo.
+  itemDePropostaId String?
+  itemDeProposta   ItemDeProposta? @relation(fields: [itemDePropostaId], references: [id], onDelete: SetNull)
+
+  seguiuSugestao Boolean
+  justificativa  String?
+
+  escolhidaPorId String
+  escolhidaEm    DateTime @default(now())
+
+  @@index([rodadaId])
+  @@map("escolha_de_item")
+}
+
+/// Até quanto um papel aprova. Versão nova a cada mudança; a anterior fica.
+model AlcadaDeCompra {
+  id            String @id @default(cuid())
+  organizacaoId String
+
+  papelId String
+
+  /// Nulo = sem limite.
+  limite Decimal? @db.Decimal(14, 2)
+
+  versao Int
+
+  /// "<organizacaoId>:<papelId>" enquanto vigente; nulo depois. Uma vigente
+  /// por papel, garantido pelo banco.
+  chaveVigente String? @unique
+
+  vigenteDesde DateTime  @default(now())
+  encerradaEm  DateTime?
+  criadoPorId  String?
+
+  aprovacoes AprovacaoDeCompra[]
+
+  @@index([organizacaoId, papelId])
+  @@map("alcada_de_compra")
+}
+
+enum DecisaoDeAprovacao {
+  APROVADO
+  RECUSADO
+}
+
+/// Quem aprovou (ou recusou), sob qual alçada, por quanto.
+model AprovacaoDeCompra {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  aprovadorId String
+
+  alcadaId     String?
+  alcada       AlcadaDeCompra? @relation(fields: [alcadaId], references: [id])
+  alcadaVersao Int?
+
+  valor   Decimal            @db.Decimal(14, 2)
+  decisao DecisaoDeAprovacao
+  motivo  String?
+
+  criadoEm DateTime @default(now())
+
+  @@index([pedidoId])
+  @@map("aprovacao_de_compra")
 }
 
 enum StatusPedido {
   RASCUNHO
-  ENVIADO
-  RECEBIDO
+  AGUARDANDO_APROVACAO
+  APROVADO
+  RECUSADO
   CANCELADO
+  CONCLUIDO
 }
 
-/// O pedido de compra: o que foi efetivamente encomendado, de quem, por quanto.
+/// O que o fornecedor DISSE — separado de "a mensagem chegou".
+enum ConfirmacaoFornecedor {
+  PENDENTE
+  CONFIRMADO
+  CONFIRMADO_COM_RESSALVA
+  RECUSADO
+}
+
+enum SituacaoRecebimento {
+  NADA
+  PARCIAL
+  COMPLETO
+}
+
+enum TipoDePedido {
+  PEDIDO
+  ADENDO
+}
+
+/// O pedido de compra: por LOJA e FORNECEDOR, aprovado e congelado.
 ///
-/// Nasce quase sempre de uma cotação fechada — um pedido por fornecedor
-/// vencedor. Pode nascer sozinho para a compra de rotina que não vale cotar.
+/// Tudo o que o fornecedor recebe está copiado aqui no momento da geração
+/// (nome, telefone, endereço, preço, embalagem). Mudar o cadastro depois não
+/// reescreve um pedido que já saiu.
 ///
-/// O pedido NÃO cria nota de entrada. Quem lança a nota é o Estoque, quando a
-/// mercadoria chega e alguém confere o que veio contra o que foi pedido. São
-/// momentos diferentes e frequentemente números diferentes — o caminhão vem
-/// com menos, ou com outra marca, e é justamente essa divergência que precisa
-/// ficar visível em vez de ser presumida.
+/// Adendo é um pedido FILHO (`pedidoOrigemId`) com a próxima `sequencia` e só
+/// o delta aprovado — o `parentOrderId`/`dispatchSeq` da referência.
 model Pedido {
-  id        String @id @default(cuid())
-  unidadeId String
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+
+  /// "PC-0104". O id continua aleatório.
+  numero Int @unique @default(autoincrement())
+
+  tipo TipoDePedido @default(PEDIDO)
 
   fornecedorId String
   fornecedor   Fornecedor @relation(fields: [fornecedorId], references: [id])
 
-  cotacaoId String?
-  cotacao   Cotacao? @relation(fields: [cotacaoId], references: [id])
+  rodadaId String?
+  rodada   RodadaDeCompra? @relation(fields: [rodadaId], references: [id], onDelete: SetNull)
+
+  pedidoOrigemId String?
+  pedidoOrigem   Pedido?  @relation("Adendos", fields: [pedidoOrigemId], references: [id])
+  adendos        Pedido[] @relation("Adendos")
+
+  /// 1 no pedido original; 2, 3… nos adendos e alterações.
+  sequencia       Int @default(1)
+  /// Contador do pedido original. Incrementado de forma atômica.
+  ultimaSequencia Int @default(1)
 
   status StatusPedido @default(RASCUNHO)
+  versao Int          @default(1)
 
-  /// Quando o fornecedor prometeu entregar.
-  previsaoEntrega DateTime?
+  // ---- snapshot ----
+  fornecedorNome      String
+  fornecedorDocumento String?
+  destinoTelefone     String?
+  unidadeNome         String
+  enderecoEntrega     String?
+  condicaoPagamento   String?
+  entregaDe           DateTime?
+  entregaAte          DateTime?
+  previsaoEntrega     DateTime?
 
-  frete Decimal @default(0) @db.Decimal(14, 2)
-  total Decimal @default(0) @db.Decimal(14, 2)
+  subtotal Decimal @default(0) @db.Decimal(14, 2)
+  frete    Decimal @default(0) @db.Decimal(14, 2)
+  total    Decimal @default(0) @db.Decimal(14, 2)
+
+  /// Qual regra de arredondamento produziu o total (§5 do desenho).
+  regraArredondamento String @default("linha-meio-para-cima-v1")
 
   observacao String?
 
-  enviadoEm   DateTime?
-  recebidoEm  DateTime?
-  canceladoEm DateTime?
+  aprovadoEm    DateTime?
+  aprovadoPorId String?
+  recusadoEm    DateTime?
+  motivoRecusa  String?
+
+  /// Declaração de quem mandou pelo próprio WhatsApp (canal simulado).
+  enviadoManualmenteEm    DateTime?
+  enviadoManualmentePorId String?
+
+  confirmacao                ConfirmacaoFornecedor @default(PENDENTE)
+  confirmacaoTexto           String?
+  confirmadoEm               DateTime?
+  confirmacaoRegistradaPorId String?
+
+  situacaoRecebimento SituacaoRecebimento @default(NADA)
+
+  concluidoEm        DateTime?
+  canceladoEm        DateTime?
+  motivoCancelamento String?
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+  criadoPorId  String?
 
-  criadoPorId String?
+  itens        ItemDePedido[]
+  aprovacoes   AprovacaoDeCompra[]
+  alteracoes   AlteracaoDePedido[]
+  recebimentos Recebimento[]
+  divergencias DivergenciaDeCompra[]
 
-  itens ItemDePedido[]
-
+  @@unique([pedidoOrigemId, sequencia])
   @@index([unidadeId, status])
   @@index([unidadeId, criadoEm])
+  @@index([organizacaoId, status])
+  @@index([rodadaId])
   @@map("pedido")
 }
 
+/// Uma linha do pedido, congelada.
 model ItemDePedido {
   id       String @id @default(cuid())
   pedidoId String
@@ -273,17 +735,354 @@ model ItemDePedido {
   insumoId String
   insumo   Insumo @relation(fields: [insumoId], references: [id])
 
-  /// Na unidade BASE do insumo.
-  quantidade Decimal @db.Decimal(14, 3)
+  insumoNome     String
+  unidadeEstoque UnidadeMedida
 
-  /// Congelados no momento do pedido: é por este preço que foi encomendado, e
-  /// é contra ele que a nota de entrada vai ser conferida.
-  embalagem      String?
-  fatorConversao Decimal @default(1) @db.Decimal(14, 4)
-  precoUnitario  Decimal @db.Decimal(14, 4)
+  nomeEmbalagem   String?
+  pecas           Int            @default(1)
+  conteudo        Decimal?       @db.Decimal(14, 4)
+  unidadeConteudo UnidadeMedida?
+  fracionavel     Boolean        @default(false)
+  fatorConversao  Decimal        @default(1) @db.Decimal(14, 4)
+
+  /// Quantas embalagens (fracionário só a granel).
+  embalagens           Decimal @db.Decimal(14, 3)
+  /// O que a loja precisava, na unidade de estoque.
+  quantidadeNecessaria Decimal @db.Decimal(14, 3)
+  /// O que se compra de fato: embalagens × fator.
+  quantidade           Decimal @db.Decimal(14, 3)
+  /// Quanto sobra por arredondar para embalagem inteira.
+  adicional            Decimal @default(0) @db.Decimal(14, 3)
+
+  precoEmbalagem Decimal @db.Decimal(14, 2)
+  /// Por unidade de estoque — para comparar e para conferir a nota.
+  precoUnitario  Decimal @db.Decimal(14, 6)
   total          Decimal @db.Decimal(14, 2)
+
+  /// "Proposta v2 · Distribuidora Exemplo A" · "Preço de referência de 02/09"
+  origemPreco        String
+  itemDePropostaId   String?
+  itemDeRequisicaoId String?
+
+  /// Reduzido por alteração aceita. O pedido original não é reescrito.
+  quantidadeCancelada Decimal @default(0) @db.Decimal(14, 3)
+
+  ordem Int @default(0)
+
+  itensRecebidos   ItemDeRecebimento[]
+  itensDeAlteracao ItemDeAlteracao[]
 
   @@index([pedidoId])
   @@index([insumoId])
   @@map("item_de_pedido")
+}
+
+enum TipoDeAlteracao {
+  ALTERACAO
+  CANCELAMENTO
+}
+
+enum Concordancia {
+  PENDENTE
+  ACEITA
+  RECUSADA
+}
+
+/// Diminuir ou cancelar o que já foi enviado. Aumentar é adendo.
+model AlteracaoDePedido {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+
+  tipo      TipoDeAlteracao
+  sequencia Int
+  motivo    String
+
+  concordancia      Concordancia @default(PENDENTE)
+  concordanciaTexto String?
+  concordanciaEm    DateTime?
+  concordanciaPorId String?
+
+  criadoEm    DateTime @default(now())
+  criadoPorId String?
+
+  itens ItemDeAlteracao[]
+
+  @@unique([pedidoId, sequencia])
+  @@map("alteracao_de_pedido")
+}
+
+model ItemDeAlteracao {
+  id String @id @default(cuid())
+
+  alteracaoId String
+  alteracao   AlteracaoDePedido @relation(fields: [alteracaoId], references: [id], onDelete: Cascade)
+
+  itemDePedidoId String
+  itemDePedido   ItemDePedido @relation(fields: [itemDePedidoId], references: [id])
+
+  embalagensAntes  Decimal @db.Decimal(14, 3)
+  embalagensDepois Decimal @db.Decimal(14, 3)
+  quantidadeAntes  Decimal @db.Decimal(14, 3)
+  quantidadeDepois Decimal @db.Decimal(14, 3)
+
+  @@index([alteracaoId])
+  @@map("item_de_alteracao")
+}
+
+/// O interruptor do canal de mensagens e o número de teste.
+model CanalDeCompras {
+  id            String @id @default(cuid())
+  organizacaoId String @unique
+
+  pausado      Boolean   @default(false)
+  motivoPausa  String?
+  pausadoPorId String?
+  pausadoEm    DateTime?
+
+  /// Único destino permitido para envio de teste.
+  destinoTeste String?
+
+  atualizadoEm DateTime @updatedAt
+
+  @@map("canal_de_compras")
+}
+
+enum TipoDeMensagem {
+  CONVITE_COTACAO
+  PEDIDO
+  ADENDO
+  ALTERACAO
+  CANCELAMENTO
+  TESTE
+}
+
+/// Enfileirado não é enviado. Aceito pelo canal não é entregue. Entregue não
+/// é "fornecedor confirmou" — isso mora no pedido.
+enum EstadoDaMensagem {
+  BLOQUEADA
+  NA_FILA
+  ENVIANDO
+  ACEITA_PELO_CANAL
+  ENTREGUE
+  INCERTA
+  FALHOU
+  CANCELADA
+}
+
+/// A FILA DURÁVEL que leva pedidos e convites ao fornecedor.
+///
+/// Gravada na MESMA transação que aprova o pedido. Um relógio pega o lote com
+/// trava (`FOR UPDATE SKIP LOCKED` + `leaseAte`), então duas cópias do servidor
+/// nunca pegam a mesma mensagem. Resposta perdida vira INCERTA — e INCERTA
+/// nunca é reenviada às cegas.
+model MensagemAoFornecedor {
+  id            String  @id @default(cuid())
+  organizacaoId String
+  unidadeId     String?
+
+  fornecedorId String?
+  fornecedor   Fornecedor? @relation(fields: [fornecedorId], references: [id])
+
+  tipo TipoDeMensagem
+
+  /// "Pedido" · "SolicitacaoDeCotacao" · "AlteracaoDePedido" · "Teste"
+  referenciaTipo String
+  referenciaId   String
+  sequencia      Int    @default(1)
+
+  /// Decidido pelo SERVIDOR e congelado na hora de enfileirar.
+  destino        String?
+  motivoBloqueio String?
+
+  /// Qual canal tentou ("simulador", "whatsapp") e se foi de mentira.
+  canal    String?
+  simulada Boolean @default(false)
+  ehTeste  Boolean @default(false)
+
+  /// O texto como sai. Convite leva "{{LINK}}" — o link é decifrado só na hora
+  /// de enviar, e nunca fica em texto puro aqui.
+  corpo String
+
+  /// "pedido:<id>:1". Enfileirar duas vezes a mesma coisa devolve a primeira.
+  chave String @unique
+
+  estado             EstadoDaMensagem @default(NA_FILA)
+  tentativas         Int              @default(0)
+  maxTentativas      Int              @default(5)
+  proximaTentativaEm DateTime?
+  leaseAte           DateTime?
+  leaseDono          String?
+  ultimoErro         String?
+  idProvedor         String?
+
+  enfileiradaEm DateTime  @default(now())
+  enviandoDesde DateTime?
+  aceitaEm      DateTime?
+  entregueEm    DateTime?
+  incertaEm     DateTime?
+  falhouEm      DateTime?
+  canceladaEm   DateTime?
+
+  enviadaAMaoEm    DateTime?
+  enviadaAMaoPorId String?
+
+  resolvidaPorId String?
+  resolucao      String?
+
+  criadoPorId String?
+
+  @@index([estado, proximaTentativaEm])
+  @@index([referenciaTipo, referenciaId])
+  @@index([organizacaoId, estado])
+  @@map("mensagem_ao_fornecedor")
+}
+
+enum TipoDeRecebimento {
+  ENTRADA
+  DEVOLUCAO
+}
+
+enum DecisaoDeConferencia {
+  ACEITAR
+  RECUSAR
+}
+
+/// O que chegou — ou voltou. Imutável: correção é outro recebimento
+/// (DEVOLUCAO), nunca edição.
+///
+/// A entrada no estoque NÃO é feita aqui: é a `NotaEntrada` do Estoque, criada
+/// na mesma transação e ligada por `recebimentoId`. Uma origem, uma entrada.
+model Recebimento {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id])
+
+  tipo   TipoDeRecebimento @default(ENTRADA)
+  /// "Entrega 01", "Entrega 02" — por pedido e tipo.
+  numero Int
+
+  /// Gerada quando a tela abre. Duplo clique devolve o primeiro.
+  chave String @unique
+
+  recebidoPorId String
+  recebidaEm    DateTime
+  registradoEm  DateTime @default(now())
+
+  localDestinoId String?
+
+  notaEntradaId          String?
+  notaVinculadaExistente Boolean @default(false)
+  numeroNota             String?
+  serieNota              String?
+  chaveAcesso            String?
+
+  valorConferido Decimal @default(0) @db.Decimal(14, 2)
+
+  observacao String?
+  motivo     String?
+
+  itens        ItemDeRecebimento[]
+  divergencias DivergenciaDeCompra[]
+
+  @@unique([pedidoId, tipo, numero])
+  @@index([unidadeId, recebidaEm])
+  @@map("recebimento")
+}
+
+model ItemDeRecebimento {
+  id String @id @default(cuid())
+
+  recebimentoId String
+  recebimento   Recebimento @relation(fields: [recebimentoId], references: [id])
+
+  itemDePedidoId String
+  itemDePedido   ItemDePedido @relation(fields: [itemDePedidoId], references: [id])
+
+  /// O que ENTROU. Na substituição aceita, é o insumo que veio.
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id])
+
+  /// Na unidade de COMPRA, como a pessoa contou ("2 caixas").
+  embalagensBoas     Decimal @db.Decimal(14, 3)
+  embalagensAvariada Decimal @default(0) @db.Decimal(14, 3)
+
+  /// Na unidade de ESTOQUE, já convertidos pelo fator do pedido.
+  quantidadeBoa      Decimal @db.Decimal(14, 3)
+  quantidadeAvariada Decimal @default(0) @db.Decimal(14, 3)
+  /// Excedente ou substituição recusados na porta. Não entram.
+  quantidadeRecusada Decimal @default(0) @db.Decimal(14, 3)
+
+  fatorConversao Decimal @db.Decimal(14, 4)
+  valorUnitario  Decimal @db.Decimal(14, 6)
+  valorTotal     Decimal @db.Decimal(14, 2)
+
+  decisaoExcedente    DecisaoDeConferencia?
+  substituicao        Boolean               @default(false)
+  decisaoSubstituicao DecisaoDeConferencia?
+
+  lote     String?
+  validade DateTime?
+
+  observacao String?
+  fotoIds    String[] @default([])
+
+  @@index([recebimentoId])
+  @@index([itemDePedidoId])
+  @@map("item_de_recebimento")
+}
+
+enum TipoDeDivergencia {
+  FALTOU
+  EXCEDENTE
+  AVARIA
+  SUBSTITUICAO
+  SALDO_ENCERRADO
+  NOTA_QUANTIDADE
+  NOTA_VALOR
+  DEVOLUCAO
+}
+
+enum EstadoDaDivergencia {
+  ABERTA
+  RESOLVIDA
+}
+
+/// O que não bateu, esperando alguém conciliar.
+model DivergenciaDeCompra {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+
+  pedidoId String
+  pedido   Pedido @relation(fields: [pedidoId], references: [id])
+
+  recebimentoId String?
+  recebimento   Recebimento? @relation(fields: [recebimentoId], references: [id])
+
+  itemDePedidoId String?
+  notaEntradaId  String?
+
+  tipo       TipoDeDivergencia
+  detalhe    String
+  quantidade Decimal?          @db.Decimal(14, 3)
+  impacto    Decimal?          @db.Decimal(14, 2)
+
+  estado         EstadoDaDivergencia @default(ABERTA)
+  resolucao      String?
+  resolvidaPorId String?
+  resolvidaEm    DateTime?
+
+  criadoEm    DateTime @default(now())
+  criadoPorId String?
+
+  @@index([unidadeId, estado])
+  @@index([pedidoId])
+  @@map("divergencia_de_compra")
 }

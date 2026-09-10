@@ -15,7 +15,13 @@ export type TipoDeMovimento =
   | "CONSUMO_INTERNO"
   | "DOACAO"
   | "TRANSFERENCIA"
-  | "AJUSTE";
+  | "AJUSTE"
+  /**
+   * Voltou ao fornecedor depois de ter entrado. Baixa o saldo como qualquer
+   * saída, mas NÃO é perda: é compra desfeita, e o CMV a desconta das compras
+   * do período em vez de somá-la ao que foi jogado fora.
+   */
+  | "DEVOLUCAO";
 
 /**
  * O efeito de cada tipo sobre o saldo do LOCAL de origem.
@@ -48,6 +54,7 @@ export const ROTULO_MOVIMENTO: Record<TipoDeMovimento, string> = {
   DOACAO: "Doação",
   TRANSFERENCIA: "Transferência",
   AJUSTE: "Ajuste de contagem",
+  DEVOLUCAO: "Devolução ao fornecedor",
 };
 
 const arredondar = (v: number) => Math.round(v * 100) / 100;

@@ -14,7 +14,7 @@ O José é o agente que responde três perguntas que hoje ninguém responde na V
 2. **O que oferecer a essa pessoa** — baseado no que ela já pedia
 3. **Até onde dá para baixar o preço** — sem furar o CMV alvo
 
-A terceira é a que justifica o projeto. Ferramenta de disparo existe às dezenas no mercado; nenhuma delas conhece a sua ficha técnica. O José conhece — e por isso é o único que consegue dizer *"nessa calabresa você pode dar R$ 11 de desconto, na margherita só R$ 4"*.
+A terceira é a que justifica o projeto. Ferramenta de disparo existe às dezenas no mercado; nenhuma delas conhece a sua ficha técnica. O José conhece — e por isso é o único que consegue dizer _"nessa calabresa você pode dar R$ 11 de desconto, na margherita só R$ 4"_.
 
 Ele **não conversa com cliente**. Ele fala com o dono, propõe, e — a partir da fase 4 — dispara o que foi aprovado.
 
@@ -24,18 +24,18 @@ Ele **não conversa com cliente**. Ele fala com o dono, propõe, e — a partir 
 
 Tomadas na conversa de 09/08. Estão aqui para que ninguém — inclusive nós — as reabra por engano daqui a seis meses.
 
-| Decisão | Escolha | Por quê |
-| --- | --- | --- |
-| **Fonte do cliente** | Cardápio Web, via API aberta | É o único canal onde o telefone é real e é seu |
-| **iFood** | Fora | Telefone mascarado. Não há ninguém para chamar |
-| **Saipos** | Fora | A API pública dele só *recebe* pedido; não devolve histórico nem cliente |
-| **Quem decide a oferta** | Tetteo | Depende de CMV, margem e estoque — só existe aqui |
-| **Quem dispara** | Fases 1–3: Food Marketing, à mão · **Fase 4: o Tetteo** | O passo manual semanal não sobrevive à rotina de uma pizzaria |
-| **Canal do disparo** | **API oficial da Meta**, nunca QR Code | O dono já foi bloqueado uma vez em disparo não-oficial. Ver §12 |
-| **Aprovação humana** | Obrigatória, toda campanha | IA escolhendo desconto e gastando com envio sem ninguém olhar não entra na fase 1 |
-| **Modelo de IA** | Gemini, e **só para escrever texto** | Não escolhe quem, nem produto, nem preço. Ver §9 |
-| **De-para de produtos** | Manual, feito pelo dono numa tela | Sem ele o José chuta margem. Aceito conscientemente |
-| **Barramento de eventos** | Não se constrói agora | Um consumidor só. Mesma decisão da Severina |
+| Decisão                   | Escolha                                                 | Por quê                                                                           |
+| ------------------------- | ------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **Fonte do cliente**      | Cardápio Web, via API aberta                            | É o único canal onde o telefone é real e é seu                                    |
+| **iFood**                 | Fora                                                    | Telefone mascarado. Não há ninguém para chamar                                    |
+| **Saipos**                | Fora                                                    | A API pública dele só _recebe_ pedido; não devolve histórico nem cliente          |
+| **Quem decide a oferta**  | Tetteo                                                  | Depende de CMV, margem e estoque — só existe aqui                                 |
+| **Quem dispara**          | Fases 1–3: Food Marketing, à mão · **Fase 4: o Tetteo** | O passo manual semanal não sobrevive à rotina de uma pizzaria                     |
+| **Canal do disparo**      | **API oficial da Meta**, nunca QR Code                  | O dono já foi bloqueado uma vez em disparo não-oficial. Ver §12                   |
+| **Aprovação humana**      | Obrigatória, toda campanha                              | IA escolhendo desconto e gastando com envio sem ninguém olhar não entra na fase 1 |
+| **Modelo de IA**          | Gemini, e **só para escrever texto**                    | Não escolhe quem, nem produto, nem preço. Ver §9                                  |
+| **De-para de produtos**   | Manual, feito pelo dono numa tela                       | Sem ele o José chuta margem. Aceito conscientemente                               |
+| **Barramento de eventos** | Não se constrói agora                                   | Um consumidor só. Mesma decisão da Severina                                       |
 
 ---
 
@@ -47,11 +47,11 @@ Verificado em 09/08 contra a documentação pública. **Nada aqui foi assumido d
 
 A [API aberta](https://docs.cardapioweb.com/) tem exatamente as três coisas de que o projeto depende:
 
-| Recurso | O que entrega |
-| --- | --- |
-| **Listar clientes** / **Buscar cliente** | A base de clientes do estabelecimento |
-| **Histórico de pedidos** | Pedidos concluídos e cancelados. **Até 1 ano para trás, em janelas de no máximo 6 meses** |
-| **Webhook do módulo Pedidos** | Criação e mudança de status, sem polling |
+| Recurso                                  | O que entrega                                                                             |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Listar clientes** / **Buscar cliente** | A base de clientes do estabelecimento                                                     |
+| **Histórico de pedidos**                 | Pedidos concluídos e cancelados. **Até 1 ano para trás, em janelas de no máximo 6 meses** |
+| **Webhook do módulo Pedidos**            | Criação e mudança de status, sem polling                                                  |
 
 Autenticação por OAuth, com API Key legada. O lojista libera no painel em `CONFIGURAÇÕES > INTEGRAÇÕES > API DE INTEGRAÇÃO`. Integradores se cadastram na CW App Store; contato: `integracao@cardapioweb.com`.
 
@@ -71,12 +71,12 @@ Até lá o Food Marketing é o caminho de disparo, manual, e serve de rede de se
 
 ### Meta — o preço de disparar por conta própria
 
-| Etapa | Exigência | Prazo |
-| --- | --- | --- |
-| Verificação da empresa | CNPJ, comprovante de endereço comercial, documento do representante legal | 3–5 dias úteis |
-| Número dedicado | Chip que **nunca** teve WhatsApp comum nem Business (se teve, apagar a conta antes) | 1 dia |
-| Nome de exibição | Tem que bater com o documento oficial — o cliente verá **"Vitaliano Pizzaria"**, não "José" | junto |
-| Modelos de mensagem | Todo texto de marketing é template aprovado pela Meta, um a um, sujeito a recusa | ~1 dia por lote |
+| Etapa                  | Exigência                                                                                   | Prazo           |
+| ---------------------- | ------------------------------------------------------------------------------------------- | --------------- |
+| Verificação da empresa | CNPJ, comprovante de endereço comercial, documento do representante legal                   | 3–5 dias úteis  |
+| Número dedicado        | Chip que **nunca** teve WhatsApp comum nem Business (se teve, apagar a conta antes)         | 1 dia           |
+| Nome de exibição       | Tem que bater com o documento oficial — o cliente verá **"Vitaliano Pizzaria"**, não "José" | junto           |
+| Modelos de mensagem    | Todo texto de marketing é template aprovado pela Meta, um a um, sujeito a recusa            | ~1 dia por lote |
 
 Custo por mensagem de marketing no Brasil: **R$ 0,32 a R$ 0,40** ([tabela 2026](https://www.socialhub.pro/blog/preco-whatsapp-api-2026-brasil/)). Mil clientes ≈ R$ 320.
 
@@ -86,11 +86,11 @@ E a regra operacional que virou trava no desenho: **acima de 2% de bloqueios a M
 
 ## 4 · A divisão de trabalho
 
-|  | Fases 1–3 | Fase 4 em diante |
-| --- | --- | --- |
-| **Quem sumiu, o que ofertar, por quanto** | Tetteo / José | Tetteo / José |
-| **Quem manda a mensagem** | Food Marketing, à mão | **Tetteo**, pela Meta |
-| **Quem mede o retorno** | Tetteo (margem) + Food Marketing (pedidos) | Tetteo |
+|                                           | Fases 1–3                                  | Fase 4 em diante      |
+| ----------------------------------------- | ------------------------------------------ | --------------------- |
+| **Quem sumiu, o que ofertar, por quanto** | Tetteo / José                              | Tetteo / José         |
+| **Quem manda a mensagem**                 | Food Marketing, à mão                      | **Tetteo**, pela Meta |
+| **Quem mede o retorno**                   | Tetteo (margem) + Food Marketing (pedidos) | Tetteo                |
 
 ### Os dois canais do José
 
@@ -178,12 +178,12 @@ Navegação final: `/crm` (Clientes) · `/crm/produtos` (Casamento) · `/crm/cam
 
 Permissões:
 
-| Chave | O que libera |
-| --- | --- |
-| `crm.ver` | Ver clientes e histórico |
-| `crm.editar` | Cadastrar/alterar cliente, casar produtos |
-| `crm.campanhas` | Ver as propostas do José |
-| `crm.disparar` | **Aprovar e disparar** — é a permissão que gasta dinheiro |
+| Chave           | O que libera                                              |
+| --------------- | --------------------------------------------------------- |
+| `crm.ver`       | Ver clientes e histórico                                  |
+| `crm.editar`    | Cadastrar/alterar cliente, casar produtos                 |
+| `crm.campanhas` | Ver as propostas do José                                  |
+| `crm.disparar`  | **Aprovar e disparar** — é a permissão que gasta dinheiro |
 
 ---
 
@@ -204,7 +204,7 @@ criadoEm, atualizadoEm, excluidoEm
 @@unique([organizacaoId, telefone])
 ```
 
-Os cinco campos de resumo são cópia calculada. Existem porque *"sumiu há 45 dias e gastava R$ 90"* precisa ser **uma consulta com índice**, não uma varredura na tabela de pedidos toda vez que o José acorda.
+Os cinco campos de resumo são cópia calculada. Existem porque _"sumiu há 45 dias e gastava R$ 90"_ precisa ser **uma consulta com índice**, não uma varredura na tabela de pedidos toda vez que o José acorda.
 
 **`ClienteExterno`** — `id, organizacaoId, clienteId, sistema, idExterno, unidadeId` · `@@unique([organizacaoId, sistema, idExterno])`
 
@@ -234,9 +234,9 @@ ItemDePedidoExterno:
 
 `produtoExternoId` é opcional porque o item pode chegar antes de o catálogo ter sido sincronizado. O nome fica sempre gravado em `nomeNoPedido`, para que a linha continue legível mesmo sem o vínculo.
 
-Chamam-se *Externo* de propósito: quando o App Delivery nascer, ele vai querer o nome `Pedido` para os pedidos ao vivo dele, e nomes de modelo no Prisma não se repetem.
+Chamam-se _Externo_ de propósito: quando o App Delivery nascer, ele vai querer o nome `Pedido` para os pedidos ao vivo dele, e nomes de modelo no Prisma não se repetem.
 
-**Os itens entram, e essa é uma decisão com peso.** Dobram o trabalho de sincronizar. Sem eles o José só sabe dizer *"volte, tem 15% de desconto"*; com eles diz *"você pediu calabresa sete vezes seguidas e sumiu"*. É a diferença entre régua de desconto e marketing.
+**Os itens entram, e essa é uma decisão com peso.** Dobram o trabalho de sincronizar. Sem eles o José só sabe dizer _"volte, tem 15% de desconto"_; com eles diz _"você pediu calabresa sete vezes seguidas e sumiu"_. É a diferença entre régua de desconto e marketing.
 
 ### Grupo 2 · A ponte
 
@@ -250,7 +250,7 @@ conferidoEm, conferidoPorId
 @@unique([organizacaoId, sistema, idExterno])
 ```
 
-`fichaTecnicaId` é **texto solto, sem relação do Prisma**, de propósito. Uma chave estrangeira daqui para a tabela do Cardápio costuraria os dois Apps no banco, e a parede defendida no código morreria no schema. O CRM guarda o número; quem responde *"quanto custa esse id?"* é `registro-de-catalogo.ts`.
+`fichaTecnicaId` é **texto solto, sem relação do Prisma**, de propósito. Uma chave estrangeira daqui para a tabela do Cardápio costuraria os dois Apps no banco, e a parede defendida no código morreria no schema. O CRM guarda o número; quem responde _"quanto custa esse id?"_ é `registro-de-catalogo.ts`.
 
 **Produto com `fichaTecnicaId` nulo não é ofertado.** Silêncio em vez de chute.
 
@@ -307,7 +307,7 @@ O José não escreve texto livre para cliente: escolhe um modelo **aprovado** e 
 
 **O passado, uma vez.** `/api/cardapioweb/sincronizar` puxa o histórico em janelas de 6 meses, gravando uma linha de `SincronizacaoExterna` por janela. Reexecutável: se a terceira janela falhar, roda de novo e retoma, sem duplicar — tudo é chaveado por `idExterno`.
 
-**O presente, ao vivo.** O webhook bate em `/api/cardapioweb/webhook?chave=<segredo>` a cada pedido criado ou alterado. Mesma disciplina da Severina: confere o segredo, pergunta *"já vi esse `idExterno`?"*, grava, e recalcula os campos de resumo do cliente.
+**O presente, ao vivo.** O webhook bate em `/api/cardapioweb/webhook?chave=<segredo>` a cada pedido criado ou alterado. Mesma disciplina da Severina: confere o segredo, pergunta _"já vi esse `idExterno`?"_, grava, e recalcula os campos de resumo do cliente.
 
 ### O ciclo do José
 
@@ -333,13 +333,13 @@ O José não escreve texto livre para cliente: escolhe um modelo **aprovado** e 
 
 O dono abre, confere a lista, ajusta ou aprova.
 
-**Fases 1–3:** a tela entrega os filtros exatos para configurar no Food Marketing, o texto pronto e o código do cupom. Ele cola lá, dispara, e marca *"disparei"*.
+**Fases 1–3:** a tela entrega os filtros exatos para configurar no Food Marketing, o texto pronto e o código do cupom. Ele cola lá, dispara, e marca _"disparei"_.
 
 **Fase 4 em diante:** aprovar dispara. O tick varre `AlvoDaProposta` pendentes com ritmo e teto de aquecimento, pela Meta.
 
 ### A medição
 
-Quinze dias após `disparadaEm`, o tick volta em `AlvoDaProposta` e pergunta: *esses 312 pediram?* Preenche `pedidoDepoisId`, `valorGerado`, `margemGerada` — e o José avisa:
+Quinze dias após `disparadaEm`, o tick volta em `AlvoDaProposta` e pergunta: _esses 312 pediram?_ Preenche `pedidoDepoisId`, `valorGerado`, `margemGerada` — e o José avisa:
 
 > **José:** A campanha de 12/08 trouxe 41 dos 312 de volta. R$ 4.900 em pedidos, **R$ 1.680 de margem**, R$ 100 de envio. Lucro líquido R$ 1.580. A calabresa puxou 60% — vale repetir com a mesma faixa.
 
@@ -349,21 +349,21 @@ O Food Marketing diz quantos voltaram. **Só o Tetteo diz quanto sobrou.**
 
 ## 8 · As travas
 
-| Trava | Onde | Contra o quê |
-| --- | --- | --- |
-| `idExterno` único | entrada | Webhook repetido virando pedido em dobro. Mesma lógica da `EntregaEvento` e da `MensagemWhatsapp` |
-| Segredo no webhook | entrada | Qualquer um injetando pedido falso no CRM |
-| **Produto sem ficha casada não é ofertado** | proposta | José chutando margem sobre custo que não conhece |
-| **`precoParaCmvAlvo` como piso duro** | proposta | Desconto que dá prejuízo. O preço não é escolha do modelo — é conta do código |
-| **Gemini só escreve o texto** | proposta | Ele nunca decide quem recebe, qual produto, nem qual desconto |
-| Proposta nasce `AGUARDANDO` | proposta | Nada sai sem decisão humana com `crm.disparar` |
-| Teto de clientes por proposta | proposta | Campanha de R$ 3.000 de envio saindo por descuido |
-| `AlvoDaProposta` congelado | disparo | Medição virar impossível uma semana depois |
-| **Teto de aquecimento** | disparo | Número novo levando restrição da Meta na primeira rajada |
-| **Parada automática em 1,5% de bloqueio** | disparo | Chegar aos 2% da Meta e perder o número |
-| Só template `APROVADO` | disparo | Texto livre saindo para cliente fora da janela de 24h |
-| `optOutEm` respeitado sempre | disparo | Mandar para quem pediu para sair |
-| **Somente leitura no Cardápio Web** | tudo | O José nunca altera preço, cardápio, cliente ou pedido lá fora |
+| Trava                                       | Onde     | Contra o quê                                                                                      |
+| ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `idExterno` único                           | entrada  | Webhook repetido virando pedido em dobro. Mesma lógica da `EntregaEvento` e da `MensagemWhatsapp` |
+| Segredo no webhook                          | entrada  | Qualquer um injetando pedido falso no CRM                                                         |
+| **Produto sem ficha casada não é ofertado** | proposta | José chutando margem sobre custo que não conhece                                                  |
+| **`precoParaCmvAlvo` como piso duro**       | proposta | Desconto que dá prejuízo. O preço não é escolha do modelo — é conta do código                     |
+| **Gemini só escreve o texto**               | proposta | Ele nunca decide quem recebe, qual produto, nem qual desconto                                     |
+| Proposta nasce `AGUARDANDO`                 | proposta | Nada sai sem decisão humana com `crm.disparar`                                                    |
+| Teto de clientes por proposta               | proposta | Campanha de R$ 3.000 de envio saindo por descuido                                                 |
+| `AlvoDaProposta` congelado                  | disparo  | Medição virar impossível uma semana depois                                                        |
+| **Teto de aquecimento**                     | disparo  | Número novo levando restrição da Meta na primeira rajada                                          |
+| **Parada automática em 1,5% de bloqueio**   | disparo  | Chegar aos 2% da Meta e perder o número                                                           |
+| Só template `APROVADO`                      | disparo  | Texto livre saindo para cliente fora da janela de 24h                                             |
+| `optOutEm` respeitado sempre                | disparo  | Mandar para quem pediu para sair                                                                  |
+| **Somente leitura no Cardápio Web**         | tudo     | O José nunca altera preço, cardápio, cliente ou pedido lá fora                                    |
 
 ### Mole × duro
 
@@ -374,7 +374,7 @@ INSTRUÇÃO  (texto livre)        →  MOLE. Influencia o modelo.
 LIMITE     (campo estruturado)  →  DURO. Conferido pelo código.
 ```
 
-`cmvAlvo`, `maxClientesPorProposta`, `tetoDeGastoPorCampanha`, `maxEnviosPorDia` e `limiteDeBloqueio` moram em `limites` — o mesmo campo Json que o agente da Severina já tem. Escrever *"não dê desconto demais"* na caixa de instruções é pedido; `cmvAlvo: 32` é parede.
+`cmvAlvo`, `maxClientesPorProposta`, `tetoDeGastoPorCampanha`, `maxEnviosPorDia` e `limiteDeBloqueio` moram em `limites` — o mesmo campo Json que o agente da Severina já tem. Escrever _"não dê desconto demais"_ na caixa de instruções é pedido; `cmvAlvo: 32` é parede.
 
 ### O que o José nunca faz
 
@@ -430,7 +430,7 @@ São 3–7 dias de papelada que correm enquanto o código anda. Quando a fase 4 
 
 `ProdutoExterno` · tela de de-para · `modules/cardapio/catalogo.ts` · `src/registro-de-catalogo.ts`.
 
-**Entrega:** cada produto vendido sabe o próprio custo e a própria margem real. Ainda sem José — e mesmo assim esta fase responde sozinha uma pergunta que hoje não tem resposta: *quais dos meus produtos mais vendidos dão menos margem?*
+**Entrega:** cada produto vendido sabe o próprio custo e a própria margem real. Ainda sem José — e mesmo assim esta fase responde sozinha uma pergunta que hoje não tem resposta: _quais dos meus produtos mais vendidos dão menos margem?_
 
 ### Fase 3 — O José propõe
 
@@ -462,16 +462,16 @@ As fases 1 e 2 **não dependem da Severina** — são banco, conector e tela. S�
 
 ## 11 · Fora de escopo
 
-| Fora | Por quê | Quando volta |
-| --- | --- | --- |
-| **Cliente do iFood** | Telefone mascarado. Não há ninguém para chamar | Se o iFood mudar de política |
-| **Saipos** | A API dele só recebe pedido, não devolve | Se lançarem leitura |
-| **José conversando com cliente** | É outro projeto: exige atendimento, contexto de conversa e resposta em tempo real | Depois da fase 5, com dado real na mão |
-| **Reservas** | Está na navegação do manifesto, mas é outro assunto. **A aba sai até existir** | Quando o salão pedir |
-| **Fidelidade / pontos** | Programa de pontos é um projeto inteiro | Depois que a recuperação estiver rodando |
-| **Barramento de eventos** | Um consumidor só — construir de brinde é nascer torto. Mesma decisão da Severina | Quando o Analytics quiser ouvir `pedido.recebido` |
-| **Segmentos salvos** | O filtro vive na proposta. Salvar segmento é tela a mais sem uso comprovado | Se o dono repetir o mesmo corte três vezes |
-| **Criar campanha no Food Marketing pela API** | A API do Cardápio Web não expõe isso | Se expuserem — aí a fase 4 pode virar opcional |
+| Fora                                          | Por quê                                                                           | Quando volta                                      |
+| --------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **Cliente do iFood**                          | Telefone mascarado. Não há ninguém para chamar                                    | Se o iFood mudar de política                      |
+| **Saipos**                                    | A API dele só recebe pedido, não devolve                                          | Se lançarem leitura                               |
+| **José conversando com cliente**              | É outro projeto: exige atendimento, contexto de conversa e resposta em tempo real | Depois da fase 5, com dado real na mão            |
+| **Reservas**                                  | Está na navegação do manifesto, mas é outro assunto. **A aba sai até existir**    | Quando o salão pedir                              |
+| **Fidelidade / pontos**                       | Programa de pontos é um projeto inteiro                                           | Depois que a recuperação estiver rodando          |
+| **Barramento de eventos**                     | Um consumidor só — construir de brinde é nascer torto. Mesma decisão da Severina  | Quando o Analytics quiser ouvir `pedido.recebido` |
+| **Segmentos salvos**                          | O filtro vive na proposta. Salvar segmento é tela a mais sem uso comprovado       | Se o dono repetir o mesmo corte três vezes        |
+| **Criar campanha no Food Marketing pela API** | A API do Cardápio Web não expõe isso                                              | Se expuserem — aí a fase 4 pode virar opcional    |
 
 ---
 
@@ -513,11 +513,11 @@ A tela de casamento precisa mostrar, em destaque, **quantos produtos ainda falta
 
 **Não são indefinição: são medições esperando acontecer.** Quando a chave da API chegar, três perguntas decidem o escopo.
 
-| Pergunta | Se sim | Se não |
-| --- | --- | --- |
-| **`Listar clientes` devolve o telefone de verdade?** | Tudo acima vale | **O projeto morre aqui.** Sem telefone não há CRM — e é melhor descobrir antes da fase 1 do que depois da fase 2 |
-| **`Histórico de pedidos` traz os itens?** | Fase 2 entrega margem por produto e o José oferta o que a pessoa gosta | O José só oferta desconto genérico. Perde metade da graça, ainda funciona |
-| **A API expõe o opt-out ("SAIR") do Food Marketing?** | `aceitaMarketing` nasce sincronizado | O Tetteo passa a ser dono do opt-out a partir da fase 4, e as saídas registradas no Food Marketing antes disso se perdem |
+| Pergunta                                              | Se sim                                                                 | Se não                                                                                                                   |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **`Listar clientes` devolve o telefone de verdade?**  | Tudo acima vale                                                        | **O projeto morre aqui.** Sem telefone não há CRM — e é melhor descobrir antes da fase 1 do que depois da fase 2         |
+| **`Histórico de pedidos` traz os itens?**             | Fase 2 entrega margem por produto e o José oferta o que a pessoa gosta | O José só oferta desconto genérico. Perde metade da graça, ainda funciona                                                |
+| **A API expõe o opt-out ("SAIR") do Food Marketing?** | `aceitaMarketing` nasce sincronizado                                   | O Tetteo passa a ser dono do opt-out a partir da fase 4, e as saídas registradas no Food Marketing antes disso se perdem |
 
 **A primeira pergunta é bloqueante.** Nenhuma linha de código da fase 1 deve ser escrita antes dela.
 
@@ -530,7 +530,7 @@ A tela de casamento precisa mostrar, em destaque, **quantos produtos ainda falta
 - **Teste é de função pura.** O projeto não tem harness de banco. Toda lógica isolável — o corte do segmento, a escolha de produto e preço, o teto de aquecimento — sai do serviço e vira função pura testada, seguindo o padrão de `estoque` e `cardapio`
 - **Toda tabela carrega `organizacaoId`.** Consulta sem escopo é bug
 - O relógio é tarefa agendada do Dokploy batendo em `/api/crm/tick` com segredo no cabeçalho. Deve ser disparável à mão para depuração
-- Comentários em português, explicando o *porquê*, no registro dos arquivos existentes
+- Comentários em português, explicando o _porquê_, no registro dos arquivos existentes
 
 ### Variáveis de ambiente novas
 
@@ -550,21 +550,21 @@ META_WEBHOOK_SEGREDO=<openssl rand -hex 32>
 
 ### Estrutura de arquivos
 
-| Arquivo | Responsabilidade |
-| --- | --- |
-| `prisma/schema/crm.prisma` | As tabelas |
-| `src/connectors/cardapioweb/` | Falar "Cardápio Web". Só isso |
-| `src/connectors/whatsapp-oficial/` | Falar "Meta". Só isso (fase 4) |
-| `src/modules/crm/manifest.ts` · `permissoes.ts` | A declaração ao Core |
-| `src/modules/crm/schemas/segmento.ts` + teste | O corte RFV — puro |
-| `src/modules/crm/schemas/proposta.ts` + teste | Escolha de produto e preço — puro |
-| `src/modules/crm/schemas/aquecimento.ts` + teste | Quantos envios hoje — puro (fase 4) |
-| `src/modules/crm/services/*` | Clientes, pedidos, produtos, propostas, disparo, medição |
-| `src/modules/crm/assistente.ts` | O aviso que o CRM oferece à Severina |
-| `src/modules/crm/components/*` | As telas |
-| `src/modules/cardapio/catalogo.ts` | O que o Cardápio sabe sobre custo e preço |
-| `src/registro-de-catalogo.ts` | Raiz de composição, `server-only` |
-| `src/registro-de-ferramentas.ts` | Ganha uma linha: `assistenteDoCrm` |
-| `src/app/api/cardapioweb/**` | Webhook e sincronização |
-| `src/app/api/crm/tick/route.ts` | O relógio do José |
-| `src/app/(shell)/crm/**` | As rotas |
+| Arquivo                                          | Responsabilidade                                         |
+| ------------------------------------------------ | -------------------------------------------------------- |
+| `prisma/schema/crm.prisma`                       | As tabelas                                               |
+| `src/connectors/cardapioweb/`                    | Falar "Cardápio Web". Só isso                            |
+| `src/connectors/whatsapp-oficial/`               | Falar "Meta". Só isso (fase 4)                           |
+| `src/modules/crm/manifest.ts` · `permissoes.ts`  | A declaração ao Core                                     |
+| `src/modules/crm/schemas/segmento.ts` + teste    | O corte RFV — puro                                       |
+| `src/modules/crm/schemas/proposta.ts` + teste    | Escolha de produto e preço — puro                        |
+| `src/modules/crm/schemas/aquecimento.ts` + teste | Quantos envios hoje — puro (fase 4)                      |
+| `src/modules/crm/services/*`                     | Clientes, pedidos, produtos, propostas, disparo, medição |
+| `src/modules/crm/assistente.ts`                  | O aviso que o CRM oferece à Severina                     |
+| `src/modules/crm/components/*`                   | As telas                                                 |
+| `src/modules/cardapio/catalogo.ts`               | O que o Cardápio sabe sobre custo e preço                |
+| `src/registro-de-catalogo.ts`                    | Raiz de composição, `server-only`                        |
+| `src/registro-de-ferramentas.ts`                 | Ganha uma linha: `assistenteDoCrm`                       |
+| `src/app/api/cardapioweb/**`                     | Webhook e sincronização                                  |
+| `src/app/api/crm/tick/route.ts`                  | O relógio do José                                        |
+| `src/app/(shell)/crm/**`                         | As rotas                                                 |

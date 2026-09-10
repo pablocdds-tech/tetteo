@@ -7,11 +7,11 @@
 
 ## Decisões do Pablo (10/09/2026)
 
-| Pergunta                         | Resposta                                                                                                                         |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Pergunta                            | Resposta                                                                                                                                         |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Como a mensagem chega ao fornecedor | **Simulador + copiar.** Nada sai sozinho. O comprador copia mensagem e link e envia pelo WhatsApp dele; o conector real fica pronto e desligado. |
-| Alçada de aprovação              | **Só Diretor, sem limite.** A tela de alçadas existe e aceita outros papéis e limites depois, com versão.                          |
-| Ritmo                            | Construção seguida, conferência no final.                                                                                        |
+| Alçada de aprovação                 | **Só Diretor, sem limite.** A tela de alçadas existe e aceita outros papéis e limites depois, com versão.                                        |
+| Ritmo                               | Construção seguida, conferência no final.                                                                                                        |
 
 ## O que o sistema promete — e o que ele se recusa a prometer
 
@@ -25,29 +25,29 @@ Recusa: prometer economia (a sugestão mostra a conta, não um "você economizou
 
 Compras não nasce do zero. As tabelas de 04/08 evoluem; nenhuma tabela paralela é criada.
 
-| Entidade da especificação | Onde mora no Tetteo                          | De onde veio                   |
-| ------------------------- | -------------------------------------------- | ------------------------------ |
-| PurchaseRound             | `RodadaDeCompra`                             | era `Cotacao`                  |
-| Requisition               | `Requisicao`                                 | nova                           |
-| RequisitionItem           | `ItemDeRequisicao`                           | nova (a Despensa alimenta)     |
-| —                         | `ItemDaRodada` (a lista consolidada)         | era `ItemDeCotacao`            |
-| Supplier                  | `Fornecedor`                                 | existia; ganha destino e autorização |
-| SupplierProduct           | `FornecedorInsumo`                           | nova                           |
-| QuotationRequest          | `SolicitacaoDeCotacao` + `ItemDaSolicitacao` | era `PropostaDeCotacao`        |
-| QuotationVersion          | `VersaoDeProposta`                           | nova                           |
-| QuotationItem             | `ItemDeProposta`                             | era `PrecoProposto`            |
-| —                         | `EscolhaDeItem`                              | nova (a decisão por item)      |
-| PurchaseApproval          | `AprovacaoDeCompra` + `AlcadaDeCompra`       | novas                          |
-| PurchaseOrder             | `Pedido`                                     | existia; ganha snapshot e sequência |
-| PurchaseOrderItem         | `ItemDePedido`                               | existia; ganha snapshot        |
-| PurchaseAmendment         | `Pedido` filho (adendo) + `AlteracaoDePedido` | novo campo e nova tabela      |
-| SupplierOutbox            | `MensagemAoFornecedor` + `CanalDeCompras`    | novas                          |
-| GoodsReceipt              | `Recebimento`                                | nova                           |
-| ReceiptItem               | `ItemDeRecebimento`                          | nova                           |
-| AuditEvent                | `Auditoria` (Core)                           | existia                        |
-| —                         | `DivergenciaDeCompra`                        | nova (a conciliação)           |
-| —                         | `AgendaDeRodada`                             | nova (o relógio)               |
-| —                         | `Arquivo` (Core)                             | novo, conforme `2026-08-04-onde-os-arquivos-moram.md` |
+| Entidade da especificação | Onde mora no Tetteo                           | De onde veio                                          |
+| ------------------------- | --------------------------------------------- | ----------------------------------------------------- |
+| PurchaseRound             | `RodadaDeCompra`                              | era `Cotacao`                                         |
+| Requisition               | `Requisicao`                                  | nova                                                  |
+| RequisitionItem           | `ItemDeRequisicao`                            | nova (a Despensa alimenta)                            |
+| —                         | `ItemDaRodada` (a lista consolidada)          | era `ItemDeCotacao`                                   |
+| Supplier                  | `Fornecedor`                                  | existia; ganha destino e autorização                  |
+| SupplierProduct           | `FornecedorInsumo`                            | nova                                                  |
+| QuotationRequest          | `SolicitacaoDeCotacao` + `ItemDaSolicitacao`  | era `PropostaDeCotacao`                               |
+| QuotationVersion          | `VersaoDeProposta`                            | nova                                                  |
+| QuotationItem             | `ItemDeProposta`                              | era `PrecoProposto`                                   |
+| —                         | `EscolhaDeItem`                               | nova (a decisão por item)                             |
+| PurchaseApproval          | `AprovacaoDeCompra` + `AlcadaDeCompra`        | novas                                                 |
+| PurchaseOrder             | `Pedido`                                      | existia; ganha snapshot e sequência                   |
+| PurchaseOrderItem         | `ItemDePedido`                                | existia; ganha snapshot                               |
+| PurchaseAmendment         | `Pedido` filho (adendo) + `AlteracaoDePedido` | novo campo e nova tabela                              |
+| SupplierOutbox            | `MensagemAoFornecedor` + `CanalDeCompras`     | novas                                                 |
+| GoodsReceipt              | `Recebimento`                                 | nova                                                  |
+| ReceiptItem               | `ItemDeRecebimento`                           | nova                                                  |
+| AuditEvent                | `Auditoria` (Core)                            | existia                                               |
+| —                         | `DivergenciaDeCompra`                         | nova (a conciliação)                                  |
+| —                         | `AgendaDeRodada`                              | nova (o relógio)                                      |
+| —                         | `Arquivo` (Core)                              | novo, conforme `2026-08-04-onde-os-arquivos-moram.md` |
 
 Reaproveitados sem mudança de papel: `Insumo` (catálogo), `EmbalagemCompra` (sugestão de embalagem), `PosicaoEstoque`/`Contagem` (sugestão de compra), `NotaEntrada` (a única porta de entrada de estoque e custo), `Lancamento` (conta a pagar, via "importar notas").
 
@@ -74,15 +74,15 @@ RASCUNHO → COLETANDO → COTANDO → REVISAO → APROVADA → DESPACHANDO → 
     └──────────┴──────────┴─────────┴──────────┴─────────── CANCELADA
 ```
 
-| Estado      | O que acontece                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------- |
-| RASCUNHO    | comprador define lojas participantes, prazos, janela de entrega e responsável                       |
-| COLETANDO   | cada loja prepara e envia a requisição; a rodada mostra quem enviou e quem não                      |
-| COTANDO     | a lista é consolidada e **congelada**; as solicitações vão aos fornecedores                          |
-| REVISAO     | cotação encerrada; comprador compara, escolhe e gera os pedidos para aprovação                      |
-| APROVADA    | nenhum pedido da rodada aguarda aprovação                                                          |
-| DESPACHANDO | pelo menos um pedido na fila de envio                                                              |
-| FECHADA     | nada mais muda sem reabrir. Recebimento continua nos pedidos — pedido tem ciclo próprio            |
+| Estado      | O que acontece                                                                          |
+| ----------- | --------------------------------------------------------------------------------------- |
+| RASCUNHO    | comprador define lojas participantes, prazos, janela de entrega e responsável           |
+| COLETANDO   | cada loja prepara e envia a requisição; a rodada mostra quem enviou e quem não          |
+| COTANDO     | a lista é consolidada e **congelada**; as solicitações vão aos fornecedores             |
+| REVISAO     | cotação encerrada; comprador compara, escolhe e gera os pedidos para aprovação          |
+| APROVADA    | nenhum pedido da rodada aguarda aprovação                                               |
+| DESPACHANDO | pelo menos um pedido na fila de envio                                                   |
+| FECHADA     | nada mais muda sem reabrir. Recebimento continua nos pedidos — pedido tem ciclo próprio |
 
 - Toda transição é uma escrita condicional: `UPDATE … WHERE id = ? AND estado = ? AND versao = ?`. Zero linhas afetadas = alguém mudou antes; a tela diz quem e quando, e não sobrescreve.
 - **Reabrir** (REVISAO → COTANDO, FECHADA → DESPACHANDO) exige motivo, sobe a versão e grava auditoria com o motivo. Não existe mudança invisível.
@@ -158,15 +158,15 @@ Por fornecedor: frete **por entrega** (nulo = não informado ≠ zero), pedido m
 
 Embalagem = `peças × conteúdo unidade`, e o fator é calculado, nunca digitado:
 
-| Insumo medido em | Embalagem              | Fator     | Regra                                                   |
-| ---------------- | ---------------------- | --------- | ------------------------------------------------------- |
-| KG               | Caixa 12 × 900 g       | 10,8      | mesma dimensão (massa): 12 × 0,9 kg                     |
-| KG               | Saco 25 kg             | 25        | 1 × 25 kg                                               |
-| UN               | Caixa 100 un           | 100       | contagem: peças                                         |
-| UN               | Caixa 12 × 900 g       | 12        | contagem de peças: o conteúdo em gramas é só descrição  |
-| KG               | Caixa com 12 (sem peso) | **desconhecido** | massa pedida, contagem informada: não há conversão |
-| L                | Fardo 6 × 2 L          | 12        | mesma dimensão (volume)                                 |
-| KG               | Fardo 6 × 2 L          | **incompatível** | volume não vira massa sem densidade             |
+| Insumo medido em | Embalagem               | Fator            | Regra                                                  |
+| ---------------- | ----------------------- | ---------------- | ------------------------------------------------------ |
+| KG               | Caixa 12 × 900 g        | 10,8             | mesma dimensão (massa): 12 × 0,9 kg                    |
+| KG               | Saco 25 kg              | 25               | 1 × 25 kg                                              |
+| UN               | Caixa 100 un            | 100              | contagem: peças                                        |
+| UN               | Caixa 12 × 900 g        | 12               | contagem de peças: o conteúdo em gramas é só descrição |
+| KG               | Caixa com 12 (sem peso) | **desconhecido** | massa pedida, contagem informada: não há conversão     |
+| L                | Fardo 6 × 2 L           | 12               | mesma dimensão (volume)                                |
+| KG               | Fardo 6 × 2 L           | **incompatível** | volume não vira massa sem densidade                    |
 
 - Fator desconhecido ou incompatível **bloqueia** a comparação automática daquele item e pede "Conferir fator". Não existe chute.
 - A conversão é por insumo e embalagem, com origem ("cadastro do fornecedor", "informado na proposta v3", "nota 1234") e versão. Corrigir o fator cria versão nova; proposta e pedido antigos guardam o fator que usaram.
@@ -259,12 +259,12 @@ O relógio (`POST /api/compras/tick`, segredo em `x-compras-segredo`; rota fecha
 
 Resultado do canal:
 
-| O canal disse                                   | Estado               |
-| ----------------------------------------------- | -------------------- |
-| aceitou, com id                                 | `ACEITA_PELO_CANAL`  |
+| O canal disse                                        | Estado                                                            |
+| ---------------------------------------------------- | ----------------------------------------------------------------- |
+| aceitou, com id                                      | `ACEITA_PELO_CANAL`                                               |
 | recusou antes de enviar (conexão recusada, 429, 5xx) | `NA_FILA` com espera crescente (1, 4, 9, 16 min); na 5ª, `FALHOU` |
-| recusou de vez (4xx, número inválido)           | `FALHOU`             |
-| tempo esgotado / conexão caiu depois de mandar  | `INCERTA`            |
+| recusou de vez (4xx, número inválido)                | `FALHOU`                                                          |
+| tempo esgotado / conexão caiu depois de mandar       | `INCERTA`                                                         |
 
 `INCERTA` nunca é reenviada às cegas. Uma pessoa com `compras.enviar` confere no WhatsApp (a mensagem leva a referência `PC-0104/1`, fácil de achar) e escolhe "Saiu, marcar como aceita" ou "Não saiu, reenviar" — as duas auditadas. Reprocessar `FALHOU` também exige `compras.enviar`.
 
@@ -329,18 +329,18 @@ Conforme `2026-08-04-onde-os-arquivos-moram.md`: pasta persistente (`ARQUIVOS_DI
 
 ## 8. Permissões
 
-| Chave                  | Quem, tipicamente | O que permite                                                        |
-| ---------------------- | ----------------- | -------------------------------------------------------------------- |
-| `compras.ver`          | todos de compras  | ver rodadas, pedidos, fornecedores                                   |
-| `compras.requisitar`   | gerente da loja   | preparar e enviar a requisição **da própria loja**                   |
-| `compras.rodadas`      | comprador da rede | criar, avançar, reabrir e cancelar rodadas; agenda                   |
-| `compras.cotar`        | comprador         | solicitações, links, lançar propostas, escolher, exceção de fixo, zero |
+| Chave                  | Quem, tipicamente | O que permite                                                            |
+| ---------------------- | ----------------- | ------------------------------------------------------------------------ |
+| `compras.ver`          | todos de compras  | ver rodadas, pedidos, fornecedores                                       |
+| `compras.requisitar`   | gerente da loja   | preparar e enviar a requisição **da própria loja**                       |
+| `compras.rodadas`      | comprador da rede | criar, avançar, reabrir e cancelar rodadas; agenda                       |
+| `compras.cotar`        | comprador         | solicitações, links, lançar propostas, escolher, exceção de fixo, zero   |
 | `compras.pedir`        | comprador         | gerar pedidos para aprovação, adendos, alterações, confirmação comercial |
-| `compras.aprovar`      | Diretor           | aprovar e recusar, dentro da alçada                                  |
-| `compras.enviar`       | comprador         | painel de envios, reprocessar, resolver incerta, pausar, teste       |
-| `compras.receber`      | gerente da loja   | conferir recebimento e devolução **na própria loja**                 |
-| `compras.fornecedores` | comprador         | cadastro de fornecedor e produto do fornecedor                       |
-| `compras.configurar`   | Diretor           | alçadas e canal                                                      |
+| `compras.aprovar`      | Diretor           | aprovar e recusar, dentro da alçada                                      |
+| `compras.enviar`       | comprador         | painel de envios, reprocessar, resolver incerta, pausar, teste           |
+| `compras.receber`      | gerente da loja   | conferir recebimento e devolução **na própria loja**                     |
+| `compras.fornecedores` | comprador         | cadastro de fornecedor e produto do fornecedor                           |
+| `compras.configurar`   | Diretor           | alçadas e canal                                                          |
 
 Rodada é da organização; requisição, pedido e recebimento são da loja. Toda consulta filtra pelas lojas visíveis do contexto, e todo id recebido é conferido contra elas antes de qualquer escrita.
 
@@ -375,8 +375,15 @@ type ConsultaDoCanal = "aceita" | "nao-encontrada" | "desconhecido";
 interface CanalDeFornecedor {
   nome: "simulador" | "whatsapp";
   simulado: boolean;
-  enviar(m: { destino: string; texto: string; chave: string }): Promise<ResultadoDoCanal>;
-  consultar(m: { chave: string; idProvedor: string | null }): Promise<ConsultaDoCanal>;
+  enviar(m: {
+    destino: string;
+    texto: string;
+    chave: string;
+  }): Promise<ResultadoDoCanal>;
+  consultar(m: {
+    chave: string;
+    idProvedor: string | null;
+  }): Promise<ConsultaDoCanal>;
 }
 ```
 
@@ -397,11 +404,11 @@ Navegador: computador e celular, permissões, e os três prints (comparação; p
 
 ## 12. O que depende de integração real
 
-| Item                                    | O que falta                                                                 |
-| --------------------------------------- | --------------------------------------------------------------------------- |
-| Envio real ao fornecedor                | um número de WhatsApp só de compras, conectado como instância na Evolution  |
-| "Entregue" de verdade                   | webhook de confirmação de entrega da Evolution                              |
-| Reconciliação automática de `INCERTA`   | busca de mensagem por referência na Evolution                               |
-| Fotos em produção                       | o volume `tetteo_arquivos` montado em `/app/arquivos` no Dokploy             |
-| Rodada automática e despacho            | tarefa agendada chamando `/api/compras/tick` a cada minuto, com o segredo   |
-| NF-e por XML                            | não existe importação de XML no Tetteo                                      |
+| Item                                  | O que falta                                                                |
+| ------------------------------------- | -------------------------------------------------------------------------- |
+| Envio real ao fornecedor              | um número de WhatsApp só de compras, conectado como instância na Evolution |
+| "Entregue" de verdade                 | webhook de confirmação de entrega da Evolution                             |
+| Reconciliação automática de `INCERTA` | busca de mensagem por referência na Evolution                              |
+| Fotos em produção                     | o volume `tetteo_arquivos` montado em `/app/arquivos` no Dokploy           |
+| Rodada automática e despacho          | tarefa agendada chamando `/api/compras/tick` a cada minuto, com o segredo  |
+| NF-e por XML                          | não existe importação de XML no Tetteo                                     |

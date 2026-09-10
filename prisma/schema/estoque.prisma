@@ -177,11 +177,21 @@ model NotaEntrada {
   /// Um-para-um: o mesmo boleto não pode virar duas contas.
   contaAPagar Lancamento?
 
+  /// O recebimento de Compras que deu esta entrada, ou que se ligou a ela.
+  ///
+  /// É a regra da ORIGEM ÚNICA: a mercadoria de um pedido entra no estoque
+  /// por UMA nota. Único — um recebimento não vira duas notas, e uma nota não
+  /// é conferida duas vezes. Texto solto, sem relação: o Estoque não conhece
+  /// as tabelas de Compras.
+  recebimentoId String? @unique
+  pedidoId      String?
+
   /// Lançar a mesma nota duas vezes é o erro mais comum do mundo e infla o
   /// CMV sem deixar rastro. O banco recusa.
   @@unique([unidadeId, fornecedorId, numero, serie])
   @@index([unidadeId, recebidaEm])
   @@index([unidadeId, status])
+  @@index([pedidoId])
   @@map("nota_entrada")
 }
 
@@ -393,6 +403,10 @@ enum TipoDeMovimento {
   TRANSFERENCIA
   /// Correção pela contagem física.
   AJUSTE
+  /// Voltou para o fornecedor depois de ter entrado. É o movimento que
+  /// COMPENSA a entrada — a nota original não é apagada nem editada, e o CMV
+  /// desconta a devolução das compras do período.
+  DEVOLUCAO
 }
 
 /// Uma linha do razão de estoque.
@@ -429,6 +443,9 @@ model MovimentoEstoque {
 
   /// A contagem que gerou o ajuste, quando foi um.
   contagemId String?
+
+  /// O recebimento de Compras que gerou a devolução, quando foi uma.
+  recebimentoId String?
 
   ocorridoEm      DateTime @default(now())
   registradoPorId String?

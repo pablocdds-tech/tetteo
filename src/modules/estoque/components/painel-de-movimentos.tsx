@@ -34,6 +34,7 @@ const COR: Record<TipoDeMovimento, string> = {
   DOACAO: "bg-warn-sub text-warn",
   TRANSFERENCIA: "bg-accent-sub text-accent",
   AJUSTE: "bg-surface-3 text-ink-2",
+  DEVOLUCAO: "bg-info-sub text-info",
 };
 
 export type MovimentoNaLista = {

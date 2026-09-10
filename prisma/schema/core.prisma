@@ -407,6 +407,46 @@ model Auditoria {
 }
 
 // ---------------------------------------------------------------------------
+// ARQUIVOS
+//
+// Conforme docs/superpowers/specs/2026-08-04-onde-os-arquivos-moram.md: o byte
+// mora numa pasta persistente (`ARQUIVOS_DIR`), com nome aleatório; o DONO
+// mora aqui. Sem linha nesta tabela, o arquivo é órfão e não é servido.
+// ---------------------------------------------------------------------------
+
+/// Um arquivo privado — hoje, a foto do recebimento.
+///
+/// Entregue só por `GET /api/arquivos/<id>`, que confere organização, unidade
+/// e `permissaoLeitura` antes de ler o disco. Nunca por caminho público.
+model Arquivo {
+  id            String  @id @default(cuid())
+  organizacaoId String
+  unidadeId     String?
+
+  enviadoPorId String?
+
+  /// Relativo a ARQUIVOS_DIR: "2026/09/clx82n4k9a0001.jpg".
+  caminho      String
+  tipo         String
+  tamanho      Int
+  nomeOriginal String
+
+  /// A permissão de quem pode ver: "compras.ver".
+  permissaoLeitura String
+
+  /// A quem pertence. Nulo enquanto enviado e ainda não vinculado.
+  entidade   String?
+  entidadeId String?
+
+  criadoEm   DateTime  @default(now())
+  excluidoEm DateTime?
+
+  @@index([entidade, entidadeId])
+  @@index([organizacaoId, criadoEm])
+  @@map("arquivo")
+}
+
+// ---------------------------------------------------------------------------
 // NOTIFICAÇÕES
 //
 // Nenhum App constrói sua própria caixinha. Todos publicam no mesmo formato e
