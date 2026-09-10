@@ -31,9 +31,16 @@ export default auth;
  *
  * Isso NÃO abre a rota: ela exige `x-severina-segredo` e recusa com 401 sem
  * ele. A autenticação dela é outra, não é nenhuma.
+ *
+ * `api/compras/tick` — o relógio de Compras, pelo mesmo motivo: máquina, e
+ *                      com o próprio segredo (`x-compras-segredo`).
+ * `fornecedor/`      — a página onde o FORNECEDOR responde a cotação. Ele não
+ *                      tem conta no Tetteo; quem autentica é o código do link,
+ *                      conferido a cada leitura e a cada envio. A página não
+ *                      mostra nada sem um código válido.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|_next/static|_next/image|favicon.ico|login).*)",
+    "/((?!api/auth|api/severina|api/compras/tick|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
   ],
 };

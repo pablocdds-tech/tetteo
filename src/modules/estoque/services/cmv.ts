@@ -113,11 +113,31 @@ export async function calcularCmvDoPeriodo(
     select: { insumoId: true, quantidade: true, valorTotal: true },
   });
 
-  const compras: CompraDoPeriodo[] = itensDeNota.map((i) => ({
-    insumoId: i.insumoId,
-    quantidade: Number(i.quantidade),
-    valor: Number(i.valorTotal),
-  }));
+  // A DEVOLUÇÃO desconta a compra: mercadoria que entrou e voltou para o
+  // fornecedor não foi consumida. Sem isto ela apareceria como consumo — o
+  // queijo devolvido na quarta viraria CMV da semana.
+  const devolucoes = await db.movimentoEstoque.findMany({
+    where: {
+      unidadeId: unidade.id,
+      tipo: "DEVOLUCAO",
+      ocorridoEm: { gt: inicial.referencia, lte: final.referencia },
+      ...(final.localId ? { localId: final.localId } : {}),
+    },
+    select: { insumoId: true, quantidade: true, custoUnitario: true },
+  });
+
+  const compras: CompraDoPeriodo[] = [
+    ...itensDeNota.map((i) => ({
+      insumoId: i.insumoId,
+      quantidade: Number(i.quantidade),
+      valor: Number(i.valorTotal),
+    })),
+    ...devolucoes.map((d) => ({
+      insumoId: d.insumoId,
+      quantidade: -Number(d.quantidade),
+      valor: -Number(d.quantidade) * Number(d.custoUnitario),
+    })),
+  ];
 
   const resultado = calcularCmv(
     paraItem(inicial.itens),

@@ -1,6 +1,9 @@
 import { db } from "@/server/db";
 
 import type { RespostaBruta } from "../schemas/proposta";
+import { aplicarSugestao } from "../services/comparacao";
+import { aprovarPedido, gerarPedidos } from "../services/pedidos";
+import { registrarPeloComprador } from "../services/propostas";
 import {
   enviarRequisicao,
   requisicaoDaLoja,
@@ -146,5 +149,57 @@ export function respostaBruta(
       disponivel: i.disponivel ?? "",
       observacao: "",
     })),
+  };
+}
+
+/**
+ * Os dois pedidos da rodada padrão, APROVADOS pelo Diretor:
+ *   Centro · Distribuidora A — 2 caixas de molho (12 × 900 g, R$ 95,40) e
+ *            10 peças de mussarela de 1 kg (R$ 32), frete R$ 25 → R$ 535,80
+ *   Sul    · Distribuidora A — 1 caixa de molho, frete R$ 25 → R$ 120,40
+ */
+export async function pedidosAprovados(c: Cenario) {
+  const r = await rodadaEmCotacao(c);
+  const a = r.sol(c.fornecedores.a.id);
+  const b = r.sol(c.fornecedores.b.id);
+  await registrarPeloComprador(
+    r.comprador,
+    a.id,
+    respostaBruta(
+      [
+        { id: a.item("Molho de tomate"), pecas: "12", conteudo: "900", unidadeConteudo: "G", preco: "95,40" },
+        { id: a.item("Mussarela"), nomeEmbalagem: "Peça", pecas: "1", conteudo: "1", unidadeConteudo: "KG", preco: "32" },
+      ],
+      { frete: "25" },
+    ),
+    { origem: "COMPRADOR_DIGITOU" },
+  );
+  await registrarPeloComprador(
+    r.comprador,
+    b.id,
+    respostaBruta(
+      [{ id: b.item("Molho de tomate"), pecas: "1", conteudo: "10", unidadeConteudo: "KG", preco: "300" }],
+      { frete: "0" },
+    ),
+    { origem: "COMPRADOR_DIGITOU" },
+  );
+  await moverRodada(r.comprador, r.id, { versao: 3, para: "REVISAO" });
+  await aplicarSugestao(r.comprador, r.id);
+  const oleo = await db.itemDaRodada.findFirstOrThrow({
+    where: { rodadaId: r.id, insumoId: c.insumos.oleo.id },
+  });
+  await gerarPedidos(r.comprador, r.id, { ignorar: [oleo.id] });
+
+  const diretor = await c.ctx(c.diretor, null);
+  for (const p of await db.pedido.findMany({ select: { id: true } })) {
+    await aprovarPedido(diretor, p.id, 1);
+  }
+  const pedidos = await db.pedido.findMany({ include: { itens: true } });
+  return {
+    rodadaId: r.id,
+    comprador: r.comprador,
+    diretor,
+    centro: pedidos.find((p) => p.unidadeId === c.centro.id)!,
+    sul: pedidos.find((p) => p.unidadeId === c.sul.id)!,
   };
 }

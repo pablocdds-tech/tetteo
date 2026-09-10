@@ -51,3 +51,7 @@ next-env.d.ts
 
 # credenciais geradas localmente — nunca versionar
 credenciais-primeiro-acesso.txt
+
+# arquivos privados (fotos de recebimento) em desenvolvimento — em produção
+# moram no volume /app/arquivos, nunca no repositório
+/.arquivos/
