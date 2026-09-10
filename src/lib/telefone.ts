@@ -54,6 +54,28 @@ export function normalizarTelefone(bruto: string): string | null {
   return numero.length >= 10 ? numero : null;
 }
 
+/**
+ * O número para mostrar em tela: DDD e os quatro últimos.
+ *
+ * "5511900000012" → "(11) •••••-0012". Basta para reconhecer "é o número da
+ * loja"; não basta para ninguém ligar para ele. A tela do WhatsApp aparece em
+ * print de grupo e em demonstração — o número inteiro não precisa estar lá.
+ */
+export function mascararTelefone(e164: string | null | undefined): string {
+  const digitos = (e164 ?? "").replace(/\D/g, "");
+  if (digitos.length < 8) return "—";
+
+  const ultimos = digitos.slice(-4);
+  const brasileiro = /^55(\d{2})(\d{8,9})$/.exec(digitos);
+  if (brasileiro) {
+    const escondidos = "•".repeat(brasileiro[2].length - 4);
+    return `(${brasileiro[1]}) ${escondidos}-${ultimos}`;
+  }
+
+  // Estrangeiro: sem regra de DDD para inventar.
+  return `•••• ${ultimos}`;
+}
+
 /** Conversa de grupo. A Severina nunca age numa. */
 export function ehGrupo(remoteJid: string): boolean {
   return (remoteJid ?? "").endsWith("@g.us");

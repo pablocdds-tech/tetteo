@@ -22,14 +22,14 @@ O que este trabalho **não** faz, por pedido do dono:
 
 ## 2 · Decisões travadas
 
-| Decisão                         | Escolha                                                                                         | Por quê                                                                                                                 |
-| ------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Modalidade**                  | **Baileys** via Evolution API 2.3.7, a **instância que já existe**                              | Já instalada e conectada; nada a reinstalar nem desconectar. Decisão do dono, com o risco apresentado (§11)             |
-| **O "fechamento"**              | Checklist cujo modelo tem **"Fechamento" no nome**, ao ser fechado                              | Já existe no Tetteo. Fechamento de caixa depende do PDV, que não existe                                                 |
-| **Onde mora**                   | No módulo **Severina** (`assistente`), que já é dono do número                                  | Módulo não escreve em tabela de outro módulo — um App novo não poderia usar a tabela do número                          |
-| **Fila**                        | O próprio **PostgreSQL** do Tetteo (estado + horário + troca atômica de estado)                 | Poucos avisos por dia; Redis + worker seria mais uma peça para manter e para fazer backup                               |
-| **Chave da Evolution**          | O Tetteo usa só a **chave da instância**, nunca a global                                        | Na 2.3.7 a chave da instância vale em toda rota com `{instance}` (§3). A global fica só dentro da Evolution             |
-| **Eventos assinados**           | `CONNECTION_UPDATE`, `MESSAGES_UPDATE`, `SEND_MESSAGE`                                          | O número é pessoal: o Tetteo não precisa ver conversa nenhuma. `QRCODE_UPDATED` fica fora para o QR nunca viajar em log |
+| Decisão                            | Escolha                                                                                     | Por quê                                                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Modalidade**                     | **Baileys** via Evolution API 2.3.7, a **instância que já existe**                          | Já instalada e conectada; nada a reinstalar nem desconectar. Decisão do dono, com o risco apresentado (§11)             |
+| **O "fechamento"**                 | Checklist cujo modelo tem **"Fechamento" no nome**, ao ser fechado                          | Já existe no Tetteo. Fechamento de caixa depende do PDV, que não existe                                                 |
+| **Onde mora**                      | No módulo **Severina** (`assistente`), que já é dono do número                              | Módulo não escreve em tabela de outro módulo — um App novo não poderia usar a tabela do número                          |
+| **Fila**                           | O próprio **PostgreSQL** do Tetteo (estado + horário + troca atômica de estado)             | Poucos avisos por dia; Redis + worker seria mais uma peça para manter e para fazer backup                               |
+| **Chave da Evolution**             | O Tetteo usa só a **chave da instância**, nunca a global                                    | Na 2.3.7 a chave da instância vale em toda rota com `{instance}` (§3). A global fica só dentro da Evolution             |
+| **Eventos assinados**              | `CONNECTION_UPDATE`, `MESSAGES_UPDATE`, `SEND_MESSAGE`                                      | O número é pessoal: o Tetteo não precisa ver conversa nenhuma. `QRCODE_UPDATED` fica fora para o QR nunca viajar em log |
 | **Envio depois de tempo esgotado** | **Nunca reenvia sozinho.** Consulta o provedor; se não achar, vira pendência para um humano | A 2.3.7 não tem chave de idempotência no envio. Reenvio automático pode virar duas mensagens iguais                     |
 
 Alternativas consideradas e recusadas: Redis + BullMQ (infra demais para o volume) e reaproveitar `MensagemWhatsapp` (mistura conversa de agente com rascunho que exige confirmação, e toda mensagem ali exige um agente dono).
@@ -38,13 +38,13 @@ Alternativas consideradas e recusadas: Redis + BullMQ (infra demais para o volum
 
 ## 3 · O ambiente, conferido em 10/09/2026
 
-| Peça      | O que é                                                                                                                             | Como foi conferido                                         |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Sistema   | Tetteo — Next.js 16.3.0, React 19.2.8, Prisma 7.9, Node 24 (imagem alpine)                                                          | `package.json`, `Dockerfile`                               |
-| Banco     | PostgreSQL 18 no Dokploy (banco `tetteo`)                                                                                           | memória do projeto; `prisma/schema`                        |
-| Onde roda | VPS Hostinger KVM 2 (Ubuntu 24.04), Dokploy v0.29.8 + Traefik v3.6.7, `https://app.vitalianopizzaria.com.br`, deploy a cada push no `main` | memória do projeto                                         |
-| WhatsApp  | **Evolution API 2.3.7**, WhatsApp Web `2.3000.1047236770`, `https://evo.vitalianopizzaria.com.br`                                    | `GET /` público, sem chave, em 10/09/2026                  |
-| Local     | Windows 11, sem Docker nem PostgreSQL. Ensaio num `embedded-postgres` descartável, fora do repositório                              | máquina do Pablo                                           |
+| Peça      | O que é                                                                                                                                    | Como foi conferido                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| Sistema   | Tetteo — Next.js 16.3.0, React 19.2.8, Prisma 7.9, Node 24 (imagem alpine)                                                                 | `package.json`, `Dockerfile`              |
+| Banco     | PostgreSQL 18 no Dokploy (banco `tetteo`)                                                                                                  | memória do projeto; `prisma/schema`       |
+| Onde roda | VPS Hostinger KVM 2 (Ubuntu 24.04), Dokploy v0.29.8 + Traefik v3.6.7, `https://app.vitalianopizzaria.com.br`, deploy a cada push no `main` | memória do projeto                        |
+| WhatsApp  | **Evolution API 2.3.7**, WhatsApp Web `2.3000.1047236770`, `https://evo.vitalianopizzaria.com.br`                                          | `GET /` público, sem chave, em 10/09/2026 |
+| Local     | Windows 11, sem Docker nem PostgreSQL. Ensaio num `embedded-postgres` descartável, fora do repositório                                     | máquina do Pablo                          |
 
 ### Fontes consultadas
 
@@ -54,13 +54,13 @@ Alternativas consideradas e recusadas: Redis + BullMQ (infra demais para o volum
 
 **Onde a documentação diverge do código da 2.3.7, vale o código.** As divergências que importam para nós:
 
-| Assunto                | Documentação                   | Código 2.3.7                                                   |
-| ---------------------- | ------------------------------ | -------------------------------------------------------------- |
-| Configurar webhook     | corpo plano                    | aninhado em `webhook: {…}`, com `byEvents` / `base64`          |
-| `sendText`             | `textMessage: {text}`, HTTP 200 | `text` plano, **HTTP 201**                                    |
-| `findMessages`         | `take/skip/orderBy`            | `where/page/offset`                                            |
-| Reiniciar instância    | —                              | **POST** `/instance/restart/{instance}`, mantém a sessão       |
-| `QRCODE_LIMIT`         | "quanto tempo o QR dura"       | **quantos** QR Codes, não tempo (cada um dura 45 s)            |
+| Assunto             | Documentação                    | Código 2.3.7                                             |
+| ------------------- | ------------------------------- | -------------------------------------------------------- |
+| Configurar webhook  | corpo plano                     | aninhado em `webhook: {…}`, com `byEvents` / `base64`    |
+| `sendText`          | `textMessage: {text}`, HTTP 200 | `text` plano, **HTTP 201**                               |
+| `findMessages`      | `take/skip/orderBy`             | `where/page/offset`                                      |
+| Reiniciar instância | —                               | **POST** `/instance/restart/{instance}`, mantém a sessão |
+| `QRCODE_LIMIT`      | "quanto tempo o QR dura"        | **quantos** QR Codes, não tempo (cada um dura 45 s)      |
 
 ### O que a 2.3.7 oferece — e o que não
 
@@ -91,15 +91,15 @@ Alternativas consideradas e recusadas: Redis + BullMQ (infra demais para o volum
 
 ### Onde cada peça mora
 
-| Peça                                          | Camada        | Faz                                                                                           |
-| --------------------------------------------- | ------------- | --------------------------------------------------------------------------------------------- |
-| `connectors/whatsapp/`                        | conector      | Fala "Evolution" e só isso: estado, QR, eventos, envio, consulta, leitura do webhook, JWT     |
-| `connectors/whatsapp/simulado.ts`             | conector      | O mesmo contrato, sem rede — para o ensaio. **Recusado em produção**                          |
-| `modules/assistente/services/`                | módulo        | Conexão, eventos, avisos, rascunhos, autorização de destinatário. Não conhece a Evolution     |
-| `modules/checklists/assistente.ts`            | módulo        | Declara o fato "fechamento concluído". A Severina pergunta; o Checklists responde             |
-| `app/api/whatsapp/webhook/route.ts`           | app           | A porta de entrada                                                                            |
-| `app/api/whatsapp/_costura/`                  | app           | A única costura entre módulo e conector: entrega da fila, verificação, saúde, telas           |
-| `app/api/severina/tick/route.ts`              | app           | O relógio, que já existia, ganha as rodadas novas                                             |
+| Peça                                | Camada   | Faz                                                                                       |
+| ----------------------------------- | -------- | ----------------------------------------------------------------------------------------- |
+| `connectors/whatsapp/`              | conector | Fala "Evolution" e só isso: estado, QR, eventos, envio, consulta, leitura do webhook, JWT |
+| `connectors/whatsapp/simulado.ts`   | conector | O mesmo contrato, sem rede — para o ensaio. **Recusado em produção**                      |
+| `modules/assistente/services/`      | módulo   | Conexão, eventos, avisos, rascunhos, autorização de destinatário. Não conhece a Evolution |
+| `modules/checklists/assistente.ts`  | módulo   | Declara o fato "fechamento concluído". A Severina pergunta; o Checklists responde         |
+| `app/api/whatsapp/webhook/route.ts` | app      | A porta de entrada                                                                        |
+| `app/api/whatsapp/_costura/`        | app      | A única costura entre módulo e conector: entrega da fila, verificação, saúde, telas       |
+| `app/api/severina/tick/route.ts`    | app      | O relógio, que já existia, ganha as rodadas novas                                         |
 
 As travas do linter continuam intactas: módulo não importa conector; o Checklists não importa a Severina; o Core não conhece nenhum dos dois.
 
@@ -158,12 +158,12 @@ tentativas, recebidoEm, processadoEm?, ultimaRepeticaoEm?
 
 O `idExterno` de cada tipo:
 
-| Tipo                | idExterno                                                                 |
-| ------------------- | ------------------------------------------------------------------------- |
-| `messages.update`   | `status:<keyId>:<status>` — a mesma mensagem tem "entregue" e "lida"      |
-| `send.message`      | `envio:<key.id>`                                                          |
-| `messages.upsert`   | `entrada:<key.id>`                                                        |
-| `connection.update` | `conexao:` + SHA-256 do corpo — a Evolution reenvia o corpo idêntico      |
+| Tipo                | idExterno                                                            |
+| ------------------- | -------------------------------------------------------------------- |
+| `messages.update`   | `status:<keyId>:<status>` — a mesma mensagem tem "entregue" e "lida" |
+| `send.message`      | `envio:<key.id>`                                                     |
+| `messages.upsert`   | `entrada:<key.id>`                                                   |
+| `connection.update` | `conexao:` + SHA-256 do corpo — a Evolution reenvia o corpo idêntico |
 
 "Duplicado" não é um status: é o evento que chegou de novo e só somou em `repeticoes`. O trabalho não se repete.
 
@@ -246,12 +246,12 @@ Ref. AV-7K2PQX
 
 ### 6.2 · Quando o envio dá errado
 
-| O que aconteceu                                                          | Vira                                   | Por quê                                       |
-| ------------------------------------------------------------------------ | -------------------------------------- | --------------------------------------------- |
-| Não conectou (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`), ou 429          | CONFIRMADO de novo, em 1, 4, 9 min — até 3 vezes; depois FALHOU | O pedido **não chegou**: repetir é seguro |
-| Tempo esgotado (15 s), conexão caiu no meio, 5xx, 201 sem `key.id`        | **INCERTO**                            | Pode ter saído. Repetir pode duplicar         |
-| 400 / 401 / 403 / 404                                                    | FALHOU, com frase limpa                | Repetir não resolve                           |
-| O processo morreu com o aviso em NA_FILA há mais de 2 min                 | INCERTO                                | Mesmo caso do tempo esgotado                  |
+| O que aconteceu                                                    | Vira                                                            | Por quê                                   |
+| ------------------------------------------------------------------ | --------------------------------------------------------------- | ----------------------------------------- |
+| Não conectou (`ECONNREFUSED`, `ENOTFOUND`, `EAI_AGAIN`), ou 429    | CONFIRMADO de novo, em 1, 4, 9 min — até 3 vezes; depois FALHOU | O pedido **não chegou**: repetir é seguro |
+| Tempo esgotado (15 s), conexão caiu no meio, 5xx, 201 sem `key.id` | **INCERTO**                                                     | Pode ter saído. Repetir pode duplicar     |
+| 400 / 401 / 403 / 404                                              | FALHOU, com frase limpa                                         | Repetir não resolve                       |
+| O processo morreu com o aviso em NA_FILA há mais de 2 min          | INCERTO                                                         | Mesmo caso do tempo esgotado              |
 
 **O INCERTO, passo a passo:**
 
@@ -267,18 +267,18 @@ Um erro de rede nunca vira cinco mensagens iguais: no máximo uma tentativa auto
 
 A ordem das travas, e a resposta de cada uma:
 
-| # | Trava                                                                                      | Se falhar |
-| - | ------------------------------------------------------------------------------------------ | --------- |
-| 1 | Senha do webhook configurada no servidor                                                   | 503       |
-| 2 | **Veio pela rede interna** — pedido com `X-Forwarded-Server` ou `X-Real-Ip` passou pelo Traefik | 403       |
-| 3 | `Content-Type: application/json`                                                           | 415       |
-| 4 | Até **256 KB**, contados na leitura (não no cabeçalho)                                     | 413       |
-| 5 | `Authorization: Bearer` com JWT HS256 válido, `app: evolution`, `action: webhook`, dentro do prazo | 401 |
-| 6 | JSON que abre                                                                              | 400       |
-| 7 | Tipo previsto (os 4 da tabela do §5)                                                        | 422       |
-| 8 | Formato do tipo — esquema estrito no envelope, campos exigidos em `data`                    | 400       |
-| 9 | Instância existe **no cadastro do Tetteo** e é a da credencial configurada                  | 404       |
-| 10 | Grava com a trava de duplicata → `200 {ok, duplicado}` na hora                            | —         |
+| #   | Trava                                                                                              | Se falhar |
+| --- | -------------------------------------------------------------------------------------------------- | --------- |
+| 1   | Senha do webhook configurada no servidor                                                           | 503       |
+| 2   | **Veio pela rede interna** — pedido com `X-Forwarded-Server` ou `X-Real-Ip` passou pelo Traefik    | 403       |
+| 3   | `Content-Type: application/json`                                                                   | 415       |
+| 4   | Até **256 KB**, contados na leitura (não no cabeçalho)                                             | 413       |
+| 5   | `Authorization: Bearer` com JWT HS256 válido, `app: evolution`, `action: webhook`, dentro do prazo | 401       |
+| 6   | JSON que abre                                                                                      | 400       |
+| 7   | Tipo previsto (os 4 da tabela do §5)                                                               | 422       |
+| 8   | Formato do tipo — esquema estrito no envelope, campos exigidos em `data`                           | 400       |
+| 9   | Instância existe **no cadastro do Tetteo** e é a da credencial configurada                         | 404       |
+| 10  | Grava com a trava de duplicata → `200 {ok, duplicado}` na hora                                     | —         |
 
 Depois da resposta, `after()` processa. Se o processo cair antes, o relógio pega o evento que ficou RECEBIDO há mais de 30 s.
 
@@ -288,20 +288,20 @@ Por que 2 é assim: o Next.js preenche `x-forwarded-for/host/proto/port` sozinho
 
 O que o `resumo` guarda, por tipo — e nada além:
 
-| Tipo                | Guarda                                                                   | Nunca guarda                          |
-| ------------------- | ------------------------------------------------------------------------ | ------------------------------------- |
-| `connection.update` | estado, código, os 4 últimos dígitos do número                           | nome de perfil, foto                  |
-| `messages.update`   | id da mensagem, status, se é nossa                                       | `remoteJid`                           |
-| `send.message`      | id da mensagem, SHA-256 do texto                                         | o texto, o destinatário               |
-| `messages.upsert`   | id, se é do próprio número, se é grupo, se o remetente é vinculado       | texto, `remoteJid`, `pushName`, mídia |
+| Tipo                | Guarda                                                             | Nunca guarda                          |
+| ------------------- | ------------------------------------------------------------------ | ------------------------------------- |
+| `connection.update` | estado, código, os 4 últimos dígitos do número                     | nome de perfil, foto                  |
+| `messages.update`   | id da mensagem, status, se é nossa                                 | `remoteJid`                           |
+| `send.message`      | id da mensagem, SHA-256 do texto                                   | o texto, o destinatário               |
+| `messages.upsert`   | id, se é do próprio número, se é grupo, se o remetente é vinculado | texto, `remoteJid`, `pushName`, mídia |
 
 ### 6.4 · Processar um evento
 
-| Tipo                | O que faz                                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `connection.update` | `open` → CONECTADO · `connecting` → CONECTANDO · `close` → DESCONECTADO · `refused` → ATENÇÃO ("limite de QR") |
-| `messages.update`   | acha o aviso pelo id → avança o estado, **nunca volta** (LIDO não vira ENTREGUE). Não é aviso nosso → IGNORADO |
-| `send.message`      | confirma um ACEITO, ou resolve um INCERTO pelo texto. Mensagem mandada fora do Tetteo → IGNORADO           |
+| Tipo                | O que faz                                                                                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connection.update` | `open` → CONECTADO · `connecting` → CONECTANDO · `close` → DESCONECTADO · `refused` → ATENÇÃO ("limite de QR")                                              |
+| `messages.update`   | acha o aviso pelo id → avança o estado, **nunca volta** (LIDO não vira ENTREGUE). Não é aviso nosso → IGNORADO                                              |
+| `send.message`      | confirma um ACEITO, ou resolve um INCERTO pelo texto. Mensagem mandada fora do Tetteo → IGNORADO                                                            |
 | `messages.upsert`   | **sempre IGNORADO nesta fase**, com o motivo: do próprio número (é o que impede ciclo), grupo, remetente não autorizado, ou "respostas ainda não são lidas" |
 
 **Nenhum evento dispara envio.** É a trava contra ciclo por construção, não por disciplina: o único caminho até `enviarMensagem` passa por CONFIRMADO, e só uma pessoa confirma.
@@ -318,12 +318,12 @@ O que o `resumo` guarda, por tipo — e nada além:
 
 Dentro da Severina. Uma coluna no celular, ações sempre visíveis, nada de bloco longo de texto.
 
-| Tela         | Mostra                                                                                                                                      | Ações                                                                                        |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| **WhatsApp** | Estado (Desconectado · Conectando · Conectado · Atenção · Configuração pendente), número mascarado, última atualização, loja autorizada, webhook atual (endereço mascarado) | Reconectar · QR (só quem pode) · Aplicar eventos · Envio ligado/pausado · Agendamentos pausados |
-| **Eventos**  | Recebidos · Ignorados · Duplicados · Falhas no período; a lista                                                                             | Abrir um evento: painel lateral com o resumo limpo                                           |
-| **Avisos**   | Para revisar · Em andamento · Pendências · Todos; cada aviso com destinatário e estado                                                     | Painel: prévia, destinatário, linha do tempo das etapas, erro · Confirmar · Salvar · Descartar · Reenviar |
-| **Números**  | (já existia) + "Autorizado para avisos"                                                                                                     | Autorizar · Revogar                                                                          |
+| Tela         | Mostra                                                                                                                                                                      | Ações                                                                                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **WhatsApp** | Estado (Desconectado · Conectando · Conectado · Atenção · Configuração pendente), número mascarado, última atualização, loja autorizada, webhook atual (endereço mascarado) | Reconectar · QR (só quem pode) · Aplicar eventos · Envio ligado/pausado · Agendamentos pausados           |
+| **Eventos**  | Recebidos · Ignorados · Duplicados · Falhas no período; a lista                                                                                                             | Abrir um evento: painel lateral com o resumo limpo                                                        |
+| **Avisos**   | Para revisar · Em andamento · Pendências · Todos; cada aviso com destinatário e estado                                                                                      | Painel: prévia, destinatário, linha do tempo das etapas, erro · Confirmar · Salvar · Descartar · Reenviar |
+| **Números**  | (já existia) + "Autorizado para avisos"                                                                                                                                     | Autorizar · Revogar                                                                                       |
 
 Número mascarado: `(84) •••••-6549` — DDD e os 4 últimos.
 
@@ -331,12 +331,12 @@ Número mascarado: `(84) •••••-6549` — DDD e os 4 últimos.
 
 ## 8 · Permissões
 
-| Chave                        | Quem                       | Pode                                                                          |
-| ---------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
-| `assistente.ver`             | já existia                 | Ver WhatsApp (sem QR), Eventos e Avisos das lojas que enxerga                 |
-| `assistente.preparar` (nova) | operador autorizado        | Criar e editar rascunho                                                       |
-| `assistente.conectar` (nova) | responsável                | Reconectar, ver o QR, aplicar eventos, loja autorizada, chaves de envio        |
-| `assistente.autorizar` (nova)| responsável                | Autorizar destinatário, confirmar envio, reenviar                             |
+| Chave                         | Quem                | Pode                                                                    |
+| ----------------------------- | ------------------- | ----------------------------------------------------------------------- |
+| `assistente.ver`              | já existia          | Ver WhatsApp (sem QR), Eventos e Avisos das lojas que enxerga           |
+| `assistente.preparar` (nova)  | operador autorizado | Criar e editar rascunho                                                 |
+| `assistente.conectar` (nova)  | responsável         | Reconectar, ver o QR, aplicar eventos, loja autorizada, chaves de envio |
+| `assistente.autorizar` (nova) | responsável         | Autorizar destinatário, confirmar envio, reenviar                       |
 
 **A permissão vale na loja da conexão, não na loja que está aberta na tela.** Quem é Gerente no Centro e só Consulta na Zona Sul não vê o QR da Zona Sul, mesmo com o Centro aberto. O Tetteo monta o contexto daquela pessoa naquela loja (`contextoDeFundo`) e pergunta `pode()` ali. Conexão da rede inteira exige acesso de rede.
 
@@ -348,14 +348,14 @@ Credencial não se troca por tela nenhuma — nem pelo responsável. A Severina 
 
 ### Variáveis (vazias no `.env.example`, preenchidas só no Dokploy)
 
-| Variável                          | O que é                                                              |
-| --------------------------------- | -------------------------------------------------------------------- |
-| `EVOLUTION_URL`                   | `http://evolution_api:8080` — rede interna                           |
-| `EVOLUTION_INSTANCIA`             | nome da instância na Evolution                                       |
-| `EVOLUTION_API_KEY`               | **chave da instância**, nunca a global                               |
-| `WHATSAPP_WEBHOOK_URL`            | endereço interno que a Evolution chama                               |
-| `WHATSAPP_WEBHOOK_CHAVE`          | a senha do JWT (`openssl rand -hex 32`, gerada no servidor)          |
-| `WHATSAPP_WEBHOOK_CHAVE_ANTERIOR` | só durante a troca                                                   |
+| Variável                          | O que é                                                     |
+| --------------------------------- | ----------------------------------------------------------- |
+| `EVOLUTION_URL`                   | `http://evolution_api:8080` — rede interna                  |
+| `EVOLUTION_INSTANCIA`             | nome da instância na Evolution                              |
+| `EVOLUTION_API_KEY`               | **chave da instância**, nunca a global                      |
+| `WHATSAPP_WEBHOOK_URL`            | endereço interno que a Evolution chama                      |
+| `WHATSAPP_WEBHOOK_CHAVE`          | a senha do JWT (`openssl rand -hex 32`, gerada no servidor) |
+| `WHATSAPP_WEBHOOK_CHAVE_ANTERIOR` | só durante a troca                                          |
 
 ### Rotação
 
@@ -372,12 +372,12 @@ Credencial não se troca por tela nenhuma — nem pelo responsável. A Severina 
 
 ## 10 · Ensaio, testes e aceite
 
-| Degrau          | O que é                                                                                                  |
-| --------------- | -------------------------------------------------------------------------------------------------------- |
-| **Simulação**   | Testes automáticos com o provedor simulado, sem rede. Funções puras em `npm test`; os 12 cenários contra um banco descartável |
+| Degrau          | O que é                                                                                                                                  |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Simulação**   | Testes automáticos com o provedor simulado, sem rede. Funções puras em `npm test`; os 12 cenários contra um banco descartável            |
 | **Teste local** | O Tetteo rodando na máquina, com o banco descartável e o provedor simulado; o webhook recebe POST de verdade, assinado; prints das telas |
-| **Sandbox**     | **Não existe para Baileys.** Declarado, não fingido                                                      |
-| **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem — só depois de ele ver os testes e as pendências |
+| **Sandbox**     | **Não existe para Baileys.** Declarado, não fingido                                                                                      |
+| **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem — só depois de ele ver os testes e as pendências                     |
 
 Os 12 cenários de aceite, cada um um teste:
 
@@ -400,18 +400,18 @@ Os 12 cenários de aceite, cada um um teste:
 
 ## 11 · Riscos e limites conhecidos
 
-| Risco / limite                                                              | O que o desenho faz                                                                                  |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **Baileys não é API oficial.** A Meta não dá suporte; automação fora dos termos pode bloquear o número | Um destinatário, confirmação humana, ritmo, nada em massa. Trocar para a Cloud API é trocar o conector |
-| O número conectado era, em agosto, a conta **pessoal** do dono (~1000 contatos) | Nenhuma conversa pessoal entra no Tetteo: `messages.upsert` fica fora da assinatura                 |
-| A 2.3.7 não assina o corpo do webhook                                       | JWT com prazo + rede interna + esquema estrito + trava de duplicata (que também anula repetição de JWT) |
-| A 2.3.7 não tem idempotência no envio                                       | INCERTO + consulta ao provedor + humano decide                                                       |
-| A consulta depende de `DATABASE_SAVE_DATA_NEW_MESSAGE=true` na Evolution    | A tela diz que não achou **e** que pode ser configuração; nunca conclui que "não saiu"               |
-| "Entregue/Lido" dependem de a Evolution mandar `messages.update`            | Sem o evento, o aviso fica em ACEITO — que é a verdade que se tem                                    |
-| Queda que se recupera sozinha não gera evento                               | O relógio consulta o estado a cada minuto                                                            |
-| A chave da instância não troca pela API                                     | Registrado em §9                                                                                     |
-| O relógio de produção precisa existir (tarefa agendada batendo no `tick`)   | Conferir na fase real; sem ele, os rascunhos não nascem sozinhos e a entrega depende do `after()`    |
-| `date_time` da Evolution tem um `Z` enganoso (é hora local)                 | O Tetteo não usa esse campo como horário — usa o do próprio servidor                                 |
+| Risco / limite                                                                                         | O que o desenho faz                                                                                     |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| **Baileys não é API oficial.** A Meta não dá suporte; automação fora dos termos pode bloquear o número | Um destinatário, confirmação humana, ritmo, nada em massa. Trocar para a Cloud API é trocar o conector  |
+| O número conectado era, em agosto, a conta **pessoal** do dono (~1000 contatos)                        | Nenhuma conversa pessoal entra no Tetteo: `messages.upsert` fica fora da assinatura                     |
+| A 2.3.7 não assina o corpo do webhook                                                                  | JWT com prazo + rede interna + esquema estrito + trava de duplicata (que também anula repetição de JWT) |
+| A 2.3.7 não tem idempotência no envio                                                                  | INCERTO + consulta ao provedor + humano decide                                                          |
+| A consulta depende de `DATABASE_SAVE_DATA_NEW_MESSAGE=true` na Evolution                               | A tela diz que não achou **e** que pode ser configuração; nunca conclui que "não saiu"                  |
+| "Entregue/Lido" dependem de a Evolution mandar `messages.update`                                       | Sem o evento, o aviso fica em ACEITO — que é a verdade que se tem                                       |
+| Queda que se recupera sozinha não gera evento                                                          | O relógio consulta o estado a cada minuto                                                               |
+| A chave da instância não troca pela API                                                                | Registrado em §9                                                                                        |
+| O relógio de produção precisa existir (tarefa agendada batendo no `tick`)                              | Conferir na fase real; sem ele, os rascunhos não nascem sozinhos e a entrega depende do `after()`       |
+| `date_time` da Evolution tem um `Z` enganoso (é hora local)                                            | O Tetteo não usa esse campo como horário — usa o do próprio servidor                                    |
 
 ---
 

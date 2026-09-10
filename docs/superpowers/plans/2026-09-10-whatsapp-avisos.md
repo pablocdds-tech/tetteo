@@ -23,43 +23,43 @@
 
 ## Estrutura de arquivos
 
-| Arquivo | Responsabilidade |
-| --- | --- |
-| `prisma/schema/assistente.prisma` + migração `20260910120000_whatsapp_avisos` | Colunas novas em `InstanciaWhatsapp` e `VinculoWhatsapp`; tabelas `EventoWhatsapp`, `AvisoWhatsapp` |
-| `src/lib/telefone.ts` (+teste) | `mascararTelefone` |
-| `src/connectors/whatsapp/tipos.ts` | O contrato `ProvedorWhatsapp` |
-| `src/connectors/whatsapp/sanitizar.ts` (+teste) | `limparTexto` — tira chave, token, JWT, base64, telefone |
-| `src/connectors/whatsapp/configuracao.ts` (+teste) | Lê o ambiente; diz o que falta |
-| `src/connectors/whatsapp/passe.ts` (+teste) | `assinarPasse` / `verificarPasse` — JWT HS256 |
-| `src/connectors/whatsapp/webhook-evolution.ts` (+teste) | `interpretarWebhook` — corpo da 2.3.7 → evento normalizado |
-| `src/connectors/whatsapp/falhas.ts` (+teste) | `classificarFalha` — nao-chegou / incerto / recusado |
-| `src/connectors/whatsapp/evolution.ts` (+teste com servidor HTTP falso) | Provedor real; mantém `enviarTexto`/`estadoDaConexao` da Severina |
-| `src/connectors/whatsapp/simulado.ts` | Provedor simulado, com comportamento programável |
-| `src/connectors/whatsapp/index.ts` | `provedorPara(conexao)` |
-| `src/core/registry/tipos.ts` | Tipo `FatoDoModulo` |
-| `src/modules/checklists/schemas/fato-de-fechamento.ts` (+teste) | Qual modelo é "fechamento"; as linhas do aviso |
-| `src/modules/checklists/assistente.ts` | Participante: fatos "fechamento concluído" |
-| `src/registro-de-ferramentas.ts` | `eventos?` no participante; registra o Checklists |
-| `src/modules/assistente/schemas/aviso.ts` (+teste) | Transições, estado pelo status do provedor, corpo, referência, espera |
-| `src/modules/assistente/schemas/conexao.ts` (+teste) | Estado da conexão, Atenção |
-| `src/modules/assistente/schemas/evento.ts` | Tipo `EventoNormalizado` (vocabulário da Severina) |
-| `src/modules/assistente/services/conexao.ts` | Conexão: leitura, alcance por loja, registrar consulta, chaves |
-| `src/modules/assistente/services/eventos.ts` | Registrar (idempotente), processar, listar, contar, limpar |
-| `src/modules/assistente/services/avisos.ts` | Rascunho, confirmação, descarte, reenvio; pegar para envio; resultado; verificação |
-| `src/modules/assistente/services/rascunhos.ts` | Fatos dos módulos → rascunhos |
-| `src/modules/assistente/services/vinculos.ts` | + autorizar / revogar |
-| `src/modules/assistente/services/disparo.ts` | Respeita `agendamentosPausados` |
-| `src/modules/assistente/permissoes.ts`, `manifest.ts` | 3 permissões; navegação |
-| `src/modules/assistente/acoes.ts` | Ações sem provedor (rascunho, autorizar, chaves, loja) |
-| `src/modules/assistente/components/*` | Telas WhatsApp, Eventos, Avisos; Números |
-| `src/app/api/whatsapp/_costura/*.ts` | `receberWebhook`, `entregarAvisos`, `verificarIncertos`, `atualizarSaude`, `rodadaWhatsapp` |
-| `src/app/api/whatsapp/webhook/route.ts` | POST do webhook |
-| `src/app/api/severina/tick/route.ts` | Chama `rodadaWhatsapp` |
-| `src/app/(shell)/assistente/acoes-whatsapp.ts` | Ações com provedor (QR, reconectar, eventos, confirmar, reenviar) |
-| `src/app/(shell)/assistente/{whatsapp,eventos,avisos}/page.tsx` | Rotas |
-| `src/proxy.ts` | Deixa `/api/whatsapp` passar |
-| `ensaio/whatsapp/*` | Banco fictício, os 12 cenários, demonstração |
-| `docs/operacao/whatsapp/*`, `docs/telas/whatsapp/*`, `.env.example`, `connectors/whatsapp/README.md` | Operação, prints, roteiro |
+| Arquivo                                                                                              | Responsabilidade                                                                                    |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `prisma/schema/assistente.prisma` + migração `20260910120000_whatsapp_avisos`                        | Colunas novas em `InstanciaWhatsapp` e `VinculoWhatsapp`; tabelas `EventoWhatsapp`, `AvisoWhatsapp` |
+| `src/lib/telefone.ts` (+teste)                                                                       | `mascararTelefone`                                                                                  |
+| `src/connectors/whatsapp/tipos.ts`                                                                   | O contrato `ProvedorWhatsapp`                                                                       |
+| `src/connectors/whatsapp/sanitizar.ts` (+teste)                                                      | `limparTexto` — tira chave, token, JWT, base64, telefone                                            |
+| `src/connectors/whatsapp/configuracao.ts` (+teste)                                                   | Lê o ambiente; diz o que falta                                                                      |
+| `src/connectors/whatsapp/passe.ts` (+teste)                                                          | `assinarPasse` / `verificarPasse` — JWT HS256                                                       |
+| `src/connectors/whatsapp/webhook-evolution.ts` (+teste)                                              | `interpretarWebhook` — corpo da 2.3.7 → evento normalizado                                          |
+| `src/connectors/whatsapp/falhas.ts` (+teste)                                                         | `classificarFalha` — nao-chegou / incerto / recusado                                                |
+| `src/connectors/whatsapp/evolution.ts` (+teste com servidor HTTP falso)                              | Provedor real; mantém `enviarTexto`/`estadoDaConexao` da Severina                                   |
+| `src/connectors/whatsapp/simulado.ts`                                                                | Provedor simulado, com comportamento programável                                                    |
+| `src/connectors/whatsapp/index.ts`                                                                   | `provedorPara(conexao)`                                                                             |
+| `src/core/registry/tipos.ts`                                                                         | Tipo `FatoDoModulo`                                                                                 |
+| `src/modules/checklists/schemas/fato-de-fechamento.ts` (+teste)                                      | Qual modelo é "fechamento"; as linhas do aviso                                                      |
+| `src/modules/checklists/assistente.ts`                                                               | Participante: fatos "fechamento concluído"                                                          |
+| `src/registro-de-ferramentas.ts`                                                                     | `eventos?` no participante; registra o Checklists                                                   |
+| `src/modules/assistente/schemas/aviso.ts` (+teste)                                                   | Transições, estado pelo status do provedor, corpo, referência, espera                               |
+| `src/modules/assistente/schemas/conexao.ts` (+teste)                                                 | Estado da conexão, Atenção                                                                          |
+| `src/modules/assistente/schemas/evento.ts`                                                           | Tipo `EventoNormalizado` (vocabulário da Severina)                                                  |
+| `src/modules/assistente/services/conexao.ts`                                                         | Conexão: leitura, alcance por loja, registrar consulta, chaves                                      |
+| `src/modules/assistente/services/eventos.ts`                                                         | Registrar (idempotente), processar, listar, contar, limpar                                          |
+| `src/modules/assistente/services/avisos.ts`                                                          | Rascunho, confirmação, descarte, reenvio; pegar para envio; resultado; verificação                  |
+| `src/modules/assistente/services/rascunhos.ts`                                                       | Fatos dos módulos → rascunhos                                                                       |
+| `src/modules/assistente/services/vinculos.ts`                                                        | + autorizar / revogar                                                                               |
+| `src/modules/assistente/services/disparo.ts`                                                         | Respeita `agendamentosPausados`                                                                     |
+| `src/modules/assistente/permissoes.ts`, `manifest.ts`                                                | 3 permissões; navegação                                                                             |
+| `src/modules/assistente/acoes.ts`                                                                    | Ações sem provedor (rascunho, autorizar, chaves, loja)                                              |
+| `src/modules/assistente/components/*`                                                                | Telas WhatsApp, Eventos, Avisos; Números                                                            |
+| `src/app/api/whatsapp/_costura/*.ts`                                                                 | `receberWebhook`, `entregarAvisos`, `verificarIncertos`, `atualizarSaude`, `rodadaWhatsapp`         |
+| `src/app/api/whatsapp/webhook/route.ts`                                                              | POST do webhook                                                                                     |
+| `src/app/api/severina/tick/route.ts`                                                                 | Chama `rodadaWhatsapp`                                                                              |
+| `src/app/(shell)/assistente/acoes-whatsapp.ts`                                                       | Ações com provedor (QR, reconectar, eventos, confirmar, reenviar)                                   |
+| `src/app/(shell)/assistente/{whatsapp,eventos,avisos}/page.tsx`                                      | Rotas                                                                                               |
+| `src/proxy.ts`                                                                                       | Deixa `/api/whatsapp` passar                                                                        |
+| `ensaio/whatsapp/*`                                                                                  | Banco fictício, os 12 cenários, demonstração                                                        |
+| `docs/operacao/whatsapp/*`, `docs/telas/whatsapp/*`, `.env.example`, `connectors/whatsapp/README.md` | Operação, prints, roteiro                                                                           |
 
 ---
 

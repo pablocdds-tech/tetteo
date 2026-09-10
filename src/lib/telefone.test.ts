@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ehGrupo, normalizarTelefone, telefoneDoJid } from "./telefone";
+import {
+  ehGrupo,
+  mascararTelefone,
+  normalizarTelefone,
+  telefoneDoJid,
+} from "./telefone";
 
 /**
  * O mesmo número chega de cinco jeitos: digitado pelo dono no cadastro,
@@ -53,4 +58,28 @@ test("extrai telefone de JID antigo e recusa LID", () => {
 test("reconhece grupo", () => {
   assert.equal(ehGrupo("120363@g.us"), true);
   assert.equal(ehGrupo("558481336549@s.whatsapp.net"), false);
+});
+
+/**
+ * A MÁSCARA.
+ *
+ * O painel do WhatsApp aparece em tela de gerente, em print mandado no grupo,
+ * em demonstração. O número inteiro não precisa estar em nenhum desses
+ * lugares: o DDD e os quatro últimos bastam para reconhecer "é o número da
+ * loja" — e não bastam para ninguém ligar para ele.
+ */
+test("mascara celular e fixo deixando só o DDD e os quatro últimos", () => {
+  assert.equal(mascararTelefone("5511900000012"), "(11) •••••-0012");
+  assert.equal(mascararTelefone("551132110012"), "(11) ••••-0012");
+});
+
+test("mascara número estrangeiro sem inventar DDD", () => {
+  assert.equal(mascararTelefone("351912345678"), "•••• 5678");
+});
+
+test("sem número mostra travessão, não um número pela metade", () => {
+  assert.equal(mascararTelefone(null), "—");
+  assert.equal(mascararTelefone(undefined), "—");
+  assert.equal(mascararTelefone(""), "—");
+  assert.equal(mascararTelefone("123"), "—");
 });
