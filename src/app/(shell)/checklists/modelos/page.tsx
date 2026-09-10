@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { obterContexto, pode } from "@/core/sessao/contexto";
-import { Botao } from "@/design-system/botao";
+import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { alternarModeloAcao } from "@/modules/checklists/acoes";
 import { listarModelos } from "@/modules/checklists/services/modelos";
 
@@ -29,8 +29,8 @@ export default async function PaginaModelos() {
           </p>
         </div>
 
-        <Link href="/checklists/modelos/novo">
-          <Botao>Novo checklist</Botao>
+        <Link href="/checklists/modelos/novo" className={estiloDeBotao()}>
+          Novo checklist
         </Link>
       </div>
 
@@ -71,10 +71,11 @@ export default async function PaginaModelos() {
               </span>
 
               <div className="flex items-center gap-1">
-                <Link href={`/checklists/modelos/${m.id}`}>
-                  <Botao peso="secundario" tamanho="pequeno">
-                    Editar
-                  </Botao>
+                <Link
+                  href={`/checklists/modelos/${m.id}`}
+                  className={estiloDeBotao("secundario", "pequeno")}
+                >
+                  Editar
                 </Link>
                 <form action={alternarModeloAcao}>
                   <input type="hidden" name="id" value={m.id} />

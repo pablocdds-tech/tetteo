@@ -35,10 +35,16 @@ import {
   cancelarResposta,
   executarRotina,
   fecharResposta,
+  salvarItem,
   salvarRespostas,
   type ValorItem,
 } from "./services/respostas";
-import { criarRotina, desativarRotina } from "./services/rotinas";
+import {
+  alterarResponsavel,
+  criarRotina,
+  desativarRotina,
+  RotinaJaAgendada,
+} from "./services/rotinas";
 
 export type EstadoChecklist = {
   erro?: string;
@@ -196,7 +202,13 @@ export async function criarRotinaAcao(
   try {
     await criarRotina(contexto, analise.data);
   } catch (erro) {
-    if (erro instanceof Error && erro.message.includes("Unique constraint")) {
+    // A segunda condição é a corrida: duas pessoas agendando o mesmo
+    // checklist no mesmo segundo passam as duas pela conferência do serviço,
+    // e quem barra a segunda é o índice único do banco.
+    if (
+      erro instanceof RotinaJaAgendada ||
+      (erro instanceof Error && erro.message.includes("Unique constraint"))
+    ) {
       return {
         erros: {
           modeloId: "Este checklist já está agendado nesta loja.",
@@ -210,6 +222,46 @@ export async function criarRotinaAcao(
   redirect("/checklists");
 }
 
+/**
+ * Troca de quem se cobra a rotina.
+ *
+ * Vem de um painel lateral, com `useActionState`: o painel precisa mostrar o
+ * erro DENTRO dele e não sumir levando junto a escolha da pessoa. Por isso
+ * devolve estado em vez de redirecionar.
+ *
+ * O campo vazio é uma resposta legítima — "de quem estiver de plantão" — e
+ * não um formulário incompleto.
+ */
+export async function alterarResponsavelAcao(
+  _anterior: EstadoChecklist,
+  dados: FormData,
+): Promise<EstadoChecklist> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  const rotinaId = String(dados.get("rotinaId") ?? "");
+  if (!rotinaId) return { erro: "Rotina não informada." };
+
+  const responsavelId = String(dados.get("responsavelId") ?? "") || null;
+
+  let nome: string | null;
+  try {
+    ({ nome } = await alterarResponsavel(contexto, rotinaId, responsavelId));
+  } catch (erro) {
+    return comoErro(erro);
+  }
+
+  revalidatePath("/checklists");
+  // A confirmação diz O QUE mudou, e não só que algo mudou: duas trocas
+  // seguidas com o mesmo "Responsável alterado." não deixariam saber se a
+  // segunda pegou.
+  return {
+    ok: nome
+      ? `Agora a rotina é cobrada de ${nome}.`
+      : "Agora a rotina é de quem estiver de plantão.",
+  };
+}
+
 export async function desativarRotinaAcao(dados: FormData) {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
@@ -219,9 +271,22 @@ export async function desativarRotinaAcao(dados: FormData) {
 
   await desativarRotina(contexto, id);
   revalidatePath("/checklists");
+
+  // Volta para a lista SEM a rotina selecionada: ela saiu da fila, e manter o
+  // endereço apontando para ela mostraria um aviso de "fora do período" que
+  // não explica o que aconteceu.
+  const consulta = paramsDaLista(dados);
+  redirect(consulta ? `/checklists?${consulta}` : "/checklists");
 }
 
-/** "Responder agora": abre (ou retoma) o checklist da rotina e leva à folha. */
+/**
+ * "Responder agora": abre (ou retoma) o checklist da rotina.
+ *
+ * Volta para a MESMA tela, com a rotina selecionada — a folha aparece na
+ * coluna da direita e a lista continua à esquerda, no mesmo lugar. Antes isto
+ * navegava para uma página separada, e voltar dela custava um clique e a
+ * perda do contexto.
+ */
 export async function executarRotinaAcao(dados: FormData) {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
@@ -229,9 +294,25 @@ export async function executarRotinaAcao(dados: FormData) {
   const id = String(dados.get("rotinaId") ?? "");
   if (!id) return;
 
-  const resposta = await executarRotina(contexto, id);
+  await executarRotina(contexto, id);
   revalidatePath("/checklists");
-  redirect(`/checklists/${resposta.id}`);
+  redirect(`/checklists?${paramsDaLista(dados, id)}`);
+}
+
+/**
+ * Reconstrói o endereço da lista preservando o que a pessoa escolheu.
+ *
+ * O período vem num campo escondido do formulário porque um `redirect` do
+ * servidor não enxerga a URL de onde o clique partiu. Sem ele, quem estava em
+ * "Semana" cairia em "Hoje" ao apertar Responder, e teria que se reencontrar
+ * na tela.
+ */
+function paramsDaLista(dados: FormData, rotinaId?: string) {
+  const params = new URLSearchParams();
+  const periodo = String(dados.get("periodo") ?? "");
+  if (periodo === "semana") params.set("periodo", periodo);
+  if (rotinaId) params.set("rotina", rotinaId);
+  return params.toString();
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +382,88 @@ function lerFolha(dados: FormData) {
   return { valores, erros };
 }
 
+/**
+ * O que a tela recebe de volta ao gravar UM item.
+ *
+ * `quando` vem como texto já formatado no fuso da operação. Mandar um `Date`
+ * cru faria o celular formatar com o fuso DELE — e um checklist marcado às
+ * 07:12 em São Paulo apareceria como 10:12 para quem viajou.
+ */
+export type ResultadoDoItem =
+  | { ok: true; quando: string; quem: string | null }
+  | { ok: false; erro: string };
+
+const HORA_DA_OPERACAO = new Intl.DateTimeFormat("pt-BR", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "America/Sao_Paulo",
+});
+
+/**
+ * GRAVA UM ITEM, no instante em que ele é marcado.
+ *
+ * Não chama `revalidatePath` de propósito. Revalidar aqui reconsultaria a
+ * página inteira — lista, detalhe, histórico — a CADA toque, e uma consulta
+ * que falha com a internet oscilando faz a tela recarregar e apagar o aviso de
+ * "não gravado". O único número de fora da folha que muda com um item — o
+ * "3 de 11" da lista — é avisado pelo próprio navegador. O fechamento, que
+ * muda pendências, painel e histórico, revalida por conta própria.
+ */
+export async function salvarItemAcao(entrada: {
+  respostaId: string;
+  itemId: string;
+  marcada: "sim" | "nao" | "na" | "";
+  numero: string;
+  texto: string;
+  observacao: string;
+}): Promise<ResultadoDoItem> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+
+  if (!entrada.respostaId || !entrada.itemId) {
+    return { ok: false, erro: "Item não informado." };
+  }
+
+  const leitura = esquemaLeituraNumero.safeParse(entrada.numero);
+  if (!leitura.success) {
+    return {
+      ok: false,
+      erro: leitura.error.issues[0]?.message ?? "Número inválido.",
+    };
+  }
+
+  try {
+    const salvo = await salvarItem(
+      contexto,
+      entrada.respostaId,
+      entrada.itemId,
+      {
+        conforme:
+          entrada.marcada === "sim"
+            ? true
+            : entrada.marcada === "nao"
+              ? false
+              : null,
+        naoSeAplica: entrada.marcada === "na",
+        valorNumero: leitura.data,
+        valorTexto: entrada.texto.trim() || null,
+        observacao: entrada.observacao.trim() || null,
+      },
+    );
+
+    return {
+      ok: true,
+      quando: salvo.respondidoEm
+        ? HORA_DA_OPERACAO.format(salvo.respondidoEm)
+        : "",
+      quem: salvo.respondidoPor,
+    };
+  } catch (erro) {
+    const estado = comoErro(erro);
+    return { ok: false, erro: estado.erro ?? "Não deu para gravar." };
+  }
+}
+
 export async function salvarFolhaAcao(
   _anterior: EstadoChecklist,
   dados: FormData,
@@ -329,9 +492,14 @@ export async function salvarFolhaAcao(
 /**
  * Fecha o checklist — mas grava o que está na tela ANTES.
  *
- * Sem isso, quem responde a última pergunta e vai direto em "Fechar" perde
- * justamente ela, e o sistema recusa o fechamento por um item que a pessoa
- * acabou de preencher.
+ * Os itens já foram gravados um a um enquanto a pessoa respondia. Este
+ * `salvarRespostas` continua aqui como rede de segurança para o campo que
+ * ficou com o cursor dentro: a folha esvazia a fila de gravações pendentes
+ * antes de enviar, e o que ainda assim escapar entra por aqui.
+ *
+ * Depois de fechar, volta para a MESMA lista com a rotina selecionada — o
+ * checklist agora aparece somado no histórico, logo abaixo. Antes isto levava
+ * para uma página separada e o contexto se perdia.
  */
 export async function fecharFolhaAcao(
   _anterior: EstadoChecklist,
@@ -352,7 +520,7 @@ export async function fecharFolhaAcao(
   }
 
   try {
-    await salvarRespostas(contexto, id, valores);
+    if (valores.size > 0) await salvarRespostas(contexto, id, valores);
     await fecharResposta(contexto, id);
   } catch (erro) {
     return comoErro(erro);
@@ -360,7 +528,13 @@ export async function fecharFolhaAcao(
 
   revalidatePath("/checklists");
   revalidatePath("/checklists/pendencias");
-  redirect(`/checklists/${id}`);
+
+  const rotinaId = String(dados.get("rotinaId") ?? "");
+  redirect(
+    rotinaId
+      ? `/checklists?${paramsDaLista(dados, rotinaId)}`
+      : `/checklists/${id}`,
+  );
 }
 
 export async function cancelarRespostaAcao(dados: FormData) {
@@ -372,7 +546,13 @@ export async function cancelarRespostaAcao(dados: FormData) {
 
   await cancelarResposta(contexto, id);
   revalidatePath("/checklists");
-  redirect("/checklists");
+
+  // Da tela do dia, volta para a MESMA rotina e o mesmo período — agora sem
+  // folha aberta, com o convite para começar de novo. Da página avulsa, que
+  // não manda esses campos, volta para a lista.
+  const rotinaId = String(dados.get("rotinaId") ?? "");
+  const consulta = paramsDaLista(dados, rotinaId || undefined);
+  redirect(consulta ? `/checklists?${consulta}` : "/checklists");
 }
 
 // ---------------------------------------------------------------------------

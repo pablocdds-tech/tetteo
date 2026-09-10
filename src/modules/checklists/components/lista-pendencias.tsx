@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { Botao } from "@/design-system/botao";
+import { Icone } from "@/design-system/icones";
+import { Vazio } from "@/design-system/vazio";
 
 import {
   atribuirPendenciaAcao,
@@ -47,16 +49,17 @@ export function ListaPendencias({
     {},
   );
 
+  // Sem pendência é uma BOA notícia, e precisa parecer uma — o `Vazio` no tom
+  // "bom" mostra o visto verde. Tratar "nada pendente" com a mesma cara de
+  // "nada encontrado" faz o sistema soar quebrado num dia bom.
   if (pendencias.length === 0) {
     return (
-      <div className="border-line-2 bg-surface-2 rounded-xl border border-dashed px-6 py-10 text-center">
-        <p aria-hidden className="text-2xl opacity-50">
-          🎉
-        </p>
-        <p className="mt-2 font-semibold">Nada pendente</p>
-        <p className="text-ink-3 mx-auto mt-1 max-w-md text-sm">
-          Toda não conformidade apontada nos checklists já foi resolvida.
-        </p>
+      <div className="bg-surface border-line rounded-lg border">
+        <Vazio
+          tom="bom"
+          titulo="Nada pendente"
+          explicacao="Toda não conformidade apontada nos checklists já foi resolvida."
+        />
       </div>
     );
   }
@@ -90,8 +93,13 @@ export function ListaPendencias({
                 {p.prazo && ` · prazo ${data.format(p.prazo)}`}
               </span>
               {p.status === "RESOLVIDA" && p.resolucao && (
-                <span className="text-ink-2 mt-1 block text-xs">
-                  ✓ {p.resolucao}
+                <span className="text-ink-2 mt-1 flex items-start gap-1 text-xs">
+                  <Icone
+                    nome="check"
+                    tamanho={12}
+                    className="text-ok mt-[3px]"
+                  />
+                  {p.resolucao}
                 </span>
               )}
             </div>

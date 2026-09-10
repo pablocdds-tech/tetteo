@@ -7,7 +7,8 @@ reabra uma decisão por engano ou desfaça uma trava de acessibilidade achando q
 
 Escrito em 09/09/2026, junto com a construção do Painel da operação.
 Atualizado em 10/09/2026: cores, fonte e escala passaram para a **direção
-Aurora**.
+Aurora**, e a tela de Checklists virou lista à esquerda e atividade à direita
+(§8).
 
 ---
 
@@ -69,7 +70,7 @@ Por isso o acento escuro **não é** o `#0066cc`: naquele fundo ele daria 2,4:1 
 sumiria. Ele sobe para `#6cb0ff`, e aí o texto por cima dele precisa ser
 **escuro** (`#0a1220`). É o par invertido, e é de propósito.
 
-### Três decisões de cor que parecem detalhe e não são
+### Quatro decisões de cor que parecem detalhe e não são
 
 **Existem duas bordas, e elas não se trocam.** `--line` (`#dbdde2`) é o fio de
 cabelo da Aurora: separa cartão de cartão e linha de linha, e seus 1,34:1 bastam
@@ -84,6 +85,13 @@ ter a segunda.
 
 **A superfície não é branco puro** (`#fdfdfe`). É a regra 2 do tema escuro
 valendo também no claro, em dose pequena.
+
+**Texto sobre cor sólida é `--surface`, não branco.** Os botões Sim/Não/N/A
+marcados da folha de checklist e o botão destrutivo usavam `text-white`. No
+claro passava (5,7:1 no verde, 5,6:1 no vermelho); no escuro o verde, o
+vermelho e o cinza clareiam, e branco em cima deles dava 2,2:1, 2,8:1 e 2,0:1 —
+ilegível. `--surface` é quase branco no claro e quase preto no escuro: o par se
+inverte sozinho. Os três pares entraram no teste de contraste.
 
 ---
 
@@ -128,7 +136,7 @@ valendo também no claro, em dose pequena.
 │ ─────    │                                           │
 │ [conta]  │                                           │
 └──────────┴───────────────────────────────────────────┘
-   216px
+   208px
 ```
 
 - **≥ 1180 px:** barra lateral fixa, com rolagem própria e a conta ancorada no
@@ -186,6 +194,7 @@ o `npm run lint` verifica.
 | `Esqueleto`                | carregamento do tamanho do conteúdo que vem                      |
 | `Botao` / `estiloDeBotao`  | o botão, e o estilo dele para links                              |
 | `Campo`                    | campo com rótulo persistente (já existia)                        |
+| `ControleSegmentado`       | Hoje/Semana com rádios de verdade: anda e escolhe pelas setas    |
 
 ### Três regras que valem mais que os componentes
 
@@ -289,19 +298,23 @@ Registrado aqui para não se perder.
 que é HTML inválido: o leitor de tela anuncia dois controles onde há um. A
 ferramenta para corrigir já existe (`estiloDeBotao()`).
 
-**2. Emojis em telas de módulo.** 📋 🧾 📦 🎉 ✅ e outros continuam dentro de
-`src/modules/` e `src/app/(shell)/<módulo>/`. Emoji não acompanha o tema, muda
-de desenho conforme o computador e não é lido por leitor de tela. O conjunto
-`Icone` cobre todos os casos.
+**2. Emojis em telas de módulo.** Continuam em 17 arquivos de `src/` (contagem
+de 10/09/2026): Compras, Cardápio, Estoque, Financeiro, o Painel e um
+comentário do registro de Apps. O módulo de Checklists está limpo. Emoji não
+acompanha o tema, muda de desenho conforme o computador e não é lido por leitor
+de tela. O conjunto `Icone` cobre todos os casos.
 
-**3. Fuso horário no cálculo de "atrasado".** As funções que decidem se algo
-está vencido usam a data **local do servidor**. Se o servidor rodar em UTC, a
-virada do dia acontece às 21h no horário do Brasil, e uma conta pode aparecer
-como vencida três horas antes. Vale para o Financeiro e os Checklists inteiros.
+**3. Fuso horário no cálculo de "atrasado" — resolvido em 10/09/2026.** As
+funções que decidem se algo está vencido usam a data **local do servidor**, e o
+contêiner rodava em UTC: a virada do dia acontecia às 21h no horário do Brasil.
+A correção é uma linha no `Dockerfile` (`ENV TZ=America/Sao_Paulo`), e não uma
+reescrita das funções: elas continuam puras e testáveis, e o "local" delas
+passou a ser o da operação. Vale para o Financeiro, o Estoque e os Checklists
+de uma vez. Quando existir uma loja em outro fuso, isto volta a ser pendência.
 
-**4. A largura da barra lateral.** O token `--shell-sidebar` da Aurora diz
-208 px; o código da barra usa 216 px. Os dois estão dentro da faixa da
-especificação (208–240), mas um dos dois precisa ceder.
+**4. A largura da barra lateral — resolvido em 10/09/2026.** A barra passou a
+usar o token `--shell-sidebar` (208 px, o valor da Aurora) em vez de 216 px
+fixos no código.
 
 **5. Barra lateral recolhível.** A especificação prevê recolher a barra no
 computador, preservando a escolha. Não foi construída.
@@ -315,9 +328,119 @@ tem o problema.
 `docs/superpowers/specs/2026-08-09-jose-crm-marketing-design.md`, que já estava
 fora de formato antes deste trabalho. `npm run format` resolve.
 
+**8. Reativar uma rotina removida — resolvido em 10/09/2026.** Agendar de novo
+um checklist cuja rotina foi removida **reativa a rotina antiga**, com a agenda
+e o responsável novos, em vez de criar outra. Assim o histórico de conclusão
+volta junto: uma rotina nova começaria do zero, e o "71% em agosto" sumiria da
+tela sem ter sumido do banco. O checklist removido volta a aparecer em
+"Agendar", e remover e reativar entram na auditoria.
+
+**9. O fuso do "Hoje" — resolvido em 10/09/2026**, junto com o item 3.
+
+**10. O tema escuro ainda não é alcançável.** A raiz força `data-theme="light"`.
+Os pares de cor do escuro estão desenhados e provados pelo teste, mas nenhuma
+tela foi conferida de olho no escuro.
+
 ---
 
-## 8. Como conferir
+## 8. Checklists: lista à esquerda, atividade à direita
+
+O fluxo prioritário da Aurora. Antes, `/checklists` era uma lista de largura
+inteira, e responder uma rotina **navegava para outra página**: a fila sumia, e
+voltar custava um clique e a perda do lugar.
+
+```
+┌──────────┬───────────────────────────────────────────────────────┐
+│          │ Checklists                      [Avulso] [Agendar]    │
+│  barra   │ [Buscar rotina ou responsável        ] [Hoje|Semana]  │ 56px
+│  lateral ├──────────────┬────────────────────────────────────────┤
+│          │ Hoje         │ Abertura da Cozinha       ● Aguardando │
+│          │ ● Coifa      │ Todo dia às 07:00 · 11 itens           │
+│          │ ▌Abertura    │ Responsável: Alisson   Alterar         │
+│          │ ● Fechamento │ 3 de 11 itens gravados                 │
+│          │ ● Câmaras    │ a folha, item a item                   │
+│          │    310px     │ Histórico de conclusão                 │
+└──────────┴──────────────┴────────────────────────────────────────┘
+```
+
+### O que fica no endereço, e o que fica na memória
+
+| O quê                   | Onde                 | Por quê                                                   |
+| ----------------------- | -------------------- | --------------------------------------------------------- |
+| Período (Hoje/Semana)   | `?periodo=semana`    | troca o **conjunto** de rotinas que o servidor busca      |
+| Rotina aberta à direita | `?rotina=<id>`       | Voltar desfaz a seleção; o link colado abre a mesma tela  |
+| Busca                   | memória do navegador | só esconde o que já veio; no servidor, 1 pedido por letra |
+
+A lista é um componente de cliente e o detalhe é de servidor, entregue a ela
+como `children`. Por isso a busca **sobrevive** à troca de rotina: a navegação é
+suave e a lista não é remontada.
+
+### Celular e tablet (abaixo de 1180 px)
+
+Lista e detalhe **se revezam**: o detalhe vira uma página, com "‹ Rotinas de
+hoje" no topo. A lista não é desmontada, só escondida — busca, período e a
+posição da rolagem estão lá quando a pessoa volta. Com o detalhe aberto, somem
+também a faixa de pendências e os botões secundários, que empurrariam a folha
+para baixo.
+
+### A folha salva item a item — decisão do Pablo, 10/09/2026
+
+A regra anterior era um botão "Salvar" no fim da página, de propósito: a
+internet da cozinha cai. A Aurora pede que marcar um item grave na hora, com
+confirmação do servidor. O Pablo escolheu a Aurora, e o preço foi pago na tela:
+
+- **Toque grava; digitação grava ao sair do campo.** Uma requisição por tecla
+  seria uma tempestade.
+- **Falhou, desfaz.** O item volta ao que o servidor tinha confirmado, com o
+  motivo ao lado e **"Tentar de novo"** — que reenvia o que a pessoa _quis_
+  marcar, e não o valor para o qual a tela voltou.
+- **Uma fila por item.** Marcar "não" e corrigir para "sim" em meio segundo não
+  pode deixar o "não" chegar por último.
+- **O progresso conta o que o servidor tem**, não o que está na tela.
+- **Quem e quando.** Cada item mostra "Gravado às 07:12 por Alisson Ferreira" —
+  o horário é o do servidor, formatado no fuso da operação.
+- **A lista acompanha, sem ir ao servidor.** Quando a contagem de gravados
+  muda, a folha avisa a lista pelo próprio navegador. A primeira versão pedia
+  ao servidor para redesenhar a página — e, no teste com a conexão cortada, a
+  consulta falhou, a tela inteira recarregou e levou junto o aviso de "não
+  gravado". Na cozinha, internet oscilando é o caso comum.
+- **Concluir diz o que falta.** O botão fica travado enquanto houver pendência,
+  com "7 itens faltam · ver quais" ao lado. A lista sai da **mesma função** que
+  o servidor usa para recusar o fechamento (`impedimentosParaFechar`), aplicada
+  ao que o servidor confirmou.
+
+### Responsável em painel lateral
+
+Não existia troca de responsável depois de criada a rotina. Agora existe, num
+painel lateral (`<dialog>`): lista só quem tem acesso à loja, "quem estiver de
+plantão" é uma escolha na mesma lista, sair com a escolha mexida pergunta antes,
+o erro do servidor aparece dentro do painel sem perder a escolha, e a
+confirmação diz **de quem** a rotina passou a ser. A troca vai para a auditoria.
+
+### Remover rotina e cancelar checklist
+
+Os dois perguntam antes (`confirm` do navegador) e travam o botão enquanto o
+pedido está no ar. Cancelar um checklist não tem volta. Remover uma rotina tem:
+agendar o mesmo checklist de novo reativa a rotina, com o histórico — e a
+pergunta de confirmação diz isso (pendência 8 do §7).
+
+### Estados desta tela
+
+| Estado                     | O que acontece                                                 |
+| -------------------------- | -------------------------------------------------------------- |
+| Carregando                 | esqueleto com as medidas da lista de 310 px e da folha         |
+| Nenhuma rotina selecionada | "Escolha uma rotina à esquerda"                                |
+| Nenhuma rotina agendada    | ensina a criar o primeiro checklist (só para quem pode editar) |
+| Nada pendente hoje         | boa notícia, com o caminho para "Ver a semana"                 |
+| Busca sem resultado        | a busca continua escrita; "Limpar a busca"                     |
+| Rotina fora do período     | diz que ela existe mas não em "Hoje", e leva à semana          |
+| Item não gravado           | volta ao que estava, diz o motivo, oferece "Tentar de novo"    |
+| Rede inteira               | pede uma unidade e diz onde fica o seletor                     |
+| Perfil só acompanha        | mostra a rotina e diz que o perfil não permite responder       |
+
+---
+
+## 9. Como conferir
 
 ```bash
 npm run check     # tipos + fronteiras + formato + testes
@@ -327,14 +450,14 @@ npm run demo      # dados de demonstração (só em banco local _dev/_test/_loca
 npm run demo -- --apagar   # tira tudo que o demo criou
 ```
 
-O teste de contraste (`src/app/contraste.test.ts`) confere **60 pares de cor**
+O teste de contraste (`src/app/contraste.test.ts`) confere **66 pares de cor**
 nos dois temas e garante que os dois caminhos para o tema escuro
 (`prefers-color-scheme` e `data-theme`) não divergem. Ele pegou sete pares
 reprovados na primeira execução — nenhum deles parecia errado a olho nu.
 
 ---
 
-## 9. A Despensa (Estoque)
+## 10. A Despensa (Estoque)
 
 Escrito em 10/09/2026. A primeira tela do Estoque deixou de ser "Posição" —
 uma linha por prateleira — e virou a **Despensa**: uma linha por insumo, com o

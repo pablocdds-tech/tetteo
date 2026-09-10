@@ -27,7 +27,7 @@ export function BarraLateral({
   conta: ReactNode;
 }) {
   return (
-    <aside className="border-line bg-surface desk:flex sticky top-0 hidden h-dvh w-[216px] flex-none flex-col border-r">
+    <aside className="border-line bg-surface desk:flex sticky top-0 hidden h-dvh w-[var(--shell-sidebar)] flex-none flex-col border-r">
       <ConteudoDaNavegacao
         apps={apps}
         seletorDeUnidade={seletorDeUnidade}

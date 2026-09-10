@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState } from "react";
 
-import { Botao } from "@/design-system/botao";
+import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 
 import { salvarModeloAcao, type EstadoChecklist } from "../acoes";
@@ -60,10 +60,8 @@ export function FormularioModelo({
         <Botao type="submit" carregando={enviando}>
           {modelo ? "Salvar" : "Criar checklist"}
         </Botao>
-        <Link href="/checklists/modelos">
-          <Botao type="button" peso="fantasma">
-            Cancelar
-          </Botao>
+        <Link href="/checklists/modelos" className={estiloDeBotao("fantasma")}>
+          Cancelar
         </Link>
       </div>
     </form>

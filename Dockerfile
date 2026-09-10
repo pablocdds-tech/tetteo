@@ -64,6 +64,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# O relógio da operação. Sem isto o contêiner roda em UTC, e tudo o que o
+# sistema chama de "hoje" — a rotina atrasada, a conta vencida, o recorte Hoje
+# dos Checklists — vira o dia às 21h do horário do Brasil. O Node resolve o
+# fuso pelo ICU que já vem embutido nele; não precisa do pacote tzdata.
+# Fica nesta etapa, e não na `base`, para não invalidar o cache do `npm ci`.
+ENV TZ=America/Sao_Paulo
+
 # O motor do Prisma é compilado contra o OpenSSL do sistema. O alpine vem sem
 # ele, e a falta só aparece na hora de conectar — com uma mensagem que não diz
 # o que está faltando.
