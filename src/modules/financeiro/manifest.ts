@@ -21,7 +21,7 @@ export const manifestoFinanceiro: ManifestoDoApp = {
   chave: "financeiro",
   nome: "Financeiro",
   subtitulo: "Contas, caixa & resultado",
-  icone: "💰",
+  icone: "moeda",
   cor: { fundo: "#14365D", frente: "#FFFFFF" },
   area: "gestao",
   rota: "/financeiro",

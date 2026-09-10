@@ -13,6 +13,7 @@
     "test": "tsx --test \"src/**/*.test.ts\"",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "seed": "tsx prisma/seed.ts",
+    "demo": "tsx prisma/demonstracao.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {

@@ -17,7 +17,7 @@ export const manifestoCardapio: ManifestoDoApp = {
   chave: "cardapio",
   nome: "Cardápio",
   subtitulo: "Pratos & insumos",
-  icone: "🍽️",
+  icone: "prato",
   cor: { fundo: "#FBE9E3", frente: "#C4512F" },
   area: "operacao",
   rota: "/cardapio",

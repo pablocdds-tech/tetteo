@@ -1,4 +1,5 @@
 import type { ManifestoDoApp } from "@/core/registry/tipos";
+import type { NomeDeIcone } from "@/design-system/icones";
 
 /**
  * O VOCABULÁRIO DE CONFIGURAÇÕES.
@@ -29,7 +30,7 @@ export const PERMISSOES_CONFIGURACOES = [
 export type GrupoDePermissoes = {
   chaveApp: string;
   nome: string;
-  icone: string;
+  icone: NomeDeIcone;
   cor: { fundo: string; frente: string };
   permissoes: { chave: string; descricao: string }[];
 };

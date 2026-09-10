@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
+import { Icone } from "@/design-system/icones";
 
 import { salvarPapelAcao, type EstadoConfig } from "../acoes";
 import type { GrupoDePermissoes } from "../permissoes";
@@ -132,13 +133,13 @@ export function EditorDePapel({
                 <div className="bg-surface-2 border-line flex items-center gap-3 border-b px-4 py-2.5">
                   <span
                     aria-hidden
-                    className="grid size-7 flex-none place-items-center rounded-lg text-sm"
+                    className="grid size-7 flex-none place-items-center rounded-lg"
                     style={{
                       background: grupo.cor.fundo,
                       color: grupo.cor.frente,
                     }}
                   >
-                    {grupo.icone}
+                    <Icone nome={grupo.icone} tamanho={15} />
                   </span>
                   <span className="flex-1 font-semibold">{grupo.nome}</span>
                   <span className="text-ink-3 text-xs tabular-nums">

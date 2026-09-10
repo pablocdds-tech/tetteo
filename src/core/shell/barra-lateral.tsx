@@ -1,37 +1,38 @@
-import { pode, type ContextoSessao } from "@/core/sessao/contexto";
-import { APPS_REGISTRADOS } from "@/registro-de-apps";
+import type { ReactNode } from "react";
 
-import { NavegacaoLateral, type AppNaBarra } from "./navegacao-lateral";
+import type { AppNaBarra } from "./apps";
+import { ConteudoDaNavegacao } from "./navegacao-lateral";
 
 /**
- * A barra lateral.
+ * A BARRA LATERAL FIXA.
  *
- * Não decide nada: filtra o registro de Apps pelas permissões do usuário e
- * entrega a lista pronta. O caixa vê os módulos dele, não treze com dez
- * bloqueados.
+ * Existe a partir de 1180px. Abaixo disso quem assume é a gaveta, com o mesmo
+ * conteúdo — ver `navegacao.tsx`.
+ *
+ * Ela NÃO decide nada e não consulta nada: recebe a lista já filtrada pelas
+ * permissões. Quem filtra é `apps-visiveis.ts`, uma vez por requisição, no
+ * layout da casca.
+ *
+ * `sticky` com `h-dvh`: a barra acompanha a rolagem da página em vez de subir
+ * junto com ela. Uma navegação que some quando se rola a terceira tela de uma
+ * tabela obriga a voltar ao topo para trocar de lugar.
  */
-export function BarraLateral({ contexto }: { contexto: ContextoSessao }) {
-  const visiveis: AppNaBarra[] = APPS_REGISTRADOS.filter((app) => {
-    // Módulos em construção aparecem só para o Diretor: mostram o rumo do
-    // sistema sem prometer à equipe o que ainda não existe.
-    if (app.emConstrucao && !contexto.ehDiretor) return false;
-    return pode(contexto, app.permissaoParaVer);
-  }).map((app) => ({
-    chave: app.chave,
-    nome: app.nome,
-    subtitulo: app.subtitulo,
-    icone: app.icone,
-    cor: app.cor,
-    rota: app.rota,
-    emConstrucao: app.emConstrucao,
-    navegacao: app.navegacao.filter(
-      (item) => !item.permissao || pode(contexto, item.permissao),
-    ),
-  }));
-
+export function BarraLateral({
+  apps,
+  seletorDeUnidade,
+  conta,
+}: {
+  apps: AppNaBarra[];
+  seletorDeUnidade: ReactNode;
+  conta: ReactNode;
+}) {
   return (
-    <aside className="bg-surface-2 border-line hidden w-[216px] flex-none flex-col border-r p-3 md:flex">
-      <NavegacaoLateral apps={visiveis} />
+    <aside className="border-line bg-surface desk:flex sticky top-0 hidden h-dvh w-[216px] flex-none flex-col border-r">
+      <ConteudoDaNavegacao
+        apps={apps}
+        seletorDeUnidade={seletorDeUnidade}
+        conta={conta}
+      />
     </aside>
   );
 }

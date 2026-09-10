@@ -22,7 +22,7 @@ export const manifestoSeverina: ManifestoDoApp = {
   chave: "assistente",
   nome: "Severina",
   subtitulo: "Avisos & conversas da equipe",
-  icone: "✨",
+  icone: "brilho",
   cor: { fundo: "#4F46E5", frente: "#FFFFFF" },
   area: "apoio",
   rota: "/assistente",

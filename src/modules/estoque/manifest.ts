@@ -17,7 +17,7 @@ export const manifestoEstoque: ManifestoDoApp = {
   chave: "estoque",
   nome: "Estoque",
   subtitulo: "Contagem, notas & CMV",
-  icone: "📦",
+  icone: "caixa",
   cor: { fundo: "#B45309", frente: "#FFFFFF" },
   area: "operacao",
   rota: "/estoque",

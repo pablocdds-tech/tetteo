@@ -99,15 +99,30 @@ export const obterContexto = cache(async (): Promise<ContextoSessao | null> => {
   // Qual unidade está ativa: a escolhida no seletor, se ainda for válida.
   const escolhida = (await cookies()).get(COOKIE_UNIDADE)?.value;
 
+  /**
+   * "Rede inteira" só é um lugar de verdade quando há mais de uma loja.
+   *
+   * Com UMA unidade, olhar "a rede" e olhar "a loja" devolve exatamente o
+   * mesmo conjunto de dados — a única diferença é que metade das telas para de
+   * funcionar, porque caixa, contagem e checklist exigem uma unidade. Quem
+   * abria o sistema pela primeira vez caía num painel vazio pedindo para
+   * escolher uma unidade, com uma opção só na lista.
+   *
+   * Por isso o padrão da rede vale só a partir da segunda unidade. Escolher
+   * "Rede Completa" continua possível quando ela existe de fato — mas aí é uma
+   * decisão de quem clicou, não um estado em que o sistema deixa alguém cair.
+   */
+  const redeFazSentido = podeVerRedeInteira && unidadesVisiveis.length > 1;
+
   let unidadeAtiva: UnidadeVisivel | null = null;
-  if (escolhida === REDE_INTEIRA && podeVerRedeInteira) {
+  if (escolhida === REDE_INTEIRA && redeFazSentido) {
     unidadeAtiva = null;
   } else {
     unidadeAtiva =
       unidadesVisiveis.find((u) => u.id === escolhida) ??
-      // Sem escolha válida: quem vê a rede começa nela; quem não vê,
-      // começa na primeira unidade a que tem acesso.
-      (podeVerRedeInteira ? null : (unidadesVisiveis[0] ?? null));
+      // Sem escolha válida: quem vê várias lojas começa na visão da rede; quem
+      // vê uma só começa nela.
+      (redeFazSentido ? null : (unidadesVisiveis[0] ?? null));
   }
 
   // As permissões somam todos os acessos, mas só valem no escopo atual: um

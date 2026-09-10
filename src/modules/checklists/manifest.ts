@@ -17,7 +17,7 @@ export const manifestoChecklists: ManifestoDoApp = {
   chave: "checklists",
   nome: "Checklists",
   subtitulo: "Abertura, fechamento & pendências",
-  icone: "✅",
+  icone: "lista-conferida",
   cor: { fundo: "#34A853", frente: "#FFFFFF" },
   area: "operacao",
   rota: "/checklists",

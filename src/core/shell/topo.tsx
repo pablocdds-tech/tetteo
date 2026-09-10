@@ -1,42 +1,31 @@
-import { REDE_INTEIRA, type ContextoSessao } from "@/core/sessao/contexto";
-
-import { MenuUsuario } from "./menu-usuario";
-import { SeletorUnidade } from "./seletor-unidade";
+import type { AppNaBarra } from "./apps";
+import { Busca } from "./busca";
+import { Caminho } from "./caminho";
+import { BotaoMenu } from "./navegacao";
 
 /**
- * O topo.
+ * O TOPO.
  *
- * Fino, fixo, com quatro coisas: unidade, busca, notificações e perfil. É o
- * elemento que prova, a cada segundo, que você está dentro de um sistema só.
+ * 56px, com três coisas: o botão Menu (só onde a barra lateral virou gaveta),
+ * o caminho e a busca. A conta desceu para o rodapé da barra lateral, onde ela
+ * fica junto do resto do que é "seu" — e continua alcançável no celular, pela
+ * gaveta.
  *
  * Junto com a barra lateral, forma a CASCA — que monta uma vez e nunca
  * remonta. Só o miolo troca ao mudar de App. Esse contraste (miolo muda,
  * moldura parada) é o que o cérebro lê como "sistema operacional".
+ *
+ * `sticky`: o caminho e a busca continuam na tela no meio de uma tabela longa.
  */
-export function Topo({ contexto }: { contexto: ContextoSessao }) {
+export function Topo({ apps }: { apps: AppNaBarra[] }) {
   return (
-    <header className="border-line bg-surface flex h-[50px] flex-none items-center gap-3 border-b px-4">
-      <SeletorUnidade
-        unidades={contexto.unidadesVisiveis}
-        valorAtual={contexto.unidadeAtiva?.id ?? REDE_INTEIRA}
-        podeVerRede={contexto.podeVerRedeInteira}
-      />
+    <header className="border-line bg-surface desk:px-7 sticky top-0 z-10 flex h-14 flex-none items-center gap-3 border-b px-4">
+      <BotaoMenu />
 
-      {/* Busca e notificações entram nos próximos componentes. O espaço já
-          existe para a casca não mudar de forma quando chegarem. */}
-      <div className="text-ink-3 border-line bg-surface-2 hidden h-8 max-w-[280px] flex-1 items-center gap-2 rounded-md border px-2.5 text-sm sm:flex">
-        <span aria-hidden>🔎</span>
-        <span>Buscar…</span>
-        <kbd className="border-line-2 text-ink-3 ml-auto rounded border px-1 font-mono text-[11px]">
-          Ctrl K
-        </kbd>
-      </div>
+      <Caminho apps={apps} />
 
-      <div className="ml-auto">
-        <MenuUsuario
-          nome={contexto.usuario.nome}
-          email={contexto.usuario.email}
-        />
+      <div className="ml-auto flex flex-none items-center gap-2">
+        <Busca apps={apps} />
       </div>
     </header>
   );

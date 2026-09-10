@@ -30,6 +30,31 @@ const TAMANHOS: Record<Tamanho, string> = {
   grande: "h-12 px-6 text-lg rounded-lg",
 };
 
+/**
+ * O ESTILO DO BOTÃO, sem o botão.
+ *
+ * Existe por causa de um erro que se repete no sistema inteiro:
+ * `<Link><Botao/></Link>` produz `<a><button></a>`. HTML não permite um
+ * controle dentro de outro, e o resultado é real — o leitor de tela anuncia
+ * dois elementos onde há um, e o Enter às vezes cai no `<a>` e às vezes no
+ * `<button>`.
+ *
+ * A regra é: NAVEGA é `<a>`, FAZ é `<button>`. Quando um link precisa parecer
+ * um botão, ele pede a classe aqui e continua sendo um link.
+ */
+export function estiloDeBotao(
+  peso: Peso = "primario",
+  tamanho: Tamanho = "medio",
+) {
+  return [
+    "inline-flex items-center justify-center gap-2 font-semibold",
+    "transition-[background-color,border-color,color,filter] duration-150",
+    "focus-visible:outline-accent focus-visible:outline-2 focus-visible:outline-offset-3",
+    PESOS[peso],
+    TAMANHOS[tamanho],
+  ].join(" ");
+}
+
 type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
   peso?: Peso;
   tamanho?: Tamanho;
@@ -51,12 +76,8 @@ export function Botao({
       disabled={disabled || carregando}
       aria-busy={carregando || undefined}
       className={[
-        "inline-flex items-center justify-center gap-2 font-semibold",
-        "transition-[background-color,border-color,color,filter] duration-150",
-        "focus-visible:outline-accent focus-visible:outline-2 focus-visible:outline-offset-2",
+        estiloDeBotao(peso, tamanho),
         "disabled:cursor-not-allowed disabled:opacity-40",
-        PESOS[peso],
-        TAMANHOS[tamanho],
         className,
       ].join(" ")}
     >

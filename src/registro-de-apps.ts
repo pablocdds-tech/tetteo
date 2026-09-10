@@ -20,9 +20,10 @@ import { manifestoFinanceiro } from "@/modules/financeiro/manifest";
  *
  * Cada módulo declara também a sua NAVEGAÇÃO INTERNA. É isso que mantém a
  * barra lateral enxuta: ela nunca lista os módulos todos, só as opções do
- * módulo aberto. Trocar de módulo é outro gesto — o painel flutuante do topo.
+ * módulo aberto. Trocar de módulo é outro gesto — "Trocar de módulo", na
+ * própria barra.
  *
- * A ORDEM aqui é a ordem que aparece no painel, e ela segue a corrente do
+ * A ORDEM aqui é a ordem que aparece na lista, e ela segue a corrente do
  * negócio, não o alfabeto: Compras → Cardápio → Estoque → Financeiro. Quem
  * abre o painel lê o caminho do dinheiro.
  */
@@ -31,7 +32,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "analytics",
     nome: "Analytics",
     subtitulo: "Vendas & KPIs",
-    icone: "📊",
+    icone: "grafico",
     cor: { fundo: "#7C3AED", frente: "#FFFFFF" },
     area: "gestao",
     rota: "/analytics",
@@ -52,7 +53,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "crm",
     nome: "CRM",
     subtitulo: "Clientes & reservas",
-    icone: "❤️",
+    icone: "coracao",
     cor: { fundo: "#E11D62", frente: "#FFFFFF" },
     area: "gestao",
     rota: "/crm",
@@ -86,7 +87,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "delivery",
     nome: "Delivery",
     subtitulo: "Canal próprio, ao vivo",
-    icone: "🛵",
+    icone: "entrega",
     cor: { fundo: "#E4262B", frente: "#FFFFFF" },
     area: "operacao",
     rota: "/delivery",
@@ -109,7 +110,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "patrimonio",
     nome: "Patrimônio",
     subtitulo: "Equipamentos & manutenção",
-    icone: "🔧",
+    icone: "ferramenta",
     cor: { fundo: "#4A6173", frente: "#FFFFFF" },
     area: "apoio",
     rota: "/patrimonio",
@@ -129,7 +130,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "vigia",
     nome: "Vigia",
     subtitulo: "Câmeras & fiscalização",
-    icone: "👁️",
+    icone: "olho",
     cor: { fundo: "#1668D9", frente: "#FFFFFF" },
     area: "apoio",
     rota: "/vigia",
@@ -149,7 +150,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "telas",
     nome: "Telas",
     subtitulo: "Conteúdo & sinalização",
-    icone: "🖥️",
+    icone: "monitor",
     cor: { fundo: "#159C8C", frente: "#FFFFFF" },
     area: "apoio",
     rota: "/telas",
@@ -169,7 +170,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "pessoas",
     nome: "Pessoas (DP)",
     subtitulo: "Folha, admissões & compliance",
-    icone: "👥",
+    icone: "pessoas",
     cor: { fundo: "#F08A2C", frente: "#FFFFFF" },
     area: "pessoas",
     rota: "/pessoas",
@@ -192,7 +193,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "rh",
     nome: "RH (Cultura)",
     subtitulo: "Recrutamento, eNPS & ASOs",
-    icone: "💚",
+    icone: "broto",
     cor: { fundo: "#16A085", frente: "#FFFFFF" },
     area: "pessoas",
     rota: "/rh",
@@ -220,7 +221,7 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
     chave: "configuracoes",
     nome: "Configurações",
     subtitulo: "Integrações & usuários",
-    icone: "⚙️",
+    icone: "engrenagem",
     cor: { fundo: "#1F2430", frente: "#FFFFFF" },
     area: "apoio",
     rota: "/configuracoes",

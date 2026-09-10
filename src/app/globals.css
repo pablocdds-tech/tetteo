@@ -1,45 +1,71 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   TETTEO — TOKENS DE DESIGN
-   Fonte da verdade: o documento de Design System aprovado.
+   TETTEO — TOKENS DE DESIGN · direção AURORA
+   Fonte da verdade: DESIGN.md.
    Regra: nenhuma cor literal (#hex) fora deste arquivo. Componentes usam
    sempre os tokens — é isso que faz os dois temas funcionarem.
+
+   A paleta segue a especificação Aurora (Apple HIG): fundo #F2F3F5,
+   superfície #FDFDFE, texto #202124, apoio #646870, borda #DBDDE2 e
+   acento #0066CC. Os seis vieram prontos; os derivados abaixo foram
+   escolhidos rodando o cálculo da WCAG, não a olho — e ficam provados em
+   src/app/contraste.test.ts.
    ========================================================================== */
 
-/* -------- Tema claro (padrão) -------- */
+/* -------- Tema claro (padrão) --------
+ * O acento é AZUL. Um acento por produto, ou o "azul é ação" deixa de ser
+ * lido como ação e vira decoração.
+ */
 :root {
   /* Superfícies — do fundo para o que está por cima */
-  --paper: #fafafc;
-  --surface: #ffffff;
-  --surface-2: #f3f3f8;
-  --surface-3: #eaeaf2;
+  --paper: #f2f3f5;
+  --surface: #fdfdfe;
+  --surface-2: #ebecef;
+  --surface-3: #e0e2e7;
 
-  /* Linhas */
-  --line: #e3e3ec;
-  --line-2: #cfcedd;
+  /* Linhas.
+     --line é o fio de cabelo da Aurora (#DBDDE2): separa cartão de cartão e
+     linha de linha. Ele dá 1,34:1 e isso BASTA para um separador decorativo.
+     --line-2 é outra coisa: é a borda que diz onde um CAMPO começa e termina,
+     e a WCAG 1.4.11 exige 3:1 dela. Por isso ela é bem mais escura. Usar
+     --line num input é o erro que este par de tokens existe para evitar. */
+  --line: #dbdde2;
+  --line-2: #838790;
 
-  /* Texto — do mais forte ao mais fraco */
-  --ink: #15141d;
-  --ink-2: #545268;
-  --ink-3: #8a889f;
+  /* Texto — do mais forte ao mais fraco.
+     Os três passam em 4,5:1 sobre --surface e sobre --paper. --ink-3 é o
+     --muted da Aurora e é o PISO: abaixo dele não existe token de texto,
+     justamente para não haver como escrever algo ilegível sem sair do
+     sistema. */
+  --ink: #202124;
+  --ink-2: #45484f;
+  --ink-3: #646870;
 
-  /* Acento — ação principal, item ativo, foco de teclado */
-  --accent: #5b45d9;
+  /* Acento — ação principal, item ativo, foco de teclado, série do gráfico.
+     Branco sobre o acento dá 5,57:1; o acento sobre a superfície dá 5,48:1.
+     Os dois sentidos passam, e é por isso que o botão primário pode ser
+     sólido com texto branco. */
+  --accent: #0066cc;
   --accent-ink: #ffffff;
-  --accent-sub: #eeebfc;
+  --accent-sub: #e3eefc;
 
-  /* Semânticos — significado fixo, nunca reutilizados para decorar */
-  --ok: #167f55;
-  --ok-sub: #e1f4ec;
-  --warn: #a66a12;
-  --warn-sub: #fbf0dc;
-  --bad: #b93129;
-  --bad-sub: #fbe8e6;
-  --info: #2565a8;
-  --info-sub: #e4effa;
+  /* Semânticos — significado fixo, nunca reutilizados para decorar.
+     --info é CIANO, não azul: com o acento azul, um "info" azul viraria um
+     falso botão. Duas cores parecidas com significados diferentes é pior do
+     que não ter a segunda. */
+  --ok: #1a7548;
+  --ok-sub: #e2f2e9;
+  --warn: #8a5b00;
+  --warn-sub: #f8efdd;
+  --bad: #c0342a;
+  --bad-sub: #fbe9e7;
+  --info: #0b6e99;
+  --info-sub: #e2f1f7;
 
-  --shadow-card: 0 1px 2px rgb(21 20 29 / 6%), 0 4px 12px rgb(21 20 29 / 5%);
+  --shadow-card: 0 1px 2px rgb(32 33 36 / 6%), 0 4px 12px rgb(32 33 36 / 5%);
+  --shadow-flutuante:
+    0 8px 12px -4px rgb(32 33 36 / 10%), 0 20px 32px -8px rgb(32 33 36 / 14%);
 }
 
 /* -------- Tema escuro -------- *
@@ -48,30 +74,36 @@
  *   2. Nunca branco puro  — contraste máximo vibra e cansa
  *   3. Luz é altura       — o que está por cima é mais claro, não sombreado
  *   4. Cor se ajusta      — saturado treme no escuro: clareia e dessatura
+ *
+ * O acento escuro NÃO é o #0066cc do claro: naquele fundo ele daria 2,4:1 e
+ * sumiria. Ele sobe para um azul claro, e aí o texto por cima dele precisa
+ * ser ESCURO — é o par invertido, e é de propósito.
  */
 @media (prefers-color-scheme: dark) {
   :root {
-    --paper: #0d0c13;
-    --surface: #16151e;
-    --surface-2: #1e1d28;
-    --surface-3: #272533;
-    --line: #2a2836;
-    --line-2: #3b3949;
-    --ink: #eae9f1;
-    --ink-2: #a6a4b9;
-    --ink-3: #6f6d83;
-    --accent: #8e79f0;
-    --accent-ink: #12101c;
-    --accent-sub: #221d3d;
-    --ok: #4cc08a;
-    --ok-sub: #122a20;
-    --warn: #dfa544;
+    --paper: #0f1114;
+    --surface: #191b1f;
+    --surface-2: #22252a;
+    --surface-3: #2d3036;
+    --line: #32353c;
+    --line-2: #6c717b;
+    --ink: #eceef1;
+    --ink-2: #b4b8c0;
+    --ink-3: #8b909a;
+    --accent: #6cb0ff;
+    --accent-ink: #0a1220;
+    --accent-sub: #16273d;
+    --ok: #48c58c;
+    --ok-sub: #0f2820;
+    --warn: #e0a84a;
     --warn-sub: #2b2113;
-    --bad: #f0685e;
-    --bad-sub: #2e1614;
-    --info: #62a6ea;
-    --info-sub: #12212f;
+    --bad: #f4736a;
+    --bad-sub: #2f1715;
+    --info: #4fb3d9;
+    --info-sub: #0f2630;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 14px rgb(0 0 0 / 30%);
+    --shadow-flutuante:
+      0 8px 12px -4px rgb(0 0 0 / 45%), 0 20px 32px -8px rgb(0 0 0 / 50%);
   }
 }
 
@@ -80,58 +112,110 @@
  * O Modo Operação em cozinha força data-theme="dark".
  */
 :root[data-theme="dark"] {
-  --paper: #0d0c13;
-  --surface: #16151e;
-  --surface-2: #1e1d28;
-  --surface-3: #272533;
-  --line: #2a2836;
-  --line-2: #3b3949;
-  --ink: #eae9f1;
-  --ink-2: #a6a4b9;
-  --ink-3: #6f6d83;
-  --accent: #8e79f0;
-  --accent-ink: #12101c;
-  --accent-sub: #221d3d;
-  --ok: #4cc08a;
-  --ok-sub: #122a20;
-  --warn: #dfa544;
+  --paper: #0f1114;
+  --surface: #191b1f;
+  --surface-2: #22252a;
+  --surface-3: #2d3036;
+  --line: #32353c;
+  --line-2: #6c717b;
+  --ink: #eceef1;
+  --ink-2: #b4b8c0;
+  --ink-3: #8b909a;
+  --accent: #6cb0ff;
+  --accent-ink: #0a1220;
+  --accent-sub: #16273d;
+  --ok: #48c58c;
+  --ok-sub: #0f2820;
+  --warn: #e0a84a;
   --warn-sub: #2b2113;
-  --bad: #f0685e;
-  --bad-sub: #2e1614;
-  --info: #62a6ea;
-  --info-sub: #12212f;
+  --bad: #f4736a;
+  --bad-sub: #2f1715;
+  --info: #4fb3d9;
+  --info-sub: #0f2630;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%), 0 4px 14px rgb(0 0 0 / 30%);
+  --shadow-flutuante:
+    0 8px 12px -4px rgb(0 0 0 / 45%), 0 20px 32px -8px rgb(0 0 0 / 50%);
 }
 
 :root[data-theme="light"] {
-  --paper: #fafafc;
-  --surface: #ffffff;
-  --surface-2: #f3f3f8;
-  --surface-3: #eaeaf2;
-  --line: #e3e3ec;
-  --line-2: #cfcedd;
-  --ink: #15141d;
-  --ink-2: #545268;
-  --ink-3: #8a889f;
-  --accent: #5b45d9;
+  --paper: #f2f3f5;
+  --surface: #fdfdfe;
+  --surface-2: #ebecef;
+  --surface-3: #e0e2e7;
+  --line: #dbdde2;
+  --line-2: #838790;
+  --ink: #202124;
+  --ink-2: #45484f;
+  --ink-3: #646870;
+  --accent: #0066cc;
   --accent-ink: #ffffff;
-  --accent-sub: #eeebfc;
-  --ok: #167f55;
-  --ok-sub: #e1f4ec;
-  --warn: #a66a12;
-  --warn-sub: #fbf0dc;
-  --bad: #b93129;
-  --bad-sub: #fbe8e6;
-  --info: #2565a8;
-  --info-sub: #e4effa;
-  --shadow-card: 0 1px 2px rgb(21 20 29 / 6%), 0 4px 12px rgb(21 20 29 / 5%);
+  --accent-sub: #e3eefc;
+  --ok: #1a7548;
+  --ok-sub: #e2f2e9;
+  --warn: #8a5b00;
+  --warn-sub: #f8efdd;
+  --bad: #c0342a;
+  --bad-sub: #fbe9e7;
+  --info: #0b6e99;
+  --info-sub: #e2f1f7;
+  --shadow-card: 0 1px 2px rgb(32 33 36 / 6%), 0 4px 12px rgb(32 33 36 / 5%);
+  --shadow-flutuante:
+    0 8px 12px -4px rgb(32 33 36 / 10%), 0 20px 32px -8px rgb(32 33 36 / 14%);
+}
+
+/* -------- Apelidos do documento de especificação -------- *
+ * A especificação Aurora nomeia os tokens de outro jeito. Em vez de manter
+ * dois sistemas de cor, os nomes dela apontam para os daqui. Quem escrever CSS
+ * cru usando --border ou --text acerta a cor do tema em vigor, e continua
+ * existindo UMA fonte da verdade.
+ */
+:root {
+  --app-bg: var(--paper);
+  --text: var(--ink);
+  --muted: var(--ink-3);
+  --border: var(--line);
+  --radius-card: 12px;
+
+  /* Escala de espaçamento: 4, 8, 12, 16, 24, 32, 40, 48.
+     O gap padrão do painel é --space-4 (16px). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --space-8: 48px;
+}
+
+/* -------- O corpo do texto muda de tamanho, não de escala -------- *
+ * A Aurora pede 16/24 no celular e 14/21 no computador. É a MESMA decisão de
+ * legibilidade lida de dois jeitos: no celular o texto é maior porque a mão
+ * treme e a leitura é de passagem; no computador ele encolhe porque cabe mais
+ * trabalho na tela e a distância do olho é fixa.
+ *
+ * Fica num par de variáveis, e não em "text-base md:text-sm" espalhado por
+ * cinquenta arquivos, por dois motivos: o campo de formulário PRECISA de 16px
+ * no celular (abaixo disso o iPhone dá zoom sozinho ao focar, e a tela pula),
+ * e porque uma regra escrita uma vez é uma regra que dá para mudar.
+ */
+:root {
+  --corpo: 1rem; /* 16px */
+  --corpo-altura: 1.5rem; /* 24px */
+}
+
+@media (min-width: 48rem) {
+  :root {
+    --corpo: 0.875rem; /* 14px */
+    --corpo-altura: 1.3125rem; /* 21px */
+  }
 }
 
 /* -------- Medidas fixas da casca -------- */
 :root {
-  --shell-sidebar: 216px;
-  --shell-sidebar-collapsed: 60px;
-  --shell-header: 50px;
+  --shell-sidebar: 208px;
+  --shell-header: 56px;
+  --shell-lista: 310px; /* a coluna de rotinas, ao lado do detalhe */
   --width-reading: 720px; /* formulários e texto */
   --width-data: 1400px; /* tabelas e listas */
 
@@ -139,7 +223,7 @@
      mudança. Nada acima de 300ms — sem exceção. */
   --motion-instant: 0ms; /* ação repetitiva sob pressão */
   --motion-fast: 150ms; /* abrir registro da lista */
-  --motion-app: 200ms; /* trocar de App — só o miolo se move */
+  --motion-app: 180ms; /* trocar de App — só o miolo se move */
   --motion-panel: 250ms; /* painel lateral de espiada */
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
 }
@@ -147,7 +231,8 @@
 /* ==========================================================================
    PONTE PARA O TAILWIND
    `inline` faz a utilitária apontar para a variável, não para o valor
-   resolvido — é isso que permite trocar de tema sem recompilar.
+   resolvido — é isso que permite trocar de tema (e de tamanho de corpo) sem
+   recompilar.
    ========================================================================== */
 @theme inline {
   --color-paper: var(--paper);
@@ -171,28 +256,62 @@
   --color-info: var(--info);
   --color-info-sub: var(--info-sub);
 
-  /* Escala tipográfica — poucos degraus, e nada fora dela.
-     Em rem para respeitar quem aumenta a fonte no navegador. */
-  --text-xs: 0.6875rem; /* 11px — rótulo de coluna, caixa alta */
-  --text-sm: 0.8125rem; /* 13px — apoio, tabela densa */
-  --text-base: 0.9375rem; /* 15px — corpo, Modo Gestão */
-  --text-lg: 1.0625rem; /* 17px — corpo, Modo Operação */
-  --text-xl: 1.25rem; /* 20px — título de cartão */
-  --text-2xl: 1.5rem; /* 24px — título de seção */
-  --text-3xl: 1.875rem; /* 30px — título de tela */
-  --text-4xl: 2.375rem; /* 38px — número em destaque */
+  /* Escala tipográfica da Aurora — poucos degraus, e nada fora dela.
+     Em rem para respeitar quem aumenta a fonte no navegador.
 
-  /* Cantos — o raio comunica hierarquia: maior o elemento, maior o canto */
+     "corpo" é o único degrau que muda com a largura da tela: 16/24 no
+     celular, 14/21 no computador. Use-o no texto corrido e em TODO controle
+     de formulário. Os outros são fixos. */
+  --text-corpo: var(--corpo);
+  --text-corpo--line-height: var(--corpo-altura);
+
+  --text-xs: 0.75rem; /* 12/18 — o piso do texto auxiliar */
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.8125rem; /* 13/18 — tabela densa, rótulo de coluna */
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.875rem; /* 14/21 — corpo no computador */
+  --text-base--line-height: 1.3125rem;
+  --text-md: 1rem; /* 16/24 — corpo no celular, Modo Operação */
+  --text-md--line-height: 1.5rem;
+  --text-lg: 1.125rem; /* 18/24 — título de seção */
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.25rem; /* 20/28 — título de cartão */
+  --text-xl--line-height: 1.75rem;
+  --text-2xl: 1.5rem; /* 24/30 — título de tela no celular */
+  --text-2xl--line-height: 1.875rem;
+  --text-3xl: 1.75rem; /* 28/34 — título de tela no computador */
+  --text-3xl--line-height: 2.125rem;
+  --text-4xl: 2.125rem; /* 34/40 — número em destaque */
+  --text-4xl--line-height: 2.5rem;
+
+  /* Cantos — o raio comunica hierarquia: maior o elemento, maior o canto.
+     Os dois do meio vêm nomeados na especificação Aurora: 10px na linha
+     selecionada da lista, 16px no painel de detalhe. */
   --radius-sm: 6px; /* etiqueta */
   --radius-md: 8px; /* botão, campo */
+  --radius-linha: 10px; /* linha selecionada de uma lista */
   --radius-lg: 12px; /* cartão */
-  --radius-xl: 14px; /* ícone de App */
+  --radius-painel: 16px; /* painel de detalhe, gaveta */
 
   /* Base 4px. Toda medida do sistema é múltipla dela. */
   --spacing: 0.25rem;
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Tipografia do sistema operacional de quem está lendo.
+     Nenhum arquivo de fonte é baixado: a tela desenha no primeiro quadro, sem
+     texto invisível esperando a fonte chegar, e sem depender de servidor
+     nenhum além do nosso. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+}
+
+/* A largura em que a barra lateral deixa de ser gaveta e passa a ficar fixa.
+   Não pode entrar no bloco `inline` acima: media query não lê var(). */
+@theme {
+  --breakpoint-desk: 73.75rem; /* 1180px */
 }
 
 /* ==========================================================================
@@ -201,22 +320,49 @@
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
-  font-size: var(--text-base);
-  line-height: 1.6;
+  font-family: var(--font-sans);
+  font-size: var(--corpo);
+  line-height: var(--corpo-altura);
+
+  /* Dígito é conteúdo principal num sistema de gestão. Ligado no corpo
+     inteiro: qualquer coluna de número alinha na vírgula sozinha, dentro ou
+     fora de tabela. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* Foco de teclado nunca é removido. É acessibilidade, e é o que permite
    operar o sistema sem tirar a mão do teclado. */
 :focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-/* Dígito é conteúdo principal num sistema de gestão: toda coluna numérica
-   alinha na vírgula sozinha. */
-table {
-  font-variant-numeric: tabular-nums;
+/* O fundo atrás de uma gaveta ou de um diálogo. `<dialog>` aberto com
+   showModal() já trava o foco e responde ao Esc sozinho — o navegador faz
+   melhor do que qualquer armadilha de foco escrita à mão. */
+dialog::backdrop {
+  background: rgb(15 17 20 / 45%);
+}
+
+/* A gaveta e o painel entram do lado de onde eles vivem. O movimento diz de
+   onde a coisa veio e para onde ela volta — é orientação, não enfeite, e some
+   inteiro em prefers-reduced-motion pela regra logo abaixo. */
+@keyframes deslizar-da-direita {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes deslizar-da-esquerda {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -19,7 +19,7 @@ export const manifestoCompras: ManifestoDoApp = {
   chave: "compras",
   nome: "Compras",
   subtitulo: "Cotações & pedidos",
-  icone: "🛒",
+  icone: "carrinho",
   cor: { fundo: "#E23B2E", frente: "#FFFFFF" },
   area: "gestao",
   rota: "/compras",

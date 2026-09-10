@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { obterContexto, pode } from "@/core/sessao/contexto";
-import { Botao } from "@/design-system/botao";
+import { estiloDeBotao } from "@/design-system/botao";
+import { Icone } from "@/design-system/icones";
 import { APPS_REGISTRADOS } from "@/registro-de-apps";
 
 /**
@@ -40,10 +41,10 @@ export default async function ModuloEmConstrucao({
       <div className="flex items-center gap-3">
         <span
           aria-hidden
-          className="grid size-11 flex-none place-items-center rounded-xl text-xl"
+          className="grid size-11 flex-none place-items-center rounded-xl"
           style={{ background: app.cor.fundo, color: app.cor.frente }}
         >
-          {app.icone}
+          <Icone nome={app.icone} tamanho={22} />
         </span>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -75,8 +76,8 @@ export default async function ModuloEmConstrucao({
           </p>
         )}
 
-        <Link href="/" className="mt-5 inline-block">
-          <Botao peso="secundario">Voltar ao início</Botao>
+        <Link href="/" className={`mt-5 ${estiloDeBotao("secundario")}`}>
+          Voltar ao painel
         </Link>
       </div>
     </div>

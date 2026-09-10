@@ -1,3 +1,5 @@
+import type { NomeDeIcone } from "@/design-system/icones";
+
 /**
  * O CONTRATO DE UM APP.
  *
@@ -42,8 +44,15 @@ export type ManifestoDoApp = {
    */
   subtitulo: string;
 
-  /** Emoji ou nome do ícone. */
-  icone: string;
+  /**
+   * O ícone, pelo NOME, do conjunto desenhado em `design-system/icones`.
+   *
+   * Já foi `string` com um emoji dentro, e isso tinha três defeitos: o desenho
+   * mudava conforme o sistema operacional de quem olhava, a cor era fixa e não
+   * acompanhava o tema, e não havia como o TypeScript avisar que "🛵" não
+   * existe. Agora um nome errado não compila.
+   */
+  icone: NomeDeIcone;
 
   /**
    * Cor de identidade, fixa e vitalícia. As pessoas encontram por cor antes de
