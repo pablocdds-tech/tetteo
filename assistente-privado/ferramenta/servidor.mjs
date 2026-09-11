@@ -22,19 +22,48 @@ const tratar = criarProtocolo({
 
 const leitor = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
+// A resposta em andamento não pode ser cortada quando a entrada fecha: o
+// contador de pendentes segura a saída até a última escrita terminar.
+let pendentes = 0;
+let entradaFechada = false;
+const sairSePuder = () => {
+  if (entradaFechada && pendentes === 0) process.exit(0);
+};
+
 leitor.on("line", async (linha) => {
   if (!linha.trim()) return;
   let mensagem;
   try {
     mensagem = JSON.parse(linha);
   } catch {
-    process.stdout.write(
-      `${JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON inválido" } })}\n`,
+    await new Promise((resolve) =>
+      process.stdout.write(
+        `${JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON inválido" } })}\n`,
+        resolve,
+      ),
     );
     return;
   }
-  const resposta = await tratar(mensagem);
-  if (resposta) process.stdout.write(`${JSON.stringify(resposta)}\n`);
+  pendentes++;
+  try {
+    const resposta = await tratar(mensagem);
+    if (resposta) {
+      // Espera o flush: no Windows, a escrita num pipe ainda pode estar em
+      // andamento quando o process.exit roda.
+      await new Promise((resolve) =>
+        process.stdout.write(`${JSON.stringify(resposta)}\n`, resolve),
+      );
+    }
+  } finally {
+    pendentes--;
+    sairSePuder();
+  }
 });
 
-leitor.on("close", () => process.exit(0));
+leitor.on("close", () => {
+  entradaFechada = true;
+  sairSePuder();
+  // Rede de segurança: uma chamada travada não pode manter o processo vivo
+  // para sempre depois que a entrada fechou.
+  setTimeout(() => process.exit(0), 30_000).unref();
+});
