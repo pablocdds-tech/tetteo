@@ -9,7 +9,7 @@ import { criarFonteFicticia } from "../fontes/ficticia.js";
 import type { FonteDeVendas } from "../fontes/tipos.js";
 import { ErroDeCliente, type ResolverCliente } from "../oauth/cliente.js";
 import { criarRegistro } from "../registro.js";
-import { criarAplicacao } from "../servidor.js";
+import { criarAplicacao, type DependenciasDoServidor } from "../servidor.js";
 import { criarBancoDeEnsaio, type BancoDeEnsaio } from "./banco-de-ensaio.js";
 import { obterCodigo, pedirChaves } from "./fluxo.js";
 import { PESSOAS, SENHA_DE_ENSAIO, semear } from "./semente.js";
@@ -44,8 +44,16 @@ export type Ambiente = {
   encerrar(): Promise<void>;
 };
 
+// Nos testes, dezenas de logins seguidos saem do mesmo IP: limite alto, a não
+// ser que o próprio teste queira ver o 429.
+const SEM_LIMITE = { maximo: 100_000, janelaMs: 60_000 };
+
 export async function subirAmbiente(
-  opcoes: { fonte?: FonteDeVendas; tempoMaximoMs?: number } = {},
+  opcoes: {
+    fonte?: FonteDeVendas;
+    tempoMaximoMs?: number;
+    limites?: DependenciasDoServidor["limites"];
+  } = {},
 ): Promise<Ambiente> {
   const ensaio = await criarBancoDeEnsaio();
   await semear(ensaio.admin);
@@ -71,6 +79,12 @@ export async function subirAmbiente(
     resolverCliente: clienteDeEnsaio,
     agora: () => new Date("2026-09-11T15:00:00Z"),
     tempoMaximoMs: opcoes.tempoMaximoMs,
+    limites: {
+      autorizar: SEM_LIMITE,
+      token: SEM_LIMITE,
+      saude: SEM_LIMITE,
+      ...opcoes.limites,
+    },
   });
   servidor.on("request", app);
 

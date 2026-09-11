@@ -6,11 +6,17 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 
-import { chavesPara, subirAmbiente, type Ambiente } from "./ensaio/ambiente.js";
+import {
+  CLIENTE_DE_ENSAIO,
+  chavesPara,
+  subirAmbiente,
+  type Ambiente,
+} from "./ensaio/ambiente.js";
 import { urlDeEnsaio } from "./ensaio/banco-de-ensaio.js";
 import { PESSOAS } from "./ensaio/semente.js";
 import { criarFonteFicticia, pedidosFicticios } from "./fontes/ficticia.js";
 import type { FonteDeVendas } from "./fontes/tipos.js";
+import { desafioDe } from "./oauth/segredos.js";
 
 const pular = urlDeEnsaio()
   ? false
@@ -203,6 +209,36 @@ describe("servidor completo, de ponta a ponta", { skip: pular }, () => {
     assert.equal((await mcp({}, grande)).status, 401);
   });
 
+  it("POST /mcp que não é JSON: 415 sem esperar o corpo chegar", async () => {
+    const { accessToken } = await chaves();
+    const { request } = await import("node:http");
+    const status = await new Promise<number>((pronto, falha) => {
+      const pedido = request(new URL("/mcp", ambiente.base), {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          "content-type": "text/plain",
+          // Promete 100 MB e manda 1 KB: quem esperar o corpo inteiro trava
+          // (e, com o corpo chegando, o guardaria todo na memória).
+          "content-length": String(100 * 1024 * 1024),
+        },
+      });
+      const relogio = setTimeout(() => {
+        pedido.destroy();
+        falha(new Error("o servidor ficou esperando o corpo"));
+      }, 3000);
+      pedido.on("response", (resposta) => {
+        clearTimeout(relogio);
+        resposta.resume();
+        pedido.destroy();
+        pronto(resposta.statusCode ?? 0);
+      });
+      pedido.on("error", () => {});
+      pedido.write("x".repeat(1024));
+    });
+    assert.equal(status, 415);
+  });
+
   it("Host ou Origin estranhos: 403", async () => {
     const saude = new URL("/health", ambiente.base);
     // fetch não deixa trocar o Host; o teste usa http.request.
@@ -221,6 +257,42 @@ describe("servidor completo, de ponta a ponta", { skip: pular }, () => {
         .status,
       403,
     );
+  });
+
+  it("o formulário enviado pelo navegador passa na checagem de Origin, e Origin null não", async () => {
+    const url = new URL("/oauth/authorize", ambiente.base);
+    for (const [chave, valor] of Object.entries({
+      response_type: "code",
+      client_id: CLIENTE_DE_ENSAIO,
+      redirect_uri: "http://127.0.0.1:4555/callback",
+      code_challenge: desafioDe("v".repeat(50)),
+      code_challenge_method: "S256",
+      state: "s",
+    })) {
+      url.searchParams.set(chave, valor);
+    }
+    const tela = await fetch(url);
+    // Com "no-referrer", o navegador mandaria "Origin: null" ao enviar o
+    // formulário — e a checagem de Origin recusaria todo login.
+    assert.equal(tela.headers.get("referrer-policy"), "same-origin");
+    const pedido =
+      /name="pedido" value="([^"]+)"/.exec(await tela.text())?.[1] ?? "";
+
+    const enviar = (origem: string) =>
+      fetch(new URL("/oauth/authorize", ambiente.base), {
+        method: "POST",
+        headers: { origin: origem },
+        body: new URLSearchParams({
+          pedido,
+          acao: "autorizar",
+          email: PESSOAS.gerente,
+          senha: "errada",
+        }),
+        redirect: "manual",
+      });
+    // Chegou à conferência da senha: o Origin do próprio servidor passou.
+    assert.equal((await enviar(ambiente.base)).status, 401);
+    assert.equal((await enviar("null")).status, 403);
   });
 
   it("/health responde sem nada sensível", async () => {
@@ -275,5 +347,31 @@ describe("servidor completo, de ponta a ponta", { skip: pular }, () => {
       caminhos.every((caminho) => !caminho.includes("?")),
       "nenhuma query string registrada",
     );
+  });
+});
+
+describe("limite de requisições por IP", { skip: pular }, () => {
+  let ambiente: Ambiente;
+
+  before(async () => {
+    ambiente = await subirAmbiente({
+      limites: { autorizar: { maximo: 2, janelaMs: 60_000 } },
+    });
+  });
+
+  after(async () => {
+    await ambiente?.encerrar();
+  });
+
+  it("a tela de autorização para de atender quem insiste", async () => {
+    const tela = () =>
+      fetch(
+        new URL("/oauth/authorize?client_id=x&redirect_uri=y", ambiente.base),
+      );
+    assert.equal((await tela()).status, 400);
+    assert.equal((await tela()).status, 400);
+    const bloqueada = await tela();
+    assert.equal(bloqueada.status, 429);
+    assert.ok(Number(bloqueada.headers.get("retry-after")) > 0);
   });
 });

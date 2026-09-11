@@ -141,7 +141,10 @@ export function aplicarCabecalhosDePagina(
     "Content-Security-Policy": `default-src 'none'; style-src 'self'; form-action ${formAction}; frame-ancestors 'none'; base-uri 'none'`,
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "no-referrer",
+    // same-origin, e não no-referrer: com no-referrer o navegador manda
+    // "Origin: null" ao enviar o formulário, e a checagem de Origin recusaria
+    // todo login. Para o claude.ai (outra origem) continua sem Referer.
+    "Referrer-Policy": "same-origin",
     "Cache-Control": "no-store",
   });
 }

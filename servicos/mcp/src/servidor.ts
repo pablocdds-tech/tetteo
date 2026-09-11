@@ -21,6 +21,7 @@ import express, {
 import type { Banco } from "./banco/conexao.js";
 import type { Config } from "./config.js";
 import type { FonteDeVendas } from "./fontes/tipos.js";
+import { criarLimitador, type Limite } from "./limitador.js";
 import { criarServidorMcp, VERSAO } from "./mcp/servidor-mcp.js";
 import { registrarChamada } from "./oauth/armazem.js";
 import {
@@ -42,14 +43,18 @@ import type { Registro } from "./registro.js";
  *   1. registro     toda requisição vira uma linha (sem query, sem corpo)
  *   2. Host         só o nosso nome — barra DNS rebinding
  *   3. Origin       navegador de outro site não entra
- *   4. rotas        /health, descoberta, /oauth/*, /mcp
- *   5. em /mcp:     a CHAVE antes do corpo. Quem não tem chave não consegue
- *                   nem fazer o servidor ler 64 KB de JSON.
+ *   4. limites      por IP nas portas abertas a qualquer um
+ *   5. rotas        /health, descoberta, /oauth/*, /mcp
+ *   6. em /mcp:     a CHAVE antes do corpo, e só JSON. Quem não tem chave
+ *                   não faz o servidor ler um byte; quem tem não passa de
+ *                   64 KB.
  *
  * `/mcp` é servido por `createMcpHandler` no modo sem sessão: cada requisição
  * monta um McpServer novo (2026-07-28) ou cai no modo sem sessão de 2025
  * (`legacy: "stateless"`). Nada fica em memória entre chamadas.
  */
+
+type PortaLimitada = "autorizar" | "token" | "saude";
 
 export type DependenciasDoServidor = {
   config: Config;
@@ -59,6 +64,17 @@ export type DependenciasDoServidor = {
   resolverCliente?: ResolverCliente;
   agora?: () => Date;
   tempoMaximoMs?: number;
+  limites?: Partial<Record<PortaLimitada, Limite>>;
+};
+
+/**
+ * Folgados para gente, apertados para script. Um login completo são duas ou
+ * três idas a /oauth/authorize; o Claude renova a chave uma vez por hora.
+ */
+const LIMITES_PADRAO: Record<PortaLimitada, Limite> = {
+  autorizar: { maximo: 30, janelaMs: 5 * 60_000 },
+  token: { maximo: 120, janelaMs: 60_000 },
+  saude: { maximo: 60, janelaMs: 60_000 },
 };
 
 const NOME_DO_RECURSO = "Tetteo — consultas";
@@ -95,6 +111,23 @@ function registrarRequisicoes(registro: Registro): RequestHandler {
     next();
   };
 }
+
+/**
+ * /mcp só conversa em JSON. O adaptador do SDK lê o corpo INTEIRO para a
+ * memória antes de olhar o Content-Type — um corpo de outro tipo passaria
+ * por fora do limite de 64 KB. Aqui a recusa vem antes de ler um byte.
+ */
+const somenteJson: RequestHandler = (req, res, next) => {
+  if (req.is("application/json") === false) {
+    res.status(415).json({
+      jsonrpc: "2.0",
+      error: { code: -32600, message: "Use Content-Type: application/json." },
+      id: null,
+    });
+    return;
+  }
+  next();
+};
 
 function tratarErros(registro: Registro): ErrorRequestHandler {
   return (erro, req, res, _proximo) => {
@@ -148,16 +181,18 @@ export function criarAplicacao(deps: DependenciasDoServidor): {
   handler: McpHttpHandler;
 } {
   const { config, banco, registro } = deps;
+  const limites = { ...LIMITES_PADRAO, ...deps.limites };
   const app = express();
   app.disable("x-powered-by");
   // Atrás do Traefik: o IP de quem chama vem no X-Forwarded-For (um salto).
+  // Vale só enquanto a porta 8080 não for publicada direto no servidor.
   app.set("trust proxy", 1);
 
   app.use(registrarRequisicoes(registro));
   app.use(hostHeaderValidation(config.hostsPermitidos));
   app.use(originValidation([config.urlPublica.hostname]));
 
-  app.get("/health", async (_req, res) => {
+  app.get("/health", criarLimitador(limites.saude), async (_req, res) => {
     let situacaoDoBanco: "ok" | "indisponivel" = "ok";
     try {
       await comLimite(banco.query("SELECT 1"), 1500);
@@ -192,6 +227,10 @@ export function criarAplicacao(deps: DependenciasDoServidor): {
     });
   });
 
+  // Os limites vêm antes de ler o formulário: quem insiste não gasta nem o
+  // trabalho de interpretar o corpo.
+  app.use("/oauth/authorize", criarLimitador(limites.autorizar));
+  app.use(["/oauth/token", "/oauth/revoke"], criarLimitador(limites.token));
   app.use(
     "/oauth",
     express.urlencoded({ extended: false, limit: "16kb", parameterLimit: 50 }),
@@ -237,6 +276,7 @@ export function criarAplicacao(deps: DependenciasDoServidor): {
       requiredScopes: [ESCOPO_VENDAS],
       resourceMetadataUrl: getOAuthProtectedResourceMetadataUrl(config.urlMcp),
     }),
+    somenteJson,
     express.json({ limit: "64kb" }),
     async (req, res) => {
       await atenderMcp(req, res, req.body);

@@ -4,6 +4,7 @@ import { criarBanco } from "./banco/conexao.js";
 import { prepararTabelas } from "./banco/tabelas.js";
 import { lerConfig } from "./config.js";
 import { criarFonteFicticia } from "./fontes/ficticia.js";
+import { limparVencidos } from "./oauth/armazem.js";
 import { criarRegistro } from "./registro.js";
 import { criarAplicacao } from "./servidor.js";
 
@@ -53,11 +54,21 @@ servidor.requestTimeout = 30_000;
 servidor.headersTimeout = 15_000;
 servidor.keepAliveTimeout = 65_000;
 
+// A faxina roda sozinha a cada 10 minutos. Esperar uma troca de chave para
+// limpar deixaria uma enxurrada de pedidos abandonados morando no banco.
+const faxina = setInterval(() => {
+  limparVencidos(banco).catch((erro) =>
+    registro.aviso("a faxina periódica falhou", { erro }),
+  );
+}, 10 * 60_000);
+faxina.unref();
+
 let encerrando = false;
 async function encerrar(sinal: string) {
   if (encerrando) return;
   encerrando = true;
   registro.info("encerrando", { sinal });
+  clearInterval(faxina);
   servidor.close();
   await handler.close().catch(() => {});
   await banco.end().catch(() => {});
