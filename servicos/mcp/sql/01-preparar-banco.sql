@@ -8,7 +8,10 @@
 -- servidor, fora deste arquivo e fora do repositório.
 --
 -- O que este papel pode, e só isto:
---   · ler DUAS visões do esquema mcp_leitura (login e lojas visíveis);
+--   · ler DUAS visões do esquema mcp_leitura (quem pode entrar, lojas
+--     visíveis) — sem hash de senha em nenhuma delas;
+--   · chamar DUAS funções: o hash de UMA pessoa pelo e-mail exato, e o id de
+--     uma pessoa pelo e-mail (para revogar);
 --   · criar e usar as próprias tabelas no esquema mcp.
 -- Nenhuma tabela do Tetteo fica visível para ele.
 -- =============================================================================
@@ -37,19 +40,63 @@ GRANT USAGE ON SCHEMA mcp_leitura TO tetteo_mcp;
 -- amplo em public, esta linha, rodada de novo, desfaz para este papel.
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM tetteo_mcp;
 
--- Quem pode entrar: ativo, não excluído, com senha. security_barrier impede
--- que uma consulta esperta enxergue as linhas que o filtro esconde.
-CREATE OR REPLACE VIEW mcp_leitura.usuario_login
+-- Quem pode entrar: ativo, não excluído, com senha. SEM o hash: no lugar dele,
+-- a impressão digital do hash (versao_senha), que muda quando a senha muda —
+-- é ela que derruba as conexões feitas com a senha antiga.
+-- DROP + CREATE, e não CREATE OR REPLACE: a primeira versão desta visão tinha
+-- a coluna do hash, e o Postgres não deixa tirar coluna com REPLACE.
+-- security_barrier impede que uma consulta esperta enxergue as linhas que o
+-- filtro esconde.
+DROP VIEW IF EXISTS mcp_leitura.usuario_login;
+CREATE VIEW mcp_leitura.usuario_login
   WITH (security_barrier = true) AS
 SELECT
   u.id,
   lower(u.email) AS email,
   u.nome,
-  u."senhaHash" AS senha_hash
+  encode(sha256(convert_to(u."senhaHash", 'UTF8')), 'hex') AS versao_senha
 FROM public.usuario u
 WHERE u.status = 'ATIVO'
   AND u."excluidoEm" IS NULL
   AND u."senhaHash" IS NOT NULL;
+
+-- O hash, de UMA pessoa por vez e só pelo e-mail exato (sem curinga). Se o
+-- serviço for invadido, quem estiver lá dentro não baixa os hashes de todo
+-- mundo para quebrar com calma.
+CREATE OR REPLACE FUNCTION mcp_leitura.hash_para_login(p_email text)
+RETURNS TABLE (id text, nome text, senha_hash text, versao_senha text)
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT u.id,
+         u.nome,
+         u."senhaHash",
+         encode(sha256(convert_to(u."senhaHash", 'UTF8')), 'hex')
+    FROM public.usuario u
+   WHERE lower(u.email) = lower(trim(p_email))
+     AND u.status = 'ATIVO'
+     AND u."excluidoEm" IS NULL
+     AND u."senhaHash" IS NOT NULL
+   LIMIT 1
+$$;
+
+-- O id pelo e-mail, mesmo de quem está suspenso: é quando mais importa
+-- conseguir revogar as conexões da pessoa pelo terminal.
+CREATE OR REPLACE FUNCTION mcp_leitura.id_por_email(p_email text)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT u.id
+    FROM public.usuario u
+   WHERE lower(u.email) = lower(trim(p_email))
+   LIMIT 1
+$$;
+
+REVOKE ALL ON FUNCTION mcp_leitura.hash_para_login(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION mcp_leitura.id_por_email(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION mcp_leitura.hash_para_login(text) TO tetteo_mcp;
+GRANT EXECUTE ON FUNCTION mcp_leitura.id_por_email(text) TO tetteo_mcp;
 
 -- Em que lojas a pessoa pode ver vendas. A mesma regra de contextoDeFundo()
 -- + pode() em src/core/sessao/contexto.ts: acesso de rede (unidadeId nulo)

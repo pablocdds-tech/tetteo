@@ -266,4 +266,24 @@ describe("/oauth/authorize", { skip: pular }, () => {
     nomeDoCliente = "Claude de ensaio";
     assert.ok(!html.includes("<script>alert"));
   });
+
+  it("tentativas simultâneas não driblam o limite de dez por e-mail", async () => {
+    const pedidos = await Promise.all(
+      Array.from({ length: 15 }, () => abrirPedido()),
+    );
+    const respostas = await Promise.all(
+      pedidos.map(({ pedido }) =>
+        enviar({
+          pedido: pedido!,
+          acao: "autorizar",
+          email: "ninguem@ensaio.test",
+          senha: "errada",
+        }),
+      ),
+    );
+    const status = respostas.map((resposta) => resposta.status);
+    // Contar a tentativa DEPOIS do bcrypt deixava as quinze passarem.
+    assert.ok(status.filter((s) => s === 401).length <= 10, status.join(","));
+    assert.ok(status.filter((s) => s === 429).length >= 5, status.join(","));
+  });
 });

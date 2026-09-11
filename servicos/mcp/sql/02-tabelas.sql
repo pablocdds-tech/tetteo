@@ -17,16 +17,20 @@ CREATE TABLE IF NOT EXISTS mcp.pedido_autorizacao (
   escopos text[] NOT NULL,
   recurso text NOT NULL,
   usuario_id text,
+  versao_senha text,
   autenticado_em timestamptz,
   criado_em timestamptz NOT NULL DEFAULT now(),
   expira_em timestamptz NOT NULL
 );
 
 -- Uma conexão aprovada: quem, qual loja, qual cliente. Revogar é marcar aqui.
+-- versao_senha é a impressão digital da senha no momento da aprovação: se a
+-- pessoa trocar a senha no Tetteo, a conexão deixa de valer.
 CREATE TABLE IF NOT EXISTS mcp.conexao (
   id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
   usuario_id text NOT NULL,
   unidade_id text NOT NULL,
+  versao_senha text NOT NULL,
   client_id text NOT NULL,
   cliente_nome text NOT NULL,
   escopos text[] NOT NULL,

@@ -8,6 +8,7 @@ import type { Banco } from "../banco/conexao.js";
 import {
   buscarUsuarioParaLogin,
   lojasComVendasVisiveis,
+  type UsuarioParaLogin,
 } from "../banco/tetteo.js";
 import type { Config } from "../config.js";
 import type { Registro } from "../registro.js";
@@ -18,6 +19,7 @@ import {
   falhasRecentes,
   lerPedido,
   marcarPedidoAutenticado,
+  marcarTentativaComSucesso,
   registrarTentativa,
   type Pedido,
 } from "./armazem.js";
@@ -50,7 +52,9 @@ import { desafioValido, impressaoDigital } from "./segredos.js";
  * A senha é conferida pela mesma resposta em todas as falhas, e com bcrypt
  * mesmo quando o e-mail não existe: quem fica tentando não descobre quais
  * e-mails têm conta. Dez falhas por e-mail (ou trinta por IP) em 15 minutos
- * travam novas tentativas.
+ * travam novas tentativas — e a tentativa conta ANTES da conferência, para
+ * que dezenas de envios ao mesmo tempo não passem pela mesma contagem. No
+ * máximo quatro conferências de senha rodam juntas neste processo.
  */
 
 export type DependenciasDoLogin = {
@@ -62,6 +66,8 @@ export type DependenciasDoLogin = {
 
 const LIMITE_POR_EMAIL = 10;
 const LIMITE_POR_IP = 30;
+const MAX_CONFERENCIAS_SIMULTANEAS = 4;
+let conferenciasEmAndamento = 0;
 
 const consulta = z.object({
   response_type: z.string().max(50).optional(),
@@ -283,10 +289,15 @@ export function rotasDeAutorizacao(deps: DependenciasDoLogin): Router {
       });
     }
 
-    const concluir = async (usuarioId: string, unidadeId: string) => {
+    const concluir = async (
+      usuarioId: string,
+      unidadeId: string,
+      versaoSenha: string,
+    ) => {
       const code = await aprovarConexao(deps.banco, {
         usuarioId,
         unidadeId,
+        versaoSenha,
         clientId: pedido.clientId,
         clienteNome: pedido.clienteNome,
         escopos: pedido.escopos,
@@ -302,7 +313,7 @@ export function rotasDeAutorizacao(deps: DependenciasDoLogin): Router {
     };
 
     // Segunda etapa: a pessoa já entrou e está escolhendo a loja.
-    if (pedido.usuarioId) {
+    if (pedido.usuarioId && pedido.versaoSenha) {
       const lojas = await lojasComVendasVisiveis(deps.banco, pedido.usuarioId);
       const loja = lojas.find((item) => item.id === f.unidade);
       if (!loja) {
@@ -318,7 +329,7 @@ export function rotasDeAutorizacao(deps: DependenciasDoLogin): Router {
           origens,
         );
       }
-      return concluir(pedido.usuarioId, loja.id);
+      return concluir(pedido.usuarioId, loja.id, pedido.versaoSenha);
     }
 
     // Primeira etapa: e-mail e senha do Tetteo.
@@ -343,25 +354,42 @@ export function rotasDeAutorizacao(deps: DependenciasDoLogin): Router {
       emailHash: impressaoDigital(email),
       ipHash: impressaoDigital(req.ip ?? ""),
     };
+    // A tentativa conta ANTES da conferência da senha. Contada depois,
+    // tentativas simultâneas liam a mesma contagem e passavam todas.
+    const tentativa = await registrarTentativa(deps.banco, {
+      ...chaves,
+      sucesso: false,
+    });
     const falhas = await falhasRecentes(deps.banco, chaves);
-    if (falhas.porEmail >= LIMITE_POR_EMAIL || falhas.porIp >= LIMITE_POR_IP) {
+    if (falhas.porEmail > LIMITE_POR_EMAIL || falhas.porIp > LIMITE_POR_IP) {
       return refazer(
         429,
         "Muitas tentativas. Espere 15 minutos e tente de novo.",
       );
     }
-
-    const usuario = await buscarUsuarioParaLogin(deps.banco, email);
-    const confere = await bcrypt.compare(
-      senha,
-      usuario?.senhaHash ?? (await obterHashFalso()),
-    );
-    await registrarTentativa(deps.banco, {
-      ...chaves,
-      sucesso: Boolean(usuario && confere),
-    });
+    // bcrypt gasta CPU de propósito. Um teto de conferências ao mesmo tempo
+    // impede que uma enxurrada de logins pare o servidor inteiro.
+    if (conferenciasEmAndamento >= MAX_CONFERENCIAS_SIMULTANEAS) {
+      return refazer(
+        429,
+        "Muitas tentativas ao mesmo tempo. Tente de novo em instantes.",
+      );
+    }
+    conferenciasEmAndamento += 1;
+    let usuario: UsuarioParaLogin | null;
+    let confere: boolean;
+    try {
+      usuario = await buscarUsuarioParaLogin(deps.banco, email);
+      confere = await bcrypt.compare(
+        senha,
+        usuario?.senhaHash ?? (await obterHashFalso()),
+      );
+    } finally {
+      conferenciasEmAndamento -= 1;
+    }
     if (!usuario || !confere)
       return refazer(401, "E-mail ou senha incorretos.");
+    await marcarTentativaComSucesso(deps.banco, tentativa);
 
     const lojas = await lojasComVendasVisiveis(deps.banco, usuario.id);
     if (lojas.length === 0) {
@@ -376,9 +404,16 @@ export function rotasDeAutorizacao(deps: DependenciasDoLogin): Router {
         }),
       );
     }
-    if (lojas.length === 1) return concluir(usuario.id, lojas[0]!.id);
+    if (lojas.length === 1) {
+      return concluir(usuario.id, lojas[0]!.id, usuario.versaoSenha);
+    }
 
-    await marcarPedidoAutenticado(deps.banco, pedido.hash, usuario.id);
+    await marcarPedidoAutenticado(
+      deps.banco,
+      pedido.hash,
+      usuario.id,
+      usuario.versaoSenha,
+    );
     return mostrar(
       res,
       200,

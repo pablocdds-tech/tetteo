@@ -16,8 +16,9 @@ const pular = urlDeEnsaio()
   ? false
   : "defina MCP_ENSAIO_PG_URL (Postgres local) para rodar";
 
-const semPermissao = (erro: unknown) =>
-  (erro as { code?: string }).code === "42501";
+const comCodigo = (codigo: string) => (erro: unknown) =>
+  (erro as { code?: string }).code === codigo;
+const semPermissao = comCodigo("42501");
 
 describe("banco do MCP", { skip: pular }, () => {
   let ensaio: BancoDeEnsaio;
@@ -58,6 +59,24 @@ describe("banco do MCP", { skip: pular }, () => {
     );
   });
 
+  it("não lista hashes de senha: a visão não tem a coluna, e a função devolve no máximo uma pessoa", async () => {
+    await assert.rejects(
+      banco.query("SELECT senha_hash FROM mcp_leitura.usuario_login"),
+      comCodigo("42703"),
+    );
+    const curinga = await banco.query(
+      "SELECT * FROM mcp_leitura.hash_para_login('%')",
+    );
+    assert.equal(curinga.rows.length, 0);
+    const uma = await banco.query(
+      "SELECT id FROM mcp_leitura.hash_para_login('dono@ensaio.test')",
+    );
+    assert.deepEqual(
+      uma.rows.map((linha: { id: string }) => linha.id),
+      ["usr_dono"],
+    );
+  });
+
   it("preparar as tabelas de novo não dá erro", async () => {
     await prepararTabelas(banco);
   });
@@ -66,6 +85,7 @@ describe("banco do MCP", { skip: pular }, () => {
     const dono = await buscarUsuarioParaLogin(banco, "  DONO@ensaio.test ");
     assert.equal(dono?.id, "usr_dono");
     assert.match(dono?.senhaHash ?? "", /^\$2[aby]\$/);
+    assert.match(dono?.versaoSenha ?? "", /^[0-9a-f]{64}$/);
     assert.equal(
       await buscarUsuarioParaLogin(banco, "suspenso@ensaio.test"),
       null,
@@ -74,6 +94,13 @@ describe("banco do MCP", { skip: pular }, () => {
       await buscarUsuarioParaLogin(banco, "ninguem@ensaio.test"),
       null,
     );
+  });
+
+  it("acha pelo e-mail até quem está suspenso, para poder revogar", async () => {
+    const { rows } = await banco.query(
+      "SELECT mcp_leitura.id_por_email(' SUSPENSO@ensaio.test ') AS id",
+    );
+    assert.equal(rows[0].id, "usr_suspenso");
   });
 
   it("as lojas seguem a regra de permissão do Tetteo", async () => {

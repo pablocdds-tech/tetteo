@@ -15,15 +15,17 @@ import {
  * Nada fica na memória do processo. Um deploy no meio de um login não perde o
  * pedido; um deploy no meio de uma conversa não derruba a chave.
  *
- * Três regras de segurança vivem neste arquivo:
+ * As regras de segurança que vivem neste arquivo:
  *
  *   1. Só a impressão digital de cada chave vai para o banco.
  *   2. Código de autorização vale uma vez. Usado de novo = alguém copiou;
  *      a conexão inteira cai.
  *   3. Chave de renovação é trocada a cada uso. A antiga reapresentada, ou
  *      apresentada por outro cliente = roubo provável; a conexão inteira cai.
+ *   4. A conexão guarda a versão da senha de quando foi aprovada. Trocou a
+ *      senha no Tetteo (porque vazou, por exemplo), as conexões antigas caem.
  *
- * Nas regras 2 e 3 a revogação precisa SOBREVIVER ao erro. Por isso as
+ * Nas regras 2, 3 e 4 a revogação precisa SOBREVIVER ao erro. Por isso as
  * funções de troca devolvem `{ ok: false }` em vez de lançar: a transação
  * confirma a revogação, e só depois quem chamou responde `invalid_grant`.
  */
@@ -71,6 +73,7 @@ export type NovoPedido = {
 export type Pedido = NovoPedido & {
   hash: string;
   usuarioId: string | null;
+  versaoSenha: string | null;
   autenticadoEm: Date | null;
 };
 
@@ -105,7 +108,7 @@ export async function lerPedido(
   if (!ehDoTipo(id, "pedido")) return null;
   const { rows } = await banco.query(
     `SELECT hash, client_id, cliente_nome, redirect_uri, state, code_challenge,
-            escopos, recurso, usuario_id, autenticado_em
+            escopos, recurso, usuario_id, versao_senha, autenticado_em
        FROM mcp.pedido_autorizacao
       WHERE hash = $1 AND expira_em > now()`,
     [impressaoDigital(id)],
@@ -122,6 +125,7 @@ export async function lerPedido(
     escopos: linha.escopos,
     recurso: linha.recurso,
     usuarioId: linha.usuario_id,
+    versaoSenha: linha.versao_senha,
     autenticadoEm: linha.autenticado_em,
   };
 }
@@ -130,12 +134,13 @@ export async function marcarPedidoAutenticado(
   banco: Banco,
   hash: string,
   usuarioId: string,
+  versaoSenha: string,
 ): Promise<void> {
   await banco.query(
     `UPDATE mcp.pedido_autorizacao
-        SET usuario_id = $2, autenticado_em = now()
+        SET usuario_id = $2, versao_senha = $3, autenticado_em = now()
       WHERE hash = $1`,
-    [hash, usuarioId],
+    [hash, usuarioId, versaoSenha],
   );
 }
 
@@ -164,13 +169,26 @@ export async function falhasRecentes(
   return { porEmail: rows[0].por_email, porIp: rows[0].por_ip };
 }
 
+/** Grava a tentativa e devolve o id dela, para marcar o sucesso depois. */
 export async function registrarTentativa(
   banco: Banco,
   tentativa: { emailHash: string; ipHash: string; sucesso: boolean },
+): Promise<number> {
+  const { rows } = await banco.query(
+    `INSERT INTO mcp.tentativa_login (email_hash, ip_hash, sucesso)
+     VALUES ($1, $2, $3) RETURNING id`,
+    [tentativa.emailHash, tentativa.ipHash, tentativa.sucesso],
+  );
+  return Number(rows[0].id);
+}
+
+export async function marcarTentativaComSucesso(
+  banco: Banco,
+  id: number,
 ): Promise<void> {
   await banco.query(
-    "INSERT INTO mcp.tentativa_login (email_hash, ip_hash, sucesso) VALUES ($1, $2, $3)",
-    [tentativa.emailHash, tentativa.ipHash, tentativa.sucesso],
+    "UPDATE mcp.tentativa_login SET sucesso = true WHERE id = $1",
+    [id],
   );
 }
 
@@ -180,6 +198,7 @@ export async function registrarTentativa(
 export type NovaConexao = {
   usuarioId: string;
   unidadeId: string;
+  versaoSenha: string;
   clientId: string;
   clienteNome: string;
   escopos: string[];
@@ -205,18 +224,22 @@ const falha = (descricao: string): ResultadoDaTroca => ({
   descricao,
 });
 
-/** A pessoa continua ativa e continua podendo ver as vendas daquela loja? */
+/**
+ * A pessoa continua ativa, com a MESMA senha de quando aprovou, e continua
+ * podendo ver as vendas daquela loja?
+ */
 async function podeContinuar(
   executor: Executor,
   usuarioId: string,
   unidadeId: string,
+  versaoSenha: string,
 ): Promise<boolean> {
   const { rows } = await executor.query(
     `SELECT 1
        FROM mcp_leitura.usuario_login u
        JOIN mcp_leitura.loja_com_vendas_visiveis l ON l.usuario_id = u.id
-      WHERE u.id = $1 AND l.unidade_id = $2`,
-    [usuarioId, unidadeId],
+      WHERE u.id = $1 AND l.unidade_id = $2 AND u.versao_senha = $3`,
+    [usuarioId, unidadeId, versaoSenha],
   );
   return rows.length > 0;
 }
@@ -265,11 +288,13 @@ export async function aprovarConexao(
   const codigo = gerarSegredo("codigo");
   await emTransacao(banco, async (cliente) => {
     const { rows } = await cliente.query(
-      `INSERT INTO mcp.conexao (usuario_id, unidade_id, client_id, cliente_nome, escopos, recurso)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      `INSERT INTO mcp.conexao
+         (usuario_id, unidade_id, versao_senha, client_id, cliente_nome, escopos, recurso)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [
         conexao.usuarioId,
         conexao.unidadeId,
+        conexao.versaoSenha,
         conexao.clientId,
         conexao.clienteNome,
         conexao.escopos,
@@ -308,7 +333,7 @@ export async function trocarCodigo(
     const { rows } = await cliente.query(
       `SELECT k.hash, k.conexao_id, k.client_id, k.redirect_uri, k.code_challenge,
               k.usado_em, k.expira_em > now() AS vigente,
-              x.usuario_id, x.unidade_id, x.escopos, x.revogada_em
+              x.usuario_id, x.unidade_id, x.versao_senha, x.escopos, x.revogada_em
          FROM mcp.codigo_autorizacao k
          JOIN mcp.conexao x ON x.id = k.conexao_id
         WHERE k.hash = $1
@@ -339,8 +364,19 @@ export async function trocarCodigo(
     if (!pkceConfere(pedido.verificador, linha.code_challenge)) {
       return falha("A verificação PKCE não confere.");
     }
-    if (!(await podeContinuar(cliente, linha.usuario_id, linha.unidade_id))) {
-      await revogarNaTransacao(cliente, linha.conexao_id, "sem permissão");
+    if (
+      !(await podeContinuar(
+        cliente,
+        linha.usuario_id,
+        linha.unidade_id,
+        linha.versao_senha,
+      ))
+    ) {
+      await revogarNaTransacao(
+        cliente,
+        linha.conexao_id,
+        "sem permissão ou senha trocada",
+      );
       return falha("A conta não tem mais permissão para esta loja.");
     }
     return {
@@ -360,7 +396,8 @@ export async function renovar(
   return emTransacao(banco, async (cliente) => {
     const { rows } = await cliente.query(
       `SELECT t.hash, t.conexao_id, t.substituido_em, t.expira_em > now() AS vigente,
-              x.client_id, x.usuario_id, x.unidade_id, x.escopos, x.revogada_em
+              x.client_id, x.usuario_id, x.unidade_id, x.versao_senha,
+              x.escopos, x.revogada_em
          FROM mcp.token t
          JOIN mcp.conexao x ON x.id = t.conexao_id
         WHERE t.hash = $1 AND t.tipo = 'renovacao'
@@ -388,8 +425,19 @@ export async function renovar(
       return falha("Chave de renovação já usada.");
     }
     if (!linha.vigente) return falha("Chave de renovação expirada.");
-    if (!(await podeContinuar(cliente, linha.usuario_id, linha.unidade_id))) {
-      await revogarNaTransacao(cliente, linha.conexao_id, "sem permissão");
+    if (
+      !(await podeContinuar(
+        cliente,
+        linha.usuario_id,
+        linha.unidade_id,
+        linha.versao_senha,
+      ))
+    ) {
+      await revogarNaTransacao(
+        cliente,
+        linha.conexao_id,
+        "sem permissão ou senha trocada",
+      );
       return falha("A conta não tem mais permissão para esta loja.");
     }
     await cliente.query(
@@ -418,8 +466,9 @@ export type ChaveValida = {
 
 /**
  * A chave vale se: existe, é de acesso, não venceu, a conexão não foi
- * revogada, foi emitida para ESTE recurso, a pessoa continua ativa e continua
- * podendo ver as vendas da loja. Tudo numa consulta só.
+ * revogada, foi emitida para ESTE recurso, a pessoa continua ativa, com a
+ * mesma senha de quando aprovou, e continua podendo ver as vendas da loja.
+ * Tudo numa consulta só.
  */
 export async function buscarChaveDeAcesso(
   banco: Banco,
@@ -432,7 +481,8 @@ export async function buscarChaveDeAcesso(
             x.unidade_id, l.unidade_nome, t.expira_em
        FROM mcp.token t
        JOIN mcp.conexao x ON x.id = t.conexao_id AND x.revogada_em IS NULL
-       JOIN mcp_leitura.usuario_login u ON u.id = x.usuario_id
+       JOIN mcp_leitura.usuario_login u
+         ON u.id = x.usuario_id AND u.versao_senha = x.versao_senha
        JOIN mcp_leitura.loja_com_vendas_visiveis l
          ON l.usuario_id = x.usuario_id AND l.unidade_id = x.unidade_id
       WHERE t.hash = $1
@@ -497,6 +547,7 @@ export async function revogarConexao(
   );
 }
 
+/** Acha a pessoa pelo e-mail mesmo suspensa: é quando mais importa revogar. */
 export async function revogarConexoesDoUsuario(
   banco: Banco,
   email: string,
@@ -504,9 +555,9 @@ export async function revogarConexoesDoUsuario(
   return emTransacao(banco, async (cliente) => {
     const { rows } = await cliente.query(
       `SELECT x.id FROM mcp.conexao x
-         JOIN mcp_leitura.usuario_login u ON u.id = x.usuario_id
-        WHERE u.email = $1 AND x.revogada_em IS NULL`,
-      [email.trim().toLowerCase()],
+        WHERE x.usuario_id = mcp_leitura.id_por_email($1)
+          AND x.revogada_em IS NULL`,
+      [email],
     );
     for (const { id } of rows) {
       await revogarNaTransacao(cliente, id, "revogada pelo administrador");
@@ -517,6 +568,7 @@ export async function revogarConexoesDoUsuario(
 
 export type ConexaoListada = {
   id: string;
+  usuarioId: string;
   email: string | null;
   unidadeNome: string | null;
   clienteNome: string;
@@ -528,8 +580,8 @@ export type ConexaoListada = {
 
 export async function listarConexoes(banco: Banco): Promise<ConexaoListada[]> {
   const { rows } = await banco.query(
-    `SELECT x.id, u.email, l.unidade_nome, x.cliente_nome, x.criada_em,
-            x.ultimo_uso_em, x.revogada_em, x.motivo_revogacao
+    `SELECT x.id, x.usuario_id, u.email, l.unidade_nome, x.cliente_nome,
+            x.criada_em, x.ultimo_uso_em, x.revogada_em, x.motivo_revogacao
        FROM mcp.conexao x
        LEFT JOIN mcp_leitura.usuario_login u ON u.id = x.usuario_id
        LEFT JOIN mcp_leitura.loja_com_vendas_visiveis l
@@ -539,6 +591,7 @@ export async function listarConexoes(banco: Banco): Promise<ConexaoListada[]> {
   );
   return rows.map((linha) => ({
     id: linha.id,
+    usuarioId: linha.usuario_id,
     email: linha.email,
     unidadeNome: linha.unidade_nome,
     clienteNome: linha.cliente_nome,

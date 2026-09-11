@@ -44,7 +44,7 @@ try {
         [
           conexao.id,
           conexao.revogadaEm ? `REVOGADA (${conexao.motivo})` : "ativa",
-          conexao.email ?? "(pessoa sem acesso)",
+          conexao.email ?? `(sem acesso ativo: ${conexao.usuarioId})`,
           conexao.unidadeNome ?? "-",
           conexao.clienteNome,
           `criada ${conexao.criadaEm.toISOString()}`,

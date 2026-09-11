@@ -3,12 +3,13 @@ import { after, before, describe, it } from "node:test";
 
 import { criarBanco, type Banco } from "../banco/conexao.js";
 import { prepararTabelas } from "../banco/tabelas.js";
+import { buscarUsuarioParaLogin } from "../banco/tetteo.js";
 import {
   criarBancoDeEnsaio,
   urlDeEnsaio,
   type BancoDeEnsaio,
 } from "../ensaio/banco-de-ensaio.js";
-import { LOJAS, semear } from "../ensaio/semente.js";
+import { LOJAS, PESSOAS, semear } from "../ensaio/semente.js";
 import { registroSilencioso } from "../registro.js";
 import {
   aprovarConexao,
@@ -17,6 +18,7 @@ import {
   falhasRecentes,
   lerPedido,
   limparVencidos,
+  marcarTentativaComSucesso,
   registrarChamada,
   registrarTentativa,
   renovar,
@@ -52,10 +54,18 @@ describe("armazém do OAuth", { skip: pular }, () => {
     await ensaio?.encerrar();
   });
 
-  async function conectar(usuarioId = "usr_gerente", unidadeId = "uni_centro") {
-    const codigo = await aprovarConexao(banco, {
-      usuarioId,
+  async function pessoa(email: string) {
+    const encontrada = await buscarUsuarioParaLogin(banco, email);
+    assert.ok(encontrada, `${email} deveria poder entrar`);
+    return encontrada;
+  }
+
+  async function aprovar(email: string, unidadeId: string) {
+    const { id, versaoSenha } = await pessoa(email);
+    return aprovarConexao(banco, {
+      usuarioId: id,
       unidadeId,
+      versaoSenha,
       clientId: CLIENTE,
       clienteNome: "Claude",
       escopos: ["vendas:ler"],
@@ -63,6 +73,13 @@ describe("armazém do OAuth", { skip: pular }, () => {
       redirectUri: RETORNO,
       codeChallenge: desafioDe(VERIFICADOR),
     });
+  }
+
+  async function conectar(
+    email: string = PESSOAS.gerente,
+    unidadeId = "uni_centro",
+  ) {
+    const codigo = await aprovar(email, unidadeId);
     const troca = await trocarCodigo(banco, {
       codigo,
       clientId: CLIENTE,
@@ -126,17 +143,6 @@ describe("armazém do OAuth", { skip: pular }, () => {
   });
 
   it("recusa PKCE errado, outro cliente, outro retorno e código vencido", async () => {
-    const aprovar = () =>
-      aprovarConexao(banco, {
-        usuarioId: "usr_gerente",
-        unidadeId: "uni_centro",
-        clientId: CLIENTE,
-        clienteNome: "Claude",
-        escopos: ["vendas:ler"],
-        recurso: RECURSO,
-        redirectUri: RETORNO,
-        codeChallenge: desafioDe(VERIFICADOR),
-      });
     const base = {
       clientId: CLIENTE,
       redirectUri: RETORNO,
@@ -151,12 +157,12 @@ describe("armazém do OAuth", { skip: pular }, () => {
       const resultado = await trocarCodigo(banco, {
         ...base,
         ...troca,
-        codigo: await aprovar(),
+        codigo: await aprovar(PESSOAS.gerente, "uni_centro"),
       });
       assert.equal(resultado.ok, false);
     }
 
-    const vencido = await aprovar();
+    const vencido = await aprovar(PESSOAS.gerente, "uni_centro");
     await ensaio.admin.query(
       "UPDATE mcp.codigo_autorizacao SET expira_em = now() - interval '1 second' WHERE usado_em IS NULL",
     );
@@ -210,6 +216,31 @@ describe("armazém do OAuth", { skip: pular }, () => {
     );
   });
 
+  it("trocar a senha no Tetteo derruba as conexões feitas com a senha antiga", async () => {
+    const { chaves } = await conectar();
+    const { rows } = await ensaio.admin.query(
+      `SELECT "senhaHash" FROM usuario WHERE id = 'usr_gerente'`,
+    );
+    const original: string = rows[0].senhaHash;
+    await ensaio.admin.query(
+      `UPDATE usuario SET "senhaHash" = $1 WHERE id = 'usr_gerente'`,
+      [`${original}-trocada`],
+    );
+    assert.equal(await valida(chaves), null);
+    const renovada = await renovar(banco, {
+      refreshToken: chaves.refreshToken,
+      clientId: CLIENTE,
+    });
+    assert.equal(renovada.ok, false);
+
+    // Voltar à senha antiga não ressuscita: a renovação já revogou a conexão.
+    await ensaio.admin.query(
+      `UPDATE usuario SET "senhaHash" = $1 WHERE id = 'usr_gerente'`,
+      [original],
+    );
+    assert.equal(await valida(chaves), null);
+  });
+
   it("revoga pela própria chave e por pessoa", async () => {
     const primeira = await conectar();
     await revogarPorChave(banco, {
@@ -218,10 +249,22 @@ describe("armazém do OAuth", { skip: pular }, () => {
     });
     assert.equal(await valida(primeira.chaves), null);
 
-    const segunda = await conectar("usr_dono", "uni_sul");
+    const segunda = await conectar(PESSOAS.dono, "uni_sul");
     assert.ok(await valida(segunda.chaves));
     assert.ok((await revogarConexoesDoUsuario(banco, "DONO@ensaio.test")) >= 1);
     assert.equal(await valida(segunda.chaves), null);
+  });
+
+  it("revoga por pessoa mesmo com ela suspensa, e reativar não ressuscita", async () => {
+    const { chaves } = await conectar(PESSOAS.dono, "uni_centro");
+    await ensaio.admin.query(
+      `UPDATE usuario SET status = 'SUSPENSO' WHERE id = 'usr_dono'`,
+    );
+    assert.ok((await revogarConexoesDoUsuario(banco, PESSOAS.dono)) >= 1);
+    await ensaio.admin.query(
+      `UPDATE usuario SET status = 'ATIVO' WHERE id = 'usr_dono'`,
+    );
+    assert.equal(await valida(chaves), null);
   });
 
   it("guarda só impressões digitais, nunca a chave em claro", async () => {
@@ -237,29 +280,28 @@ describe("armazém do OAuth", { skip: pular }, () => {
     );
   });
 
-  it("conta tentativas falhas por e-mail e por IP", async () => {
-    await registrarTentativa(banco, {
-      emailHash: "e1",
-      ipHash: "i1",
-      sucesso: false,
-    });
+  it("conta tentativas falhas por e-mail e por IP, e a que deu certo deixa de contar", async () => {
+    const chaves = { emailHash: "e1", ipHash: "i1" };
+    await registrarTentativa(banco, { ...chaves, sucesso: false });
     await registrarTentativa(banco, {
       emailHash: "e1",
       ipHash: "i2",
       sucesso: false,
     });
-    await registrarTentativa(banco, {
-      emailHash: "e1",
-      ipHash: "i1",
-      sucesso: true,
+    const certa = await registrarTentativa(banco, {
+      ...chaves,
+      sucesso: false,
     });
-    assert.deepEqual(
-      await falhasRecentes(banco, { emailHash: "e1", ipHash: "i1" }),
-      {
-        porEmail: 2,
-        porIp: 1,
-      },
-    );
+    assert.deepEqual(await falhasRecentes(banco, chaves), {
+      porEmail: 3,
+      porIp: 2,
+    });
+
+    await marcarTentativaComSucesso(banco, certa);
+    assert.deepEqual(await falhasRecentes(banco, chaves), {
+      porEmail: 2,
+      porIp: 1,
+    });
   });
 
   it("registra chamadas e limpa o que venceu", async () => {
