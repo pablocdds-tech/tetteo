@@ -1,0 +1,60 @@
+// ===========================================================================
+// APP: ASSISTENTE PRIVADO (OpenClaw na VPS)
+//
+// O Tetteo não roda o assistente — ele só RECEBE o que o assistente conta:
+// "verifiquei a conexão", "calculei um fechamento", "preparei um rascunho".
+// É o que alimenta o cartão do Painel.
+//
+// Como nos outros Apps, nenhum `@relation` para Organizacao ou Unidade (o
+// Kernel não conhece os Apps). E o `estado` é texto, não enum: o vocabulário
+// é da ferramenta do OpenClaw, e quem o valida é o Zod da rota.
+// ===========================================================================
+
+enum TipoDeRegistroDoAssistente {
+  VERIFICACAO
+  EXECUCAO
+}
+
+/// Um recado do assistente privado. A CHAVE vem da ferramenta: a mesma chave
+/// atualiza a mesma linha — reiniciar o assistente no meio de um fechamento
+/// não gera um segundo registro.
+model RegistroDoAssistente {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+
+  tipo   TipoDeRegistroDoAssistente
+  chave  String
+  estado String
+
+  /// Dados fictícios: o cartão mostra o selo "demonstração".
+  demonstracao Boolean @default(false)
+
+  /// "AAAA-MM-DD", como a ferramenta conta — texto, para fuso nenhum mudar o dia.
+  periodoDe  String?
+  periodoAte String?
+  fonte      String?
+
+  /// { totalCentavos, pedidos, ticketCentavos, diasComVenda, diasNoPeriodo, ultimaData, desatualizado }
+  indicadores Json?
+  avisos      Json    @default("[]")
+  pendencias  Json    @default("[]")
+  detalhe     String?
+
+  versaoOpenclaw String?
+  modelo         String?
+
+  proximaRotina DateTime?
+  rotinaPausada Boolean?
+  limiteAte     DateTime?
+
+  /// Quando aconteceu, no relógio do assistente. Um recado mais antigo nunca
+  /// sobrescreve um mais novo com a mesma chave.
+  ocorridoEm   DateTime
+  recebidoEm   DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([unidadeId, chave])
+  @@index([unidadeId, tipo, ocorridoEm])
+  @@map("registro_do_assistente")
+}
