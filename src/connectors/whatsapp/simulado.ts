@@ -162,7 +162,13 @@ export function criarProvedorSimulado(): ProvedorWhatsapp {
 
       const registrar = () => {
         const enviada = {
-          idMensagem: `3EB0SIM${String(s.proximoId++).padStart(6, "0")}`,
+          // Único como o da Evolution: a sequência reinicia com o simulador,
+          // e o banco não aceita o mesmo id duas vezes na mesma conexão.
+          idMensagem: `3EB0SIM${String(s.proximoId++).padStart(4, "0")}${crypto
+            .randomUUID()
+            .replace(/-/g, "")
+            .slice(0, 10)
+            .toUpperCase()}`,
           para,
           texto,
           em: new Date(),

@@ -31,9 +31,13 @@ export default auth;
  *
  * Isso NÃO abre a rota: ela exige `x-severina-segredo` e recusa com 401 sem
  * ele. A autenticação dela é outra, não é nenhuma.
+ *
+ * `api/whatsapp` — também máquina: é a Evolution entregando webhook. A rota
+ * exige o passe HS256 assinado com a senha do servidor, recusa o que chegou
+ * pelo proxy público, e só aceita instância que está no cadastro.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|_next/static|_next/image|favicon.ico|login).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|_next/static|_next/image|favicon.ico|login).*)",
   ],
 };

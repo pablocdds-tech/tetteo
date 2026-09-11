@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { rodadaWhatsapp } from "@/app/api/whatsapp/_costura/rodada";
 import { enviarTexto } from "@/connectors/whatsapp/evolution";
 import {
   INTERVALO_MS,
@@ -41,12 +42,19 @@ export async function POST(request: Request) {
 
   const agora = new Date();
 
+  // Primeiro o WhatsApp: saúde do número, rascunhos, eventos parados,
+  // verificações e os avisos que uma pessoa confirmou.
+  const whatsapp = await rodadaWhatsapp({ agora, limite: MAX_POR_RODADA });
+
   const enfileiradas = await dispararAgentes(agora);
 
   let enviadas = 0;
   let falhas = 0;
 
-  const fila = await pendentes(MAX_POR_RODADA);
+  // O teto é do NÚMERO: o que os avisos já gastaram nesta rodada sai da
+  // conta da fila dos agentes.
+  const usadas = whatsapp.entrega.enviados + whatsapp.entrega.incertos;
+  const fila = await pendentes(Math.max(0, MAX_POR_RODADA - usadas));
 
   for (const [indice, mensagem] of fila.entries()) {
     // Uma de cada vez, com respiro. Rajada é o comportamento que faz a Meta
@@ -64,5 +72,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ enfileiradas, enviadas, falhas });
+  return NextResponse.json({ whatsapp, enfileiradas, enviadas, falhas });
 }
