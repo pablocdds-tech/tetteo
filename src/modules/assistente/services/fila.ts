@@ -66,7 +66,16 @@ export async function pendentes(limite: number): Promise<MensagemDaFila[]> {
       texto: { not: null },
       // `agendadaPara` vazio é "pode ir agora"; preenchido é espera de retentativa.
       OR: [{ agendadaPara: null }, { agendadaPara: { lte: agora } }],
-      conversa: { instancia: { ativa: true, excluidoEm: null } },
+      // Toda mensagem desta fila é de agente, ou seja, automática. "Pausar
+      // agendamentos" segura também o que já estava na fila, inclusive a
+      // retentativa: pausado quer dizer que nada sai sozinho.
+      conversa: {
+        instancia: {
+          ativa: true,
+          excluidoEm: null,
+          agendamentosPausados: false,
+        },
+      },
     },
     orderBy: { criadoEm: "asc" },
     take: limite,

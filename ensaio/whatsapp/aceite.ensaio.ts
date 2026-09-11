@@ -40,6 +40,7 @@ import {
   registrarEvento,
 } from "@/modules/assistente/services/eventos";
 import { dispararAgentes } from "@/modules/assistente/services/disparo";
+import { enfileirar, pendentes } from "@/modules/assistente/services/fila";
 import { coletarRascunhos } from "@/modules/assistente/services/rascunhos";
 import { db } from "@/server/db";
 
@@ -1071,5 +1072,66 @@ describe("os sinais de vida da tela", () => {
     });
     assert.ok(ultimo);
     assert.equal(tela.ultimoEventoEm?.getTime(), ultimo?.recebidoEm.getTime());
+  });
+});
+
+describe("a pausa dos agendamentos segura também o que já está na fila", () => {
+  test("lembrete de agente na fila não sai com os agendamentos pausados", async () => {
+    const agente = await db.agenteSeverina.create({
+      data: {
+        organizacaoId: cenario.organizacaoId,
+        nome: "Lembrete na fila",
+        tipo: "AVISO",
+        gatilho: "HORARIO",
+        gatilhoConfig: { horario: "07:00", diasDaSemana: [] },
+        destinatariosUsuarios: [cenario.ana],
+        instrucoes: "Lembrar de conferir o forno.",
+      },
+    });
+    const conversa = await db.conversaWhatsapp.create({
+      data: {
+        instanciaId: cenario.conexaoId,
+        agenteId: agente.id,
+        organizacaoId: cenario.organizacaoId,
+        unidadeId: null,
+        remoteJid: "5511900000012@s.whatsapp.net",
+        usuarioId: cenario.ana,
+      },
+    });
+    // Enfileirada enquanto estava liberado — uma retentativa, por exemplo.
+    await enfileirar({
+      conversaId: conversa.id,
+      texto: "Lembrete de ensaio",
+      origem: `agente:${agente.id}`,
+    });
+
+    try {
+      await db.instanciaWhatsapp.update({
+        where: { id: cenario.conexaoId },
+        data: { agendamentosPausados: true },
+      });
+      assert.equal((await pendentes(10)).length, 0);
+
+      await db.instanciaWhatsapp.update({
+        where: { id: cenario.conexaoId },
+        data: { agendamentosPausados: false },
+      });
+      const liberadas = await pendentes(10);
+      assert.equal(liberadas.length, 1);
+      assert.equal(liberadas[0]?.texto, "Lembrete de ensaio");
+    } finally {
+      await db.instanciaWhatsapp.update({
+        where: { id: cenario.conexaoId },
+        data: { agendamentosPausados: true },
+      });
+      await db.mensagemWhatsapp.deleteMany({
+        where: { conversaId: conversa.id },
+      });
+      await db.conversaWhatsapp.delete({ where: { id: conversa.id } });
+      await db.agenteSeverina.update({
+        where: { id: agente.id },
+        data: { excluidoEm: new Date() },
+      });
+    }
   });
 });
