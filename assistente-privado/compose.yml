@@ -1,0 +1,52 @@
+# Central de comando — o OpenClaw do assistente privado.
+#
+# Fora do Dokploy, como o n8n. Nenhuma porta aberta para a internet: o
+# gateway só responde em 127.0.0.1 da VPS, e o painel é aberto por túnel SSH.
+# Sem segredo aqui: o token e o segredo do Tetteo ficam em
+# /opt/central-de-comando/segredos/openclaw.env (chmod 600, só root).
+# Os volumes são "external": apagar este compose não apaga login nem histórico.
+# UMA cópia só: duas com o mesmo estado brigariam pela mesma trava.
+name: central-openclaw
+
+services:
+  openclaw:
+    image: ghcr.io/openclaw/openclaw:2026.9.4
+    container_name: central-openclaw
+    restart: unless-stopped
+    init: true
+    env_file:
+      - /opt/central-de-comando/segredos/openclaw.env
+    environment:
+      HOME: /home/node
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+      OPENCLAW_DISABLE_BONJOUR: "1"
+      TZ: America/Sao_Paulo
+    command:
+      ["node", "dist/index.js", "gateway", "--bind", "lan", "--port", "18789"]
+    ports:
+      - "127.0.0.1:18789:18789"
+    volumes:
+      - openclaw-state:/home/node/.openclaw
+      - openclaw-auth:/home/node/.config/openclaw
+      - /opt/central-de-comando/openclaw/ferramenta:/opt/ferramenta:ro
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1536m
+    pids_limit: 512
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  openclaw-state:
+    external: true
+    name: central-openclaw-state
+  openclaw-auth:
+    external: true
+    name: central-openclaw-auth
