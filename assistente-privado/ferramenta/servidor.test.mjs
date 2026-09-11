@@ -155,3 +155,58 @@ test("a resposta do tools/call não é cortada quando o stdin fecha logo em segu
   assert.equal(resultado.estado, "calculado");
   assert.equal(codigo, 0);
 });
+
+test("a resposta de JSON inválido não é cortada quando o stdin fecha logo em seguida", async () => {
+  const raiz = await mkdtemp(
+    path.join(os.tmpdir(), "servidor-fecha-invalido-"),
+  );
+  const dados = path.join(raiz, "dados");
+  await mkdir(dados, { recursive: true });
+
+  const filho = spawn(process.execPath, [SERVIDOR], {
+    env: {
+      ...process.env,
+      PASTA_DADOS: dados,
+      PASTA_TRABALHO: path.join(raiz, "trabalho"),
+      LOJA_PERMITIDA: "Loja Centro",
+      TETTEO_REGISTRO_URL: "",
+      TETTEO_REGISTRO_SEGREDO: "",
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  const respostas = [];
+  let buffer = "";
+  filho.stdout.on("data", (pedaco) => {
+    buffer += pedaco;
+    let fim;
+    while ((fim = buffer.indexOf("\n")) >= 0) {
+      respostas.push(JSON.parse(buffer.slice(0, fim)));
+      buffer = buffer.slice(fim + 1);
+    }
+  });
+  const mandar = (m) => filho.stdin.write(`${JSON.stringify(m)}\n`);
+
+  mandar({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "teste", version: "0" },
+    },
+  });
+  filho.stdin.write("isto não é json\n");
+  // Fecha a entrada IMEDIATAMENTE após a linha inválida, sem esperar
+  // resposta nenhuma — a resposta de JSON inválido também não pode ser
+  // cortada por essa corrida.
+  filho.stdin.end();
+
+  const codigo = await new Promise((resolve) => filho.on("close", resolve));
+
+  assert.ok(
+    respostas.some((r) => r.id === null && r.error?.code === -32700),
+    "a resposta de JSON inválido foi cortada pelo fechamento do stdin",
+  );
+  assert.equal(codigo, 0);
+});

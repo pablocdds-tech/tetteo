@@ -30,30 +30,32 @@ const sairSePuder = () => {
   if (entradaFechada && pendentes === 0) process.exit(0);
 };
 
+// Espera o flush: no Windows, a escrita num pipe ainda pode estar em
+// andamento quando o process.exit roda.
+const escrever = (objeto) =>
+  new Promise((resolve) =>
+    process.stdout.write(`${JSON.stringify(objeto)}\n`, resolve),
+  );
+
 leitor.on("line", async (linha) => {
   if (!linha.trim()) return;
-  let mensagem;
-  try {
-    mensagem = JSON.parse(linha);
-  } catch {
-    await new Promise((resolve) =>
-      process.stdout.write(
-        `${JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "JSON inválido" } })}\n`,
-        resolve,
-      ),
-    );
-    return;
-  }
+  // A contagem começa na LINHA, não na mensagem: a resposta de JSON inválido
+  // também não pode ser cortada quando a entrada fecha logo depois.
   pendentes++;
   try {
-    const resposta = await tratar(mensagem);
-    if (resposta) {
-      // Espera o flush: no Windows, a escrita num pipe ainda pode estar em
-      // andamento quando o process.exit roda.
-      await new Promise((resolve) =>
-        process.stdout.write(`${JSON.stringify(resposta)}\n`, resolve),
-      );
+    let mensagem;
+    try {
+      mensagem = JSON.parse(linha);
+    } catch {
+      await escrever({
+        jsonrpc: "2.0",
+        id: null,
+        error: { code: -32700, message: "JSON inválido" },
+      });
+      return;
     }
+    const resposta = await tratar(mensagem);
+    if (resposta) await escrever(resposta);
   } finally {
     pendentes--;
     sairSePuder();
