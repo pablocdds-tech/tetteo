@@ -32,6 +32,11 @@ export default async function PaginaWhatsapp() {
     id: u.id,
     nome: u.nome,
   }));
+  // Cada leitura consulta o provedor (4 s de limite). Em paralelo, e antes de
+  // montar a tela: uma conexão lenta não segura as outras.
+  const telas = await Promise.all(
+    conexoes.map((conexao) => lerConexaoParaTela(contexto, conexao.id)),
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -61,19 +66,16 @@ export default async function PaginaWhatsapp() {
           />
         </Cartao>
       ) : (
-        conexoes.map(async (conexao) => {
-          const tela = await lerConexaoParaTela(contexto, conexao.id);
-          return (
-            <PainelWhatsapp
-              key={conexao.id}
-              conexao={tela}
-              lojas={lojas}
-              reconectar={reconectarAcao}
-              consultarEstado={estadoDaConexaoAcao}
-              aplicarEventos={aplicarEventosAcao}
-            />
-          );
-        })
+        telas.map((tela) => (
+          <PainelWhatsapp
+            key={tela.id}
+            conexao={tela}
+            lojas={lojas}
+            reconectar={reconectarAcao}
+            consultarEstado={estadoDaConexaoAcao}
+            aplicarEventos={aplicarEventosAcao}
+          />
+        ))
       )}
     </div>
   );
