@@ -214,8 +214,11 @@ O modelo de workspace mora no repositório; a cópia viva mora só no volume.
 - **Navegador e heartbeat:** desligados.
 - **Plugins:** nenhum instalado além dos que vêm na imagem; o Matrix não é
   instalado nesta fase.
-- **Logs:** a redação de segredos do OpenClaw é sempre ligada; acrescentamos
-  `logging.redactPatterns` para o segredo do Tetteo e o endereço interno.
+- **Logs:** a redação de segredos do OpenClaw é sempre ligada. **Não** usamos
+  `logging.redactPatterns`: na versão 2026.9.4 ele _substitui_ os padrões de
+  fábrica em vez de somar a eles, e enfraqueceria a proteção. O segredo do
+  Tetteo entra na configuração por `${VAR}`, e a varredura do §10.2 confere que
+  nenhum segredo aparece em log, relatório ou transcrição.
 
 A conferência de que isso vale na prática é teste (§10), não suposição: o
 inventário de ferramentas do agente é lido do próprio OpenClaw depois de ligado.
