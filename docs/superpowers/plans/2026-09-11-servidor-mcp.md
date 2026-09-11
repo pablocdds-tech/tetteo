@@ -4491,7 +4491,11 @@ export async function pedirChaves(
     method: "POST",
     body: new URLSearchParams(campos),
   });
-  return { status: resposta.status, corpo: await resposta.json(), resposta };
+  return {
+    status: resposta.status,
+    corpo: (await resposta.json()) as Record<string, unknown>,
+    resposta,
+  };
 }
 ```
 
@@ -4620,7 +4624,8 @@ describe("/oauth/token, /oauth/revoke e o verificador", { skip: pular }, () => {
       Authorization: `Bearer ${corpo.access_token}`,
     });
     assert.equal(liberado.status, 200);
-    assert.equal((await liberado.json()).unidadeId, "uni_centro");
+    const extra = (await liberado.json()) as { unidadeId?: string };
+    assert.equal(extra.unidadeId, "uni_centro");
   });
 
   it("sem chave: 401 com resource_metadata e escopo no WWW-Authenticate", async () => {
@@ -4667,7 +4672,8 @@ describe("/oauth/token, /oauth/revoke e o verificador", { skip: pular }, () => {
       body: JSON.stringify({ grant_type: "authorization_code" }),
     });
     assert.equal(json.status, 400);
-    assert.equal((await json.json()).error, "invalid_request");
+    const erro = (await json.json()) as { error?: string };
+    assert.equal(erro.error, "invalid_request");
   });
 
   it("renova trocando a chave; reusar a antiga derruba a nova", async () => {
@@ -5283,17 +5289,17 @@ describe("servidor completo, de ponta a ponta", { skip: pular }, () => {
       "/.well-known/oauth-protected-resource/mcp",
       "/.well-known/oauth-protected-resource",
     ]) {
-      const recurso = await (
+      const recurso = (await (
         await fetch(new URL(caminho, ambiente.base))
-      ).json();
+      ).json()) as { resource?: string; authorization_servers?: string[] };
       assert.equal(recurso.resource, `${ambiente.base}/mcp`);
       assert.deepEqual(recurso.authorization_servers, [ambiente.base]);
     }
-    const emissor = await (
+    const emissor = (await (
       await fetch(
         new URL("/.well-known/oauth-authorization-server", ambiente.base),
       )
-    ).json();
+    ).json()) as Record<string, unknown>;
     assert.equal(emissor.issuer, ambiente.base);
     assert.equal(emissor.client_id_metadata_document_supported, true);
     assert.deepEqual(emissor.code_challenge_methods_supported, ["S256"]);
@@ -5341,7 +5347,7 @@ describe("servidor completo, de ponta a ponta", { skip: pular }, () => {
 
   it("/health responde sem nada sensível", async () => {
     const resposta = await fetch(new URL("/health", ambiente.base));
-    const corpo = await resposta.json();
+    const corpo = (await resposta.json()) as Record<string, unknown>;
     assert.deepEqual(Object.keys(corpo).sort(), [
       "banco",
       "servico",
