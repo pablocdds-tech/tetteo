@@ -14,7 +14,7 @@ sai sozinho.
 
 | Degrau          | O que é                                                                                 | Estado em 11/09/2026 |
 | --------------- | --------------------------------------------------------------------------------------- | -------------------- |
-| **Simulação**   | Testes automáticos com o provedor simulado, sem rede (`npm test` + os 12 cenários)      | feito, 14/14         |
+| **Simulação**   | Testes automáticos com o provedor simulado, sem rede (`npm test` + os 12 cenários)      | feito, 20/20         |
 | **Teste local** | O Tetteo rodando na máquina com banco descartável e provedor simulado; prints das telas | feito                |
 | **Sandbox**     | **Não existe para Baileys.** Está declarado, não fingido                                | —                    |
 | **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem                     | aguarda autorização  |
@@ -89,6 +89,10 @@ curl -s -o /dev/null -w "%{http_code}" -X POST https://app.vitalianopizzaria.com
 Esperado: `403` (chegou pelo proxy público). Enquanto isso, os eventos da
 Evolution aparecem na tela Eventos — é a prova de que a chamada interna passa.
 
+Se `WHATSAPP_WEBHOOK_URL` apontar para o domínio público por engano, a tela
+WhatsApp avisa em "Eventos do provedor" — nesse caso toda chamada da Evolution
+seria recusada, e a Evolution não repete um 403.
+
 ## Como testar na máquina (ensaio, sem número real)
 
 O ensaio roda contra um banco **local e descartável**, com o provedor simulado.
@@ -117,7 +121,11 @@ inválida não vaza · evento repetido não duplica · mensagem própria não in
 ciclo · usuário de outra loja não vê QR · uma confirmação, uma mensagem · tempo
 esgotado vira pendência · desconexão muda o estado · reconexão não apaga o
 histórico · webhook malformado é rejeitado · envio pausado não dispara ·
-restauração sem segredos.
+restauração sem segredos. Mais seis, vindos da revisão do código: a prova
+(`send.message`) que chega antes da resposta do envio; o "entregue" que chega
+antes do id; o ritmo de 4 s entre duas pegadas; as tentativas em 1, 4 e 9
+minutos antes de desistir; o mesmo evento processado por dois lados; a chave
+geral só na loja do número.
 
 ## Como atualizar
 
