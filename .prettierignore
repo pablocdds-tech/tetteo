@@ -11,3 +11,6 @@ package-lock.json
 skills-lock.json
 AGENTS.md
 CLAUDE.md
+
+# saída de compilação dos serviços
+servicos/*/dist/
