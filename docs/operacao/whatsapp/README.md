@@ -52,12 +52,28 @@ com o nome do que falta — e nada é enviado.
 
 1. **No Dokploy**, na aplicação do Tetteo, crie as variáveis acima e publique.
 2. **O relógio precisa existir.** Uma tarefa agendada deve bater em
-   `POST https://app.vitalianopizzaria.com.br/api/severina/tick` a cada minuto,
-   com o cabeçalho `x-severina-segredo`. Sem ele, os rascunhos não nascem
-   sozinhos e a consulta de saúde não roda. Confira se já está configurado no
-   Dokploy (Schedules) ou no `cron` da VPS.
+   `/api/severina/tick` a cada minuto, com o cabeçalho `x-severina-segredo`.
+   Sem ele, os rascunhos não nascem sozinhos e a consulta de saúde não roda.
+   **A tela WhatsApp diz se ele está batendo** ("Relógio: bateu 11/09 12:40";
+   "nunca bateu" quer dizer que a tarefa não existe). Para criar, no Dokploy →
+   aplicação do Tetteo → **Schedules** → cron `* * * * *`, rodando dentro do
+   contêiner da aplicação:
+
+   ```
+   wget -q -O - --post-data '' --header "x-severina-segredo: $SEVERINA_TICK_SEGREDO" http://localhost:3000/api/severina/tick
+   ```
+
+   (o contêiner é Alpine: tem `wget`, não tem `curl`; a variável já está no
+   ambiente dele, então o segredo não é digitado em lugar nenhum). Se o
+   Dokploy não oferecer Schedules, o mesmo comando vai no `cron` da VPS, com
+   `curl` e o endereço público — aí o segredo entra no crontab, que precisa
+   ser `600` do root.
+
 3. **Entre no Tetteo como Diretor** (a Severina ainda está "em construção": só
-   o Diretor a vê). Menu Severina → **WhatsApp**.
+   o Diretor a vê). Menu Severina → **WhatsApp**. O bloco Conexão mostra dois
+   **sinais de vida**: a última batida do relógio e o último evento que a
+   Evolution entregou pelo webhook. Os dois precisam ter hora recente antes do
+   primeiro envio real.
 4. **Cadastre a conexão**: o nome da instância vem sugerido da variável. Escolha
    a loja. Nada é criado na Evolution; o número conectado continua conectado.
 5. A tela mostra o estado (Conectado / Conectando / Desconectado / Atenção), o

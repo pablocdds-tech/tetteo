@@ -13,6 +13,7 @@ import {
 } from "@/app/api/whatsapp/_costura/conexao-tela";
 import { entregarAvisos } from "@/app/api/whatsapp/_costura/entrega";
 import { receberWebhook } from "@/app/api/whatsapp/_costura/receber";
+import { rodadaWhatsapp } from "@/app/api/whatsapp/_costura/rodada";
 import { atualizarSaude } from "@/app/api/whatsapp/_costura/saude";
 import { verificarIncertos } from "@/app/api/whatsapp/_costura/verificacao";
 import { assinarPasse } from "@/connectors/whatsapp/passe";
@@ -1040,5 +1041,35 @@ describe("o cadastro que nasceu com nome provisório", () => {
         data: { excluidoEm: new Date() },
       });
     }
+  });
+});
+
+describe("os sinais de vida da tela", () => {
+  test("a batida do relógio e o último evento do webhook aparecem na tela", async () => {
+    const diretor = await contextoDe(cenario.diretor, cenario.centroId);
+
+    // Antes de qualquer batida, a tela diz que o relógio nunca bateu.
+    await db.instanciaWhatsapp.update({
+      where: { id: cenario.conexaoId },
+      data: { relogioEm: null },
+    });
+    let tela = await lerConexaoParaTela(diretor, cenario.conexaoId, ENV);
+    assert.equal(tela.relogioEm, null);
+
+    // Uma rodada do relógio carimba a conexão.
+    const batida = relogio();
+    await rodadaWhatsapp({ agora: batida, limite: 1, env: ENV });
+    tela = await lerConexaoParaTela(diretor, cenario.conexaoId, ENV);
+    assert.equal(tela.relogioEm?.getTime(), batida.getTime());
+
+    // O último evento que a Evolution entregou também aparece — é a prova de
+    // que ela consegue chamar o Tetteo pela rede interna.
+    const ultimo = await db.eventoWhatsapp.findFirst({
+      where: { instanciaId: cenario.conexaoId },
+      orderBy: { recebidoEm: "desc" },
+      select: { recebidoEm: true },
+    });
+    assert.ok(ultimo);
+    assert.equal(tela.ultimoEventoEm?.getTime(), ultimo?.recebidoEm.getTime());
   });
 });

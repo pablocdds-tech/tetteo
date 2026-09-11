@@ -20,6 +20,7 @@ import {
   registrarEventosConfigurados,
   registrarPedidoDeQr,
 } from "@/modules/assistente/services/conexao";
+import { ultimoEventoEm } from "@/modules/assistente/services/eventos";
 
 /**
  * O QUE A TELA "WHATSAPP" PRECISA DO PROVEDOR.
@@ -58,8 +59,16 @@ export type TelaDaConexao = {
   avisoDoWebhook: string | null;
   /** O nome de instância que o servidor configurou — pode não bater com o cadastro. */
   nomeConfigurado: string | null;
+  /** A última batida do relógio, e se ela está atrasada (mais de 3 min). */
+  relogioEm: Date | null;
+  relogioAtrasado: boolean;
+  /** A última vez que a Evolution chamou o Tetteo por esta conexão. */
+  ultimoEventoEm: Date | null;
   podeConectar: boolean;
 };
+
+/** O relógio bate a cada minuto; três sem bater é tarefa parada. */
+const RELOGIO_ATRASADO_MS = 3 * 60_000;
 
 function mesmoHost(a: string | undefined, b: string | undefined): boolean {
   try {
@@ -176,6 +185,8 @@ export async function lerConexaoParaTela(
     }
   }
 
+  const ultimoEvento = await ultimoEventoEm(atual.id);
+
   return {
     id: atual.id,
     nome: atual.nome,
@@ -199,6 +210,11 @@ export async function lerConexaoParaTela(
       atual.provedor === "EVOLUTION_BAILEYS"
         ? env.EVOLUTION_INSTANCIA?.trim() || null
         : null,
+    relogioEm: atual.relogioEm,
+    relogioAtrasado:
+      !atual.relogioEm ||
+      agora.getTime() - atual.relogioEm.getTime() > RELOGIO_ATRASADO_MS,
+    ultimoEventoEm: ultimoEvento,
     podeConectar,
   };
 }

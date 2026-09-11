@@ -67,6 +67,11 @@ model InstanciaWhatsapp {
   /// mesma conta pessoal.
   ultimoEnvioEm DateTime?
 
+  /// A última batida do relógio (/api/severina/tick). Sem ela a tela não teria
+  /// como dizer "a tarefa agendada não está rodando" — e o sintoma seria um
+  /// rascunho que nunca nasce.
+  relogioEm DateTime?
+
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   excluidoEm   DateTime?

@@ -1,3 +1,4 @@
+import { marcarBatidaDoRelogio } from "@/modules/assistente/services/conexao";
 import { coletarRascunhos } from "@/modules/assistente/services/rascunhos";
 import {
   eventosParados,
@@ -12,6 +13,7 @@ import { verificarIncertos } from "./verificacao";
 /**
  * UMA BATIDA DO RELÓGIO, do lado do WhatsApp. A ordem importa:
  *
+ *   0. relógio      — carimba a batida em toda conexão (a tela mostra)
  *   1. saúde        — o número está no ar? (entrega não tenta em número caído)
  *   2. rascunhos    — o que aconteceu vira rascunho. Nunca mensagem.
  *   3. eventos      — o que o `after()` deixou para trás
@@ -64,6 +66,9 @@ export async function rodadaWhatsapp({
     }
   };
 
+  await passo("relógio", async () => {
+    await marcarBatidaDoRelogio(agora);
+  });
   await passo("saúde", async () => {
     resumo.conexoesConsultadas = await atualizarSaude({ agora, env });
   });

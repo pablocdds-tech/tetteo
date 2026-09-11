@@ -391,6 +391,21 @@ export async function processarEvento(
   return desfecho.status;
 }
 
+/**
+ * Quando a Evolution falou com o Tetteo pela última vez, por esta conexão.
+ * Sem contexto de propósito: a tela já conferiu quem pode ver a conexão.
+ */
+export async function ultimoEventoEm(
+  instanciaId: string,
+): Promise<Date | null> {
+  const ultimo = await db.eventoWhatsapp.findFirst({
+    where: { instanciaId },
+    orderBy: { recebidoEm: "desc" },
+    select: { recebidoEm: true },
+  });
+  return ultimo?.recebidoEm ?? null;
+}
+
 /** O que ficou para trás: `after()` que morreu com o processo, ou falha. */
 export async function eventosParados(agora: Date): Promise<string[]> {
   const linhas = await db.eventoWhatsapp.findMany({

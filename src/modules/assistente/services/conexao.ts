@@ -45,6 +45,7 @@ const SELECAO = {
   agendamentosPausados: true,
   eventosConfiguradosEm: true,
   ultimoEnvioEm: true,
+  relogioEm: true,
   conectadaEm: true,
   desconectadaEm: true,
 } satisfies Prisma.InstanciaWhatsappSelect;
@@ -187,6 +188,18 @@ export async function registrarConsulta(
     },
   });
   return novo;
+}
+
+/**
+ * A batida do relógio, em toda conexão. É a resposta à pergunta "a tarefa
+ * agendada está rodando?" — que, sem isto, só se responderia entrando no
+ * servidor, ou notando que um rascunho nunca nasceu.
+ */
+export async function marcarBatidaDoRelogio(agora: Date): Promise<void> {
+  await db.instanciaWhatsapp.updateMany({
+    where: { excluidoEm: null },
+    data: { relogioEm: agora },
+  });
 }
 
 /** Qualquer evento que chegou é sinal de que o provedor está vivo. */

@@ -62,6 +62,9 @@ export type ConexaoParaPainel = {
   webhookPendente: string[];
   avisoDoWebhook: string | null;
   nomeConfigurado: string | null;
+  relogioEm: Date | null;
+  relogioAtrasado: boolean;
+  ultimoEventoEm: Date | null;
   podeConectar: boolean;
 };
 
@@ -203,6 +206,36 @@ function NomeQueNaoBate({ conexao }: { conexao: ConexaoParaPainel }) {
         </p>
       )}
     </form>
+  );
+}
+
+/**
+ * OS SINAIS DE VIDA — as duas perguntas que só o servidor responderia.
+ *
+ * "O relógio está batendo?" e "a Evolution consegue chamar o Tetteo?". As
+ * duas ficam invisíveis até dar errado: o rascunho que não nasce, o
+ * "entregue" que nunca chega. Aqui viram duas linhas com hora.
+ */
+function SinaisDeVida({ conexao }: { conexao: ConexaoParaPainel }) {
+  return (
+    <dl className="grid grid-cols-[minmax(0,11rem)_1fr] gap-x-3 gap-y-1.5 text-sm leading-5">
+      <dt className="text-ink-3">Relógio (a cada minuto)</dt>
+      <dd className={conexao.relogioAtrasado ? "text-warn" : ""}>
+        {conexao.relogioEm
+          ? `bateu ${quando(conexao.relogioEm)}${
+              conexao.relogioAtrasado
+                ? " — parou? Confira a tarefa agendada (manual, passo 2)."
+                : ""
+            }`
+          : "nunca bateu — a tarefa agendada não está configurada (manual, passo 2)."}
+      </dd>
+      <dt className="text-ink-3">Webhook da Evolution</dt>
+      <dd className={conexao.ultimoEventoEm ? "" : "text-warn"}>
+        {conexao.ultimoEventoEm
+          ? `último evento ${quando(conexao.ultimoEventoEm)}`
+          : "nenhum evento recebido ainda — depois de Aplicar configuração, a Evolution passa a chamar aqui."}
+      </dd>
+    </dl>
   );
 }
 
@@ -487,6 +520,8 @@ export function PainelWhatsapp({
             conexao.nomeConfigurado !== conexao.nome && (
               <NomeQueNaoBate conexao={conexao} />
             )}
+
+          <SinaisDeVida conexao={conexao} />
 
           {aviso && (
             <p
