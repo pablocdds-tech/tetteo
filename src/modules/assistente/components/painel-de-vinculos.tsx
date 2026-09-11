@@ -4,10 +4,13 @@ import { useActionState } from "react";
 
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
+import { Etiqueta } from "@/design-system/etiqueta";
 
 import {
+  autorizarVinculoAcao,
   criarVinculoAcao,
   removerVinculoAcao,
+  revogarAutorizacaoAcao,
   type EstadoFormulario,
 } from "../acoes";
 import type { VinculoNaLista } from "../services/vinculos";
@@ -28,15 +31,21 @@ function paraLeitura(e164: string): string {
  * Vale a pena a tela dizer isso em voz alta: sem vínculo, a pessoa não recebe
  * e (na fase 2) não é ouvida. Quem cadastra precisa entender que está
  * concedendo acesso, não preenchendo uma agenda.
+ *
+ * AUTORIZADO PARA AVISOS é a segunda decisão, de um responsável: ter vínculo é
+ * existir para a Severina; receber aviso é outra coisa. Só quem está
+ * autorizado aparece como destinatário na tela Avisos.
  */
 export function PainelDeVinculos({
   vinculos,
   disponiveis,
   podeVincular,
+  podeAutorizar,
 }: {
   vinculos: VinculoNaLista[];
   disponiveis: { id: string; nome: string; email: string }[];
   podeVincular: boolean;
+  podeAutorizar: boolean;
 }) {
   const [estado, acao, enviando] = useActionState<EstadoFormulario, FormData>(
     criarVinculoAcao,
@@ -59,12 +68,18 @@ export function PainelDeVinculos({
           </div>
 
           {estado.erro && (
-            <p className="border-bad/40 bg-bad/10 text-bad rounded-md border px-3 py-2 text-sm">
+            <p
+              role="alert"
+              className="border-bad/40 bg-bad-sub text-bad rounded-md border px-3 py-2 text-sm"
+            >
               {estado.erro}
             </p>
           )}
           {estado.ok && (
-            <p className="border-good/40 bg-good/10 rounded-md border px-3 py-2 text-sm">
+            <p
+              role="status"
+              className="border-ok/40 bg-ok-sub text-ok rounded-md border px-3 py-2 text-sm"
+            >
               Número vinculado.
             </p>
           )}
@@ -129,24 +144,58 @@ export function PainelDeVinculos({
             {vinculos.map((v) => (
               <li
                 key={v.id}
-                className="border-line bg-surface-2 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3"
+                className="border-line bg-surface-2 flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center"
               >
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold">{v.nome}</span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{v.nome}</span>
+                    {v.autorizadoEm ? (
+                      <Etiqueta tom="ok">Autorizado para avisos</Etiqueta>
+                    ) : (
+                      <Etiqueta tom="neutro">Não recebe avisos</Etiqueta>
+                    )}
+                  </span>
                   <span className="text-ink-3 block text-sm">
                     {paraLeitura(v.telefone)}
                     {v.email ? ` · ${v.email}` : ""}
                   </span>
                 </span>
 
-                {podeVincular && (
-                  <form action={removerVinculoAcao} className="flex-none">
-                    <input type="hidden" name="id" value={v.id} />
-                    <Botao type="submit" peso="fantasma" tamanho="pequeno">
-                      Remover
-                    </Botao>
-                  </form>
-                )}
+                <span className="flex flex-none flex-wrap gap-2">
+                  {podeAutorizar &&
+                    (v.autorizadoEm ? (
+                      <form action={revogarAutorizacaoAcao}>
+                        <input type="hidden" name="id" value={v.id} />
+                        <Botao
+                          type="submit"
+                          peso="secundario"
+                          tamanho="pequeno"
+                        >
+                          Revogar
+                        </Botao>
+                      </form>
+                    ) : (
+                      <form action={autorizarVinculoAcao}>
+                        <input type="hidden" name="id" value={v.id} />
+                        <Botao
+                          type="submit"
+                          peso="secundario"
+                          tamanho="pequeno"
+                        >
+                          Autorizar para avisos
+                        </Botao>
+                      </form>
+                    ))}
+
+                  {podeVincular && (
+                    <form action={removerVinculoAcao}>
+                      <input type="hidden" name="id" value={v.id} />
+                      <Botao type="submit" peso="fantasma" tamanho="pequeno">
+                        Remover
+                      </Botao>
+                    </form>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

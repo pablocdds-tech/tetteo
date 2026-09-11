@@ -66,22 +66,30 @@ function origemECaminho(url: string): string {
   }
 }
 
+/** O que a tela mostra do estado — e o que ela consulta a cada 5 s com o QR aberto. */
+export type EstadoAtual = {
+  estado: EstadoNaTela;
+  rotulo: string;
+  motivo: string | null;
+  atualizadoEm: Date | null;
+  numero: string;
+};
+
 /**
  * Lê o estado AGORA (limite de 4 s) e grava o que ouviu. Se faltar
  * configuração, nada é gravado: o estado mostrado é "Configuração pendente",
  * com o NOME do que falta.
  */
-export async function lerConexaoParaTela(
+export async function estadoAtualDaConexao(
   contexto: ContextoSessao,
   conexaoId: string,
   env: Ambiente = process.env,
   agora: Date = new Date(),
-): Promise<TelaDaConexao> {
+): Promise<EstadoAtual & { faltando: string[] }> {
   const conexao = await obterConexao(contexto, conexaoId);
   if (!conexao) throw new Error("Conexão não encontrada.");
 
-  const provedor = provedorPara(conexao, env);
-  const consulta = await provedor.consultarConexao({
+  const consulta = await provedorPara(conexao, env).consultarConexao({
     comNumero: !conexao.numeroProprio,
   });
 
@@ -101,15 +109,37 @@ export async function lerConexaoParaTela(
 
   const atual = (await obterConexao(contexto, conexaoId)) ?? conexao;
   const exibido = estadoParaExibir(atual, faltando, agora);
+  return {
+    estado: exibido.estado,
+    rotulo: ROTULO_DO_ESTADO[exibido.estado],
+    motivo: exibido.motivo,
+    atualizadoEm: atual.vistoEm,
+    numero: mascararTelefone(atual.numeroProprio),
+    faltando,
+  };
+}
+
+/** Tudo o que a tela "WhatsApp" mostra: o estado de agora mais as chaves. */
+export async function lerConexaoParaTela(
+  contexto: ContextoSessao,
+  conexaoId: string,
+  env: Ambiente = process.env,
+  agora: Date = new Date(),
+): Promise<TelaDaConexao> {
+  const estado = await estadoAtualDaConexao(contexto, conexaoId, env, agora);
+  const atual = await obterConexao(contexto, conexaoId);
+  if (!atual) throw new Error("Conexão não encontrada.");
+
   const podeConectar = await podeNaLoja(
     contexto.usuario.id,
-    conexao.unidadeId,
+    atual.unidadeId,
     "assistente.conectar",
   );
 
   const configWebhook = configuracaoWebhook(env);
   let eventos: EventosNaTela | null = null;
-  if (podeConectar && consulta.tipo !== "pendente") {
+  if (podeConectar && estado.faltando.length === 0) {
+    const provedor = provedorPara(atual, env);
     const lidos = await provedor.lerEventos();
     if (lidos.ok) {
       const esperados = [...EVENTOS_ASSINADOS];
@@ -132,11 +162,11 @@ export async function lerConexaoParaTela(
     provedor: atual.provedor,
     unidadeId: atual.unidadeId,
     unidadeNome: atual.unidadeNome,
-    estado: exibido.estado,
-    rotulo: ROTULO_DO_ESTADO[exibido.estado],
-    motivo: exibido.motivo,
-    numero: mascararTelefone(atual.numeroProprio),
-    atualizadoEm: atual.vistoEm,
+    estado: estado.estado,
+    rotulo: estado.rotulo,
+    motivo: estado.motivo,
+    numero: estado.numero,
+    atualizadoEm: estado.atualizadoEm,
     estadoDesde: atual.estadoDesde,
     envioLigado: atual.ativa,
     agendamentosPausados: atual.agendamentosPausados,

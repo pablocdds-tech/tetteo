@@ -378,11 +378,12 @@ async function idsDasConexoesVisiveis(contexto: ContextoSessao) {
 export async function contarEventos(
   contexto: ContextoSessao,
   desde: Date,
+  ate?: Date,
 ): Promise<ContagemDeEventos> {
   const conexoes = await idsDasConexoesVisiveis(contexto);
   const onde = {
     instanciaId: { in: [...conexoes.keys()] },
-    recebidoEm: { gte: desde },
+    recebidoEm: { gte: desde, ...(ate ? { lt: ate } : {}) },
   };
 
   const [porStatus, soma] = await Promise.all([
@@ -405,11 +406,16 @@ export async function contarEventos(
   };
 }
 
+/**
+ * A lista já vem com o detalhe: o resumo é uma lista fechada de campos
+ * pequenos (estado, id, status, hash), e abrir um evento não deve custar uma
+ * ida ao servidor.
+ */
 export async function listarEventos(
   contexto: ContextoSessao,
   filtro: { desde: Date; tipo: FiltroDeEventos },
   limite = 100,
-): Promise<EventoNaLista[]> {
+): Promise<EventoNoDetalhe[]> {
   const conexoes = await idsDasConexoesVisiveis(contexto);
   const linhas = await db.eventoWhatsapp.findMany({
     where: {
@@ -433,6 +439,10 @@ export async function listarEventos(
     recebidoEm: l.recebidoEm,
     processadoEm: l.processadoEm,
     conexaoNome: conexoes.get(l.instanciaId) ?? "",
+    idExterno: l.idExterno,
+    resumo: (l.resumo ?? {}) as ResumoDoEvento,
+    tentativas: l.tentativas,
+    ultimaRepeticaoEm: l.ultimaRepeticaoEm,
   }));
 }
 

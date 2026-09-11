@@ -7,16 +7,31 @@ import { obterContexto } from "@/core/sessao/contexto";
 import { SemPermissao } from "@/lib/erros";
 
 import { esquemaAgente, esquemaVinculo } from "./schemas/agente";
+import { esquemaRascunho } from "./schemas/aviso";
 import {
   alternarAgente,
   criarAgente,
   desativarAgente,
 } from "./services/agentes";
 import {
+  criarRascunho,
+  descartarAviso,
+  obterAviso,
+  type AvisoNoDetalhe,
+} from "./services/avisos";
+import {
+  alternarAgendamentos,
+  alternarEnvio,
+  cadastrarConexao,
+  definirLoja,
+} from "./services/conexao";
+import {
   alternarInstancia,
+  autorizarVinculo,
   criarVinculo,
   garantirInstancia,
   removerVinculo,
+  revogarAutorizacao,
 } from "./services/vinculos";
 
 /**
@@ -151,4 +166,141 @@ export async function alternarInstanciaAcao(dados: FormData) {
   await alternarInstancia(contexto, id);
   revalidatePath("/assistente");
   revalidatePath("/assistente/vinculos");
+}
+
+// ---------------------------------------------------------------------------
+// WHATSAPP — o que a tela faz sem falar com o provedor
+//
+// O que precisa da Evolution (QR, reconectar, eventos, confirmar e enviar)
+// mora em `app/(shell)/assistente/acoes-whatsapp.ts`: só a camada `app/`
+// alcança o conector.
+// ---------------------------------------------------------------------------
+
+async function contextoOuLogin() {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+  return contexto;
+}
+
+function revalidarWhatsapp() {
+  revalidatePath("/assistente/whatsapp");
+  revalidatePath("/assistente/avisos");
+  revalidatePath("/assistente/vinculos");
+}
+
+/** Autorizar é dizer "este telefone recebe o que acontece na loja". */
+export async function autorizarVinculoAcao(dados: FormData) {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  if (!id) return;
+  await autorizarVinculo(contexto, id);
+  revalidarWhatsapp();
+}
+
+export async function revogarAutorizacaoAcao(dados: FormData) {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  if (!id) return;
+  await revogarAutorizacao(contexto, id);
+  revalidarWhatsapp();
+}
+
+export async function alternarEnvioAcao(dados: FormData) {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  if (!id) return;
+  await alternarEnvio(contexto, id);
+  revalidarWhatsapp();
+}
+
+export async function alternarAgendamentosAcao(dados: FormData) {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  if (!id) return;
+  await alternarAgendamentos(contexto, id);
+  revalidarWhatsapp();
+}
+
+export async function definirLojaAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  const unidadeId = String(dados.get("unidadeId") ?? "");
+  try {
+    await definirLoja(contexto, id, unidadeId || null);
+  } catch (erro) {
+    return paraMensagem(erro);
+  }
+  revalidarWhatsapp();
+  return { ok: true };
+}
+
+/** Cadastra no Tetteo a instância que JÁ EXISTE na Evolution. */
+export async function cadastrarConexaoAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await contextoOuLogin();
+  const nome = String(dados.get("nome") ?? "").trim();
+  const unidadeId = String(dados.get("unidadeId") ?? "");
+  if (!nome) return { erros: { nome: "Escreva o nome da instância" } };
+  try {
+    await cadastrarConexao(contexto, { nome, unidadeId: unidadeId || null });
+  } catch (erro) {
+    return paraMensagem(erro);
+  }
+  revalidarWhatsapp();
+  return { ok: true };
+}
+
+export async function criarRascunhoAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await contextoOuLogin();
+  const analise = esquemaRascunho.safeParse({
+    titulo: dados.get("titulo") ?? "",
+    texto: dados.get("texto") ?? "",
+  });
+  if (!analise.success) return { erros: errosDoZod(analise.error.issues) };
+
+  const unidadeId = String(dados.get("unidadeId") ?? "");
+  try {
+    await criarRascunho(
+      contexto,
+      { ...analise.data, unidadeId: unidadeId || null },
+      new Date(),
+    );
+  } catch (erro) {
+    return paraMensagem(erro);
+  }
+  revalidarWhatsapp();
+  return { ok: true };
+}
+
+export async function descartarAvisoAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  try {
+    const r = await descartarAviso(contexto, id, new Date());
+    if (!r.descartado)
+      return { erro: "Este aviso já não pode ser descartado." };
+  } catch (erro) {
+    return paraMensagem(erro);
+  }
+  revalidarWhatsapp();
+  return { ok: true };
+}
+
+/** O detalhe do aviso, pedido quando o painel lateral abre. */
+export async function abrirAvisoAcao(
+  id: string,
+): Promise<AvisoNoDetalhe | null> {
+  const contexto = await contextoOuLogin();
+  return obterAviso(contexto, id);
 }

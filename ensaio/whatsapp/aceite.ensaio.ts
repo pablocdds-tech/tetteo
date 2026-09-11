@@ -745,14 +745,28 @@ describe("os 12 cenários de aceite", () => {
     }
     assert.ok(!copia.includes("data:image"), "QR Code dentro do backup");
 
-    execSync("npx prisma migrate deploy", {
-      env: {
-        ...process.env,
-        DATABASE_URL: URL_DO_BANCO_RESTAURADO,
-        CHECKPOINT_DISABLE: "1",
-      },
-      stdio: "pipe",
-    });
+    // O banco novo recebe as mesmas migrações do repositório — é o que o
+    // contêiner faz ao subir. Se falhar, o motivo aparece no teste, não num
+    // código de saída mudo.
+    try {
+      execSync("npx prisma migrate deploy", {
+        env: {
+          ...process.env,
+          DATABASE_URL: URL_DO_BANCO_RESTAURADO,
+          CHECKPOINT_DISABLE: "1",
+        },
+        stdio: "pipe",
+        timeout: 180_000,
+      });
+    } catch (erro) {
+      const e = erro as { stderr?: Buffer; stdout?: Buffer; message: string };
+      assert.fail(
+        `migrate deploy no banco restaurado falhou: ${e.message} ${String(e.stderr ?? "")} ${String(e.stdout ?? "")}`.slice(
+          0,
+          1500,
+        ),
+      );
+    }
     await restaurarBanco(URL_DO_BANCO_RESTAURADO, copia);
 
     const [restaurada] = await consultar(
