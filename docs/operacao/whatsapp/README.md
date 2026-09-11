@@ -12,12 +12,12 @@ sai sozinho.
 
 ## Os degraus — e em qual estamos
 
-| Degrau          | O que é                                                                                 | Estado em 11/09/2026 |
-| --------------- | --------------------------------------------------------------------------------------- | -------------------- |
-| **Simulação**   | Testes automáticos com o provedor simulado, sem rede (`npm test` + os 12 cenários)      | feito, 20/20         |
-| **Teste local** | O Tetteo rodando na máquina com banco descartável e provedor simulado; prints das telas | feito                |
-| **Sandbox**     | **Não existe para Baileys.** Está declarado, não fingido                                | —                    |
-| **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem                     | aguarda autorização  |
+| Degrau          | O que é                                                                                 | Estado em 11/09/2026                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Simulação**   | Testes automáticos com o provedor simulado, sem rede (`npm test` + o ensaio de aceite)  | feito, 23/23                                                                                             |
+| **Teste local** | O Tetteo rodando na máquina com banco descartável e provedor simulado; prints das telas | feito                                                                                                    |
+| **Sandbox**     | **Não existe para Baileys.** Está declarado, não fingido                                | —                                                                                                        |
+| **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem                     | em andamento: conexão, relógio e webhook provados em 11/09; falta o aviso de fechamento de ponta a ponta |
 
 Um build verde não prova a integração. O que prova é o degrau "uso real".
 
@@ -72,8 +72,8 @@ com o nome do que falta — e nada é enviado.
    `curl` e o endereço público — aí o segredo entra no crontab, que precisa
    ser `600` do root.
 
-3. **Entre no Tetteo como Diretor** (a Severina ainda está "em construção": só
-   o Diretor a vê). Menu Severina → **WhatsApp**. O bloco Conexão mostra dois
+3. **Entre no Tetteo como Diretor** (desde 11/09 a Severina não está mais "em construção", mas só o Diretor tem
+   as permissões dela; para outros papéis, Configurações). Menu Severina → **WhatsApp**. O bloco Conexão mostra dois
    **sinais de vida**: a última batida do relógio e o último evento que a
    Evolution entregou pelo webhook. Os dois precisam ter hora recente antes do
    primeiro envio real.
