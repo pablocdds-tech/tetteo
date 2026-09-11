@@ -32,6 +32,10 @@ export default auth;
  * Isso NÃO abre a rota: ela exige `x-severina-segredo` e recusa com 401 sem
  * ele. A autenticação dela é outra, não é nenhuma.
  *
+ * `api/whatsapp` — também máquina: é a Evolution entregando webhook. A rota
+ * exige o passe HS256 assinado com a senha do servidor, recusa o que chegou
+ * pelo proxy público, e só aceita instância que está no cadastro.
+ *
  * `api/compras/tick` — o relógio de Compras, pelo mesmo motivo: máquina, e
  *                      com o próprio segredo (`x-compras-segredo`).
  * `fornecedor/`      — a página onde o FORNECEDOR responde a cotação. Ele não
@@ -41,6 +45,6 @@ export default auth;
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/compras/tick|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
   ],
 };

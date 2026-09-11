@@ -28,6 +28,9 @@ export const manifestoSeverina: ManifestoDoApp = {
   rota: "/assistente",
   navegacao: [
     { rota: "/assistente", nome: "Conversas" },
+    { rota: "/assistente/avisos", nome: "Avisos" },
+    { rota: "/assistente/eventos", nome: "Eventos" },
+    { rota: "/assistente/whatsapp", nome: "WhatsApp" },
     {
       rota: "/assistente/agentes",
       nome: "Agentes",

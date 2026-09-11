@@ -1,7 +1,8 @@
 import "server-only";
 
-import type { AvisoDoModulo } from "@/core/registry/tipos";
+import type { AvisoDoModulo, FatoDoModulo } from "@/core/registry/tipos";
 import type { ContextoSessao } from "@/core/sessao/contexto";
+import { assistenteDosChecklists } from "@/modules/checklists/assistente";
 import { assistenteDoEstoque } from "@/modules/estoque/assistente";
 
 /**
@@ -27,6 +28,22 @@ export type ParticipanteDoAssistente = {
 
   /** O que este App tem a lembrar hoje. */
   avisos(contexto: ContextoSessao, agora: Date): Promise<AvisoDoModulo[]>;
+
+  /**
+   * O que ACONTECEU e alguém deveria saber — vira RASCUNHO de aviso, que só
+   * sai quando uma pessoa confirma na tela Avisos.
+   *
+   * Sem contexto de usuário, de propósito: é o App dono do fato contando o
+   * que houve nas lojas do escopo. Quem pode RECEBER é conferido depois,
+   * pessoa por pessoa, pela `permissaoNecessaria` de cada fato.
+   */
+  eventos?(
+    escopo: { organizacaoId: string; unidadeIds: string[] },
+    desde: Date,
+  ): Promise<FatoDoModulo[]>;
 };
 
-export const PARTICIPANTES: ParticipanteDoAssistente[] = [assistenteDoEstoque];
+export const PARTICIPANTES: ParticipanteDoAssistente[] = [
+  assistenteDoEstoque,
+  assistenteDosChecklists,
+];

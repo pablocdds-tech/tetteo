@@ -30,7 +30,7 @@ export default async function PaginaConversas() {
       <div className="mt-6">
         <ChaveGeral
           instancia={instancia}
-          podeConfigurar={pode(contexto, "assistente.configurar")}
+          podeConfigurar={pode(contexto, "assistente.conectar")}
         />
       </div>
 

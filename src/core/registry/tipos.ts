@@ -127,3 +127,34 @@ export type AvisoDoModulo = {
   referenciaTipo: string;
   referenciaId: string;
 };
+
+/**
+ * UM FATO QUE UM APP DECLARA — "isto aconteceu, e alguém deveria saber".
+ *
+ * Diferente de `AvisoDoModulo`, que responde "o que cobrar hoje?", o fato
+ * responde "o que acabou de acontecer?": o fechamento da loja foi concluído.
+ * A Severina transforma o fato num RASCUNHO de aviso — que só sai depois que
+ * uma pessoa confirma.
+ *
+ * O App dono do fato entrega as linhas já escritas. A Severina não sabe o que
+ * é uma nota de checklist, e não precisa: ela põe as linhas no aviso.
+ */
+export type FatoDoModulo = {
+  /**
+   * A chave de idempotência: "checklists:fechamento:<id>". O mesmo fato
+   * perguntado sessenta vezes vira UM rascunho.
+   */
+  chave: string;
+  /** "checklists.fechamento" */
+  tipo: string;
+  /** O id do registro que originou o fato, no App dono dele. */
+  referenciaId: string;
+  unidadeId: string;
+  titulo: string;
+  linhas: string[];
+  /** Caminho dentro do Tetteo, sem domínio: "/checklists/clx…". */
+  caminho: string;
+  ocorridoEm: Date;
+  /** O que o destinatário precisa poder ver para receber o aviso. */
+  permissaoNecessaria: string;
+};

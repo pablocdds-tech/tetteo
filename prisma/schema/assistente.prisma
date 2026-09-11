@@ -30,19 +30,65 @@ model InstanciaWhatsapp {
   nome          String
   numeroProprio String?
 
+  /// A CHAVE GERAL. Desligada, nada sai — nem aviso já confirmado.
   ativa          Boolean   @default(true)
   conectadaEm    DateTime?
   desconectadaEm DateTime?
   ultimoErro     String?
+
+  /// A loja para a qual este número está autorizado. Vazio = a rede inteira.
+  ///
+  /// Decide quem vê o QR Code: a permissão de conectar vale NA LOJA DA
+  /// CONEXÃO, não na loja que a pessoa está olhando. Gerente do Centro não
+  /// conecta o número da Zona Sul.
+  unidadeId String?
+
+  /// De que jeito o número está ligado. SIMULADO existe para o ensaio e é
+  /// recusado em produção pelo conector.
+  provedor ProvedorWhatsapp @default(EVOLUTION_BAILEYS)
+
+  /// O que a tela mostra. "Configuração pendente" NÃO mora aqui: é calculada
+  /// na leitura a partir das variáveis que faltam — segredo que falta não
+  /// vira linha no banco.
+  estado        EstadoConexao @default(DESCONECTADO)
+  estadoDesde   DateTime?
+  /// A última notícia do provedor — consulta respondida ou webhook recebido.
+  vistoEm       DateTime?
+  motivoAtencao String?
+
+  /// Segura o disparo AUTOMÁTICO dos agentes da Severina. Nasce pausado: nada
+  /// sai sozinho até o dono escolher horário, fuso, público e conteúdo. O
+  /// aviso confirmado por uma pessoa não passa por aqui.
+  agendamentosPausados Boolean @default(true)
+
+  eventosConfiguradosEm DateTime?
+
+  /// O ritmo vale para o NÚMERO, não para cada fila: aviso e agente dividem a
+  /// mesma conta pessoal.
+  ultimoEnvioEm DateTime?
 
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
   excluidoEm   DateTime?
 
   conversas ConversaWhatsapp[]
+  eventos   EventoWhatsapp[]
+  avisos    AvisoWhatsapp[]
 
   @@unique([organizacaoId, nome])
   @@map("instancia_whatsapp")
+}
+
+enum ProvedorWhatsapp {
+  EVOLUTION_BAILEYS
+  SIMULADO
+}
+
+enum EstadoConexao {
+  DESCONECTADO
+  CONECTANDO
+  CONECTADO
+  ATENCAO
 }
 
 /// QUEM EXISTE PARA A SEVERINA.
@@ -66,6 +112,14 @@ model VinculoWhatsapp {
   telefone String
 
   confirmadoEm DateTime?
+
+  /// AUTORIZADO PARA AVISOS — e quem autorizou.
+  ///
+  /// Ter vínculo é existir para a Severina. Receber aviso é outra decisão, de
+  /// um responsável: sem esta data, a pessoa não aparece como destinatário.
+  /// Separado de `confirmadoEm`, que fica para o LID da fase 2.
+  autorizadoEm    DateTime?
+  autorizadoPorId String?
 
   criadoEm     DateTime  @default(now())
   atualizadoEm DateTime  @updatedAt
@@ -264,4 +318,148 @@ model MensagemWhatsapp {
   @@index([conversaId, criadoEm])
   @@index([origem])
   @@map("mensagem_whatsapp")
+}
+
+// ---------------------------------------------------------------------------
+// EVENTOS E AVISOS — a entrada do provedor e a saída que um humano confirma
+// ---------------------------------------------------------------------------
+
+enum StatusEventoWhatsapp {
+  RECEBIDO
+  PROCESSADO
+  IGNORADO
+  FALHOU
+}
+
+/// TUDO QUE A EVOLUTION CONTOU — limpo.
+///
+/// `resumo` guarda só campos permitidos: estado, id de mensagem, status, o
+/// hash do texto. Nunca o texto, o `remoteJid`, o nome de perfil ou o QR
+/// Code. O número é uma conta pessoal, e o painel de saúde não é lugar de
+/// conversa de ninguém.
+///
+/// A chave única é a trava contra webhook repetido: a Evolution reenvia até
+/// dez vezes quando não tem certeza de que chegou. O repetido só soma em
+/// `repeticoes` — o trabalho não se refaz.
+model EventoWhatsapp {
+  id            String            @id @default(cuid())
+  organizacaoId String
+  instanciaId   String
+  instancia     InstanciaWhatsapp @relation(fields: [instanciaId], references: [id])
+
+  /// O providerEventId. Por tipo: "status:<id>:<status>", "envio:<id>",
+  /// "entrada:<id>", "conexao:<sha256 do corpo>".
+  idExterno String
+  tipo      String
+
+  status StatusEventoWhatsapp @default(RECEBIDO)
+  motivo String?
+  resumo Json                 @default("{}")
+
+  repeticoes Int @default(0)
+  tentativas Int @default(0)
+
+  recebidoEm        DateTime  @default(now())
+  processadoEm      DateTime?
+  ultimaRepeticaoEm DateTime?
+
+  @@unique([instanciaId, idExterno])
+  @@index([organizacaoId, recebidoEm])
+  @@index([status, recebidoEm])
+  @@map("evento_whatsapp")
+}
+
+/// O caminho de um aviso. Cada etapa só ganha horário com PROVA:
+///
+///   RASCUNHO    nasceu (de um evento do sistema, ou de alguém)
+///   CONFIRMADO  um responsável escolheu o destinatário e confirmou
+///   NA_FILA     a entrega pegou o aviso e está falando com o provedor
+///   ACEITO      a Evolution respondeu 201 com o id — NÃO quer dizer entregue
+///   ENTREGUE    chegou o DELIVERY_ACK
+///   LIDO        chegou o READ
+///
+///   INCERTO     o resultado é desconhecido (tempo esgotado, 5xx). Não se
+///               reenvia sozinho: consulta-se o provedor, e se não achar, um
+///               humano decide
+///   FALHOU      recusado de vez, ou desistência depois das tentativas
+///   DESCARTADO  alguém decidiu que não sai
+enum StatusAvisoWhatsapp {
+  RASCUNHO
+  CONFIRMADO
+  NA_FILA
+  ACEITO
+  ENTREGUE
+  LIDO
+  INCERTO
+  FALHOU
+  DESCARTADO
+}
+
+/// UM AVISO INTERNO — o OutgoingMessage.
+///
+/// `idPedido` é a chave de idempotência do pedido: o mesmo fechamento nunca
+/// vira dois rascunhos, por mais que o relógio pergunte. `referencia` vai no
+/// fim do texto e torna cada mensagem única — é o que permite achar no
+/// provedor, depois de um tempo esgotado, se ela saiu ou não.
+///
+/// O destinatário é uma REFERÊNCIA ao vínculo, nunca um telefone solto: o
+/// número é resolvido na hora de enviar, e só se a pessoa continuar
+/// autorizada.
+model AvisoWhatsapp {
+  id            String            @id @default(cuid())
+  organizacaoId String
+  unidadeId     String?
+  instanciaId   String
+  instancia     InstanciaWhatsapp @relation(fields: [instanciaId], references: [id])
+
+  idPedido   String
+  referencia String
+
+  /// De onde veio: "checklists.fechamento" ou "manual".
+  origemTipo String
+  origemId   String?
+
+  /// O que o destinatário precisa poder ver para receber este aviso. Cada um
+  /// só ouve o que teria direito de ver na tela.
+  permissaoNecessaria String?
+
+  titulo String
+  corpo  String
+  link   String?
+
+  /// VinculoWhatsapp.id
+  destinatarioRef String?
+
+  status             StatusAvisoWhatsapp @default(RASCUNHO)
+  idMensagemProvedor String?
+
+  tentativas          Int       @default(0)
+  proximaTentativaEm  DateTime?
+  tentativaIniciadaEm DateTime?
+  verificacoes        Int       @default(0)
+  verificadoEm        DateTime?
+  erro                String?
+
+  /// requestedBy. Vazio = nasceu de um evento do sistema.
+  solicitadoPorId String?
+  /// confirmedBy.
+  confirmadoPorId String?
+  descartadoPorId String?
+
+  criadoEm      DateTime  @default(now())
+  atualizadoEm  DateTime  @updatedAt
+  confirmadoEm  DateTime?
+  enfileiradoEm DateTime?
+  aceitoEm      DateTime?
+  entregueEm    DateTime?
+  lidoEm        DateTime?
+  falhouEm      DateTime?
+  descartadoEm  DateTime?
+
+  @@unique([organizacaoId, idPedido])
+  @@unique([instanciaId, idMensagemProvedor])
+  @@unique([referencia])
+  @@index([organizacaoId, status, criadoEm])
+  @@index([status, proximaTentativaEm])
+  @@map("aviso_whatsapp")
 }

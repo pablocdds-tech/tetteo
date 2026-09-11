@@ -146,10 +146,14 @@ export async function dispararAgentes(agora: Date): Promise<number> {
         organizacaoId: agente.organizacaoId,
         ativa: true,
         excluidoEm: null,
+        // Agendamento nasce PAUSADO: nada sai sozinho até o dono escolher
+        // horário, fuso, público e conteúdo, e liberar na tela WhatsApp.
+        agendamentosPausados: false,
       },
       select: { id: true },
     });
-    // Sem número ligado, ou com a chave geral desligada, a Severina cala.
+    // Sem número ligado, com a chave geral desligada, ou com os agendamentos
+    // pausados, a Severina cala.
     if (!instancia) continue;
 
     const pessoas = await destinatarios(agente);

@@ -45,6 +45,7 @@ next-env.d.ts
 /.agents/
 /.claude/
 /.impeccable/
+/.superpowers/
 
 # o modelo de configuracao e versionado; os valores reais, nunca
 !.env.example

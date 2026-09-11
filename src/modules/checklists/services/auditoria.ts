@@ -10,7 +10,11 @@ import { db } from "@/server/db";
  */
 export async function registrar(
   contexto: ContextoSessao,
-  entidade: "ModeloDeChecklist" | "RespostaDeChecklist" | "Pendencia",
+  entidade:
+    | "ModeloDeChecklist"
+    | "RotinaDeChecklist"
+    | "RespostaDeChecklist"
+    | "Pendencia",
   acao: "CRIOU" | "ALTEROU" | "EXCLUIU",
   entidadeId: string,
   antes: unknown,

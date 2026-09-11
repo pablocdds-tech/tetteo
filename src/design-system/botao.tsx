@@ -20,7 +20,7 @@ const PESOS: Record<Peso, string> = {
   secundario:
     "bg-surface text-ink border border-line-2 hover:bg-surface-2 active:bg-surface-3",
   fantasma: "bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink",
-  destrutivo: "bg-bad text-white hover:brightness-110 active:brightness-90",
+  destrutivo: "bg-bad text-surface hover:brightness-110 active:brightness-90",
 };
 
 // 48px no Modo Operação: tablet de cozinha, mão com pressa.

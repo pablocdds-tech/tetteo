@@ -1,7 +1,9 @@
 import { pode, type ContextoSessao } from "@/core/sessao/contexto";
 import { SemPermissao } from "@/lib/erros";
-import { normalizarTelefone } from "@/lib/telefone";
+import { normalizarTelefone, telefoneDoJid } from "@/lib/telefone";
 import { db } from "@/server/db";
+
+import { registrarAuditoria } from "./auditoria";
 
 /**
  * OS VÍNCULOS — quem existe para a Severina.
@@ -21,6 +23,8 @@ export type VinculoNaLista = {
   email: string;
   telefone: string;
   confirmadoEm: Date | null;
+  /** Autorizado para receber avisos — decisão de um responsável. */
+  autorizadoEm: Date | null;
 };
 
 export async function listarVinculos(
@@ -48,6 +52,7 @@ export async function listarVinculos(
     email: porId.get(v.usuarioId)?.email ?? "",
     telefone: v.telefone,
     confirmadoEm: v.confirmadoEm,
+    autorizadoEm: v.autorizadoEm,
   }));
 }
 
@@ -181,26 +186,91 @@ export async function garantirInstancia(contexto: ContextoSessao) {
   });
 }
 
+// A CHAVE GERAL mora em `conexao.ts` (`alternarEnvio`): a permissão é
+// conferida na loja DO NÚMERO, não na loja aberta na tela.
+
+// ---------------------------------------------------------------------------
+// AUTORIZADOS PARA AVISOS — quem pode RECEBER, decidido por um responsável
+// ---------------------------------------------------------------------------
+
 /**
- * A CHAVE GERAL.
- *
- * Desligada, a Severina cala por completo — o disparo não enfileira e a fila
- * não sai. É o botão do dia em que algo der errado, e ele precisa existir
- * antes de o dia chegar.
+ * Ter vínculo é existir para a Severina. Receber aviso é outra decisão, e
+ * mais séria: é dizer "este telefone recebe o que acontece na loja". Por
+ * isso é permissão separada (`assistente.autorizar`) e deixa rastro.
  */
-export async function alternarInstancia(contexto: ContextoSessao, id: string) {
-  if (!pode(contexto, "assistente.configurar")) {
-    throw new SemPermissao("ligar e desligar a Severina");
+export async function autorizarVinculo(
+  contexto: ContextoSessao,
+  id: string,
+  agora = new Date(),
+): Promise<void> {
+  if (!pode(contexto, "assistente.autorizar")) {
+    throw new SemPermissao("autorizar destinatários de avisos");
   }
-
-  const instancia = await db.instanciaWhatsapp.findFirst({
-    where: { id, organizacaoId: contexto.organizacao.id },
-    select: { id: true, ativa: true },
+  const vinculo = await db.vinculoWhatsapp.findFirst({
+    where: { id, organizacaoId: contexto.organizacao.id, excluidoEm: null },
+    select: { id: true, autorizadoEm: true },
   });
-  if (!instancia) throw new Error("Número não encontrado.");
+  if (!vinculo) throw new Error("Vínculo não encontrado.");
+  if (vinculo.autorizadoEm) return;
 
-  await db.instanciaWhatsapp.update({
+  await db.vinculoWhatsapp.update({
     where: { id },
-    data: { ativa: !instancia.ativa },
+    data: { autorizadoEm: agora, autorizadoPorId: contexto.usuario.id },
   });
+  await registrarAuditoria(contexto, {
+    entidade: "VinculoWhatsapp",
+    entidadeId: id,
+    acao: "ALTEROU",
+    antes: { autorizadoParaAvisos: false },
+    depois: { autorizadoParaAvisos: true },
+  });
+}
+
+/** Revogada, a pessoa para de receber — inclusive o que já estava confirmado. */
+export async function revogarAutorizacao(
+  contexto: ContextoSessao,
+  id: string,
+): Promise<void> {
+  if (!pode(contexto, "assistente.autorizar")) {
+    throw new SemPermissao("revogar destinatários de avisos");
+  }
+  const vinculo = await db.vinculoWhatsapp.findFirst({
+    where: { id, organizacaoId: contexto.organizacao.id },
+    select: { id: true, autorizadoEm: true },
+  });
+  if (!vinculo) throw new Error("Vínculo não encontrado.");
+  if (!vinculo.autorizadoEm) return;
+
+  await db.vinculoWhatsapp.update({
+    where: { id },
+    data: { autorizadoEm: null, autorizadoPorId: null },
+  });
+  await registrarAuditoria(contexto, {
+    entidade: "VinculoWhatsapp",
+    entidadeId: id,
+    acao: "ALTEROU",
+    antes: { autorizadoParaAvisos: true },
+    depois: { autorizadoParaAvisos: false },
+  });
+}
+
+/**
+ * Quem escreveu é alguém vinculado? Devolve só o id do vínculo — o
+ * identificador de contato não segue adiante, e não é gravado em lugar
+ * nenhum. Sem vínculo, a mensagem é de ninguém.
+ */
+export async function vinculoPorContato(
+  organizacaoId: string,
+  remoteJid: string,
+): Promise<string | null> {
+  const telefone = telefoneDoJid(remoteJid);
+  const vinculo = await db.vinculoWhatsapp.findFirst({
+    where: {
+      organizacaoId,
+      excluidoEm: null,
+      OR: [{ remoteJid }, ...(telefone ? [{ telefone }] : [])],
+    },
+    select: { id: true },
+  });
+  return vinculo?.id ?? null;
 }

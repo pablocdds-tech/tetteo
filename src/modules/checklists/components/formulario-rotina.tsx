@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 
-import { Botao } from "@/design-system/botao";
+import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 
 import { criarRotinaAcao, type EstadoChecklist } from "../acoes";
@@ -53,8 +53,11 @@ export function FormularioRotina({
           que esteja desativado.
         </p>
         <div className="mt-4">
-          <Link href="/checklists/modelos/novo">
-            <Botao peso="secundario">Criar um checklist</Botao>
+          <Link
+            href="/checklists/modelos/novo"
+            className={estiloDeBotao("secundario")}
+          >
+            Criar um checklist
           </Link>
         </div>
       </div>
@@ -191,10 +194,8 @@ export function FormularioRotina({
         <Botao type="submit" carregando={enviando}>
           Agendar
         </Botao>
-        <Link href="/checklists">
-          <Botao type="button" peso="fantasma">
-            Cancelar
-          </Botao>
+        <Link href="/checklists" className={estiloDeBotao("fantasma")}>
+          Cancelar
         </Link>
       </div>
     </form>

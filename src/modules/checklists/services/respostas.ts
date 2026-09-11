@@ -11,7 +11,7 @@ import {
 } from "../schemas/pontuacao";
 
 import { registrar } from "./auditoria";
-import { exigirUnidade } from "./rotinas";
+import { exigirUnidade, nomesDeUsuarios } from "./rotinas";
 
 /**
  * AS RESPOSTAS — o que aconteceu num dia.
@@ -235,6 +235,107 @@ export async function salvarRespostas(
 
   return valores.size;
 }
+
+/**
+ * GRAVA UM ITEM SÓ.
+ *
+ * A folha salva item a item, no instante em que a pessoa marca — não num
+ * botão "Salvar" no fim da página. A troca é deliberada e tem um preço que
+ * precisa ser pago na tela, não escondido:
+ *
+ *   O QUE SE GANHA  ninguém mais perde meia hora de checklist porque o
+ *                   celular travou, a bateria acabou ou a aba fechou.
+ *
+ *   O QUE SE PAGA   a cozinha tem internet ruim. Uma gravação que falha
+ *                   PRECISA aparecer como falha: o item volta ao que estava,
+ *                   com o aviso do lado. Marcar na tela e não gravar no banco
+ *                   é a única coisa que este módulo não pode fazer — um
+ *                   checklist que mente é pior do que checklist nenhum.
+ *
+ * Devolve o instante gravado pelo servidor, e não o do relógio do celular:
+ * é ele que a tela mostra em "salvo às 07:12", e é ele que vale.
+ */
+export async function salvarItem(
+  contexto: ContextoSessao,
+  respostaId: string,
+  itemId: string,
+  valor: ValorItem,
+) {
+  await salvarRespostas(contexto, respostaId, new Map([[itemId, valor]]));
+
+  const linha = await db.respostaItem.findUnique({
+    where: { respostaId_itemId: { respostaId, itemId } },
+    select: { respondidoEm: true, respondidoPorId: true },
+  });
+
+  return {
+    respondidoEm: linha?.respondidoEm ?? null,
+    // Quem gravou é sempre quem está na sessão — `salvarRespostas` acabou de
+    // carimbar isso. Buscar o nome no banco seria uma consulta a mais para
+    // saber o que já se sabe.
+    respondidoPor: linha?.respondidoPorId ? contexto.usuario.nome : null,
+  };
+}
+
+/**
+ * O HISTÓRICO DE UMA ROTINA — as últimas vezes em que ela foi cumprida.
+ *
+ * Fica ao lado da folha, no detalhe, e não numa tela separada. "A abertura de
+ * ontem deu 71%" é a informação que muda o jeito de responder a de hoje; num
+ * link para outra página, ela não é lida.
+ */
+export async function historicoDaRotina(
+  contexto: ContextoSessao,
+  rotinaId: string,
+  limite = 6,
+) {
+  if (!pode(contexto, "checklists.ver")) {
+    throw new SemPermissao("ver os checklists");
+  }
+  const unidade = exigirUnidade(contexto);
+
+  const respostas = await db.respostaDeChecklist.findMany({
+    where: {
+      rotinaId,
+      unidadeId: unidade.id,
+      status: "FECHADA",
+      canceladaEm: null,
+    },
+    orderBy: { referencia: "desc" },
+    take: limite,
+    select: {
+      id: true,
+      referencia: true,
+      fechadaEm: true,
+      fechadaPorId: true,
+      pontuacao: true,
+      itensConformes: true,
+      itensNaoConformes: true,
+      _count: { select: { pendencias: true } },
+    },
+  });
+
+  const nomes = await nomesDeUsuarios(
+    respostas.map((r) => r.fechadaPorId).filter((id): id is string => !!id),
+  );
+
+  return respostas.map((r) => ({
+    id: r.id,
+    referencia: r.referencia,
+    fechadaEm: r.fechadaEm,
+    fechadaPor: r.fechadaPorId
+      ? (nomes.get(r.fechadaPorId)?.nome ?? null)
+      : null,
+    pontuacao: r.pontuacao === null ? null : Number(r.pontuacao),
+    conformes: r.itensConformes,
+    naoConformes: r.itensNaoConformes,
+    pendencias: r._count.pendencias,
+  }));
+}
+
+export type LinhaDoHistorico = Awaited<
+  ReturnType<typeof historicoDaRotina>
+>[number];
 
 /**
  * Fecha o checklist.

@@ -22,7 +22,7 @@ export default async function PaginaVinculos() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Números</h1>
         <p className="text-ink-3 mt-1 text-sm">
-          Quem a Severina enxerga — e quem ela ignora
+          Quem a Severina enxerga — e quem pode receber avisos
         </p>
       </div>
 
@@ -31,6 +31,7 @@ export default async function PaginaVinculos() {
           vinculos={vinculos}
           disponiveis={disponiveis}
           podeVincular
+          podeAutorizar={pode(contexto, "assistente.autorizar")}
         />
       </div>
     </div>

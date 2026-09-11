@@ -98,6 +98,14 @@ const PARES: [string, string, number, string][] = [
   ["--line-2", "--surface", 3.0, "borda de campo e de botão secundário"],
   ["--line-2", "--paper", 3.0, "borda de campo sobre o fundo da página"],
   ["--line-2", "--surface-2", 3.0, "borda dentro da barra lateral"],
+
+  // O texto DENTRO dos botões Sim/Não/N/A marcados da folha de checklist.
+  // Era branco, e no tema escuro dava 2,2:1, 2,8:1 e 2,0:1 — o verde, o
+  // vermelho e o cinza clareiam no escuro, e branco em cima de cor clara some.
+  // `--surface` inverte sozinho: quase branco no claro, quase preto no escuro.
+  ["--surface", "--ok", 4.5, "botão 'Sim' marcado na folha"],
+  ["--surface", "--bad", 4.5, "botão 'Não' marcado na folha"],
+  ["--surface", "--ink-2", 4.5, "botão 'N/A' marcado na folha"],
 ];
 
 for (const seletor of [
