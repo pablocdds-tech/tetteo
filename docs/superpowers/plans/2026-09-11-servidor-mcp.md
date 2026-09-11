@@ -3662,7 +3662,7 @@ describe("/oauth/authorize", { skip: pular }, () => {
       { client_id: "https://evil.example/c" },
       { redirect_uri: "https://evil.example/cb" },
       { client_id: "" },
-    ]) {
+    ] as Record<string, string>[]) {
       const { resposta } = await abrirPedido(extra);
       assert.equal(resposta.status, 400);
       assert.equal(resposta.headers.get("location"), null);
