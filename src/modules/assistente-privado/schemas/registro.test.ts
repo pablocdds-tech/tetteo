@@ -45,6 +45,16 @@ test("recusa campo a mais: não cabe um pedido escondido no recado", () => {
     corpoDoRegistro.safeParse({ ...execucao, pedido: { itens: [] } }).success,
     false,
   );
+  assert.equal(
+    corpoDoRegistro.safeParse({
+      tipo: "verificacao",
+      chave: "verificacao",
+      estado: "conectado",
+      ocorridoEm: "2026-09-11T15:00:00Z",
+      pedido: { itens: [] },
+    }).success,
+    false,
+  );
 });
 
 test("recusa estado que não existe, chave estranha e fonte com caminho", () => {
@@ -86,5 +96,33 @@ test("data e hora precisa ser data e hora", () => {
       ocorridoEm: "2026-02-31T10:00:00Z",
     }).success,
     false,
+  );
+});
+
+test("período e última data precisam ser dias que existem", () => {
+  const periodoImpossivel = {
+    ...execucao,
+    periodo: { de: "2026-13-45", ate: "2026-01-01" },
+  };
+  assert.equal(corpoDoRegistro.safeParse(periodoImpossivel).success, false);
+  const ultimaImpossivel = {
+    ...execucao,
+    indicadores: { ...execucao.indicadores, ultimaData: "2026-02-30" },
+  };
+  assert.equal(corpoDoRegistro.safeParse(ultimaImpossivel).success, false);
+  // 2026 não é bissexto; 2024 é.
+  assert.equal(
+    corpoDoRegistro.safeParse({
+      ...execucao,
+      periodo: { de: "2026-02-29", ate: "2026-03-01" },
+    }).success,
+    false,
+  );
+  assert.equal(
+    corpoDoRegistro.safeParse({
+      ...execucao,
+      periodo: { de: "2024-02-29", ate: "2024-03-01" },
+    }).success,
+    true,
   );
 });

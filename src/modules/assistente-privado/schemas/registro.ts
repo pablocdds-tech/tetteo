@@ -30,9 +30,19 @@ export const ESTADOS_DE_VERIFICACAO = [
   "desligado",
 ] as const;
 
+/** Dia de verdade: "2026-02-30" e "2026-13-45" não passam. */
 const dia = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "data no formato AAAA-MM-DD");
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "data no formato AAAA-MM-DD")
+  .refine((s) => {
+    const [ano, mes, diaDoMes] = s.split("-").map(Number);
+    const data = new Date(Date.UTC(ano, mes - 1, diaDoMes));
+    return (
+      data.getUTCFullYear() === ano &&
+      data.getUTCMonth() === mes - 1 &&
+      data.getUTCDate() === diaDoMes
+    );
+  }, "dia que não existe no calendário");
 
 /** Data e hora ISO de verdade: "2026-02-31T10:00:00Z" não passa. */
 const instante = z
