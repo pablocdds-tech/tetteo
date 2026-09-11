@@ -47,6 +47,8 @@ docker run --rm --user 0 --entrypoint sh \
       cp /config-modelo.json /estado/openclaw.json
       echo "config: criada a partir do modelo"
     fi
+    # O arquivo é do dono; ninguém mais no servidor precisa lê-lo.
+    chmod 600 /estado/openclaw.json
     chown -R 1000:1000 /estado /auth
     chmod 700 /estado /auth
   ' </dev/null

@@ -15,6 +15,10 @@ const compose = await readFile(
   new URL("./compose.yml", import.meta.url),
   "utf8",
 );
+const instalador = await readFile(
+  new URL("./scripts/instalar.sh", import.meta.url),
+  "utf8",
+);
 
 test("nenhuma chave de API e nenhum modelo reserva", () => {
   assert.ok(
@@ -29,9 +33,14 @@ test("runtime embutido para qualquer modelo openai", () => {
   });
 });
 
-test("gateway com token por variável", () => {
+test("gateway com token por variável e freio de força bruta", () => {
   assert.equal(config.gateway.auth.mode, "token");
   assert.equal(config.gateway.auth.token, "${OPENCLAW_GATEWAY_TOKEN}");
+  assert.deepEqual(config.gateway.auth.rateLimit, {
+    maxAttempts: 10,
+    windowMs: 60000,
+    lockoutMs: 300000,
+  });
 });
 
 test("ferramentas: só o MCP; o resto negado; sem agendamento", () => {
@@ -93,4 +102,8 @@ test("o compose fixa a versão e publica uma porta só, em 127.0.0.1", () => {
   assert.ok(!/0\.0\.0\.0/.test(compose));
   assert.match(compose, /image: ghcr\.io\/openclaw\/openclaw:2026\.9\.4\n/);
   assert.match(compose, /\/opt\/ferramenta:ro/);
+});
+
+test("o instalador fecha a configuração para leitura só do dono", () => {
+  assert.match(instalador, /chmod 600 \/estado\/openclaw\.json/);
 });
