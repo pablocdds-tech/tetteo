@@ -26,8 +26,15 @@ import { gerarReferencia } from "@/modules/assistente/schemas/aviso";
 import {
   confirmarAviso,
   criarRascunho,
+  pegarParaEnvio,
   reenviarAviso,
+  registrarResultado,
 } from "@/modules/assistente/services/avisos";
+import { alternarEnvio } from "@/modules/assistente/services/conexao";
+import {
+  processarEvento,
+  registrarEvento,
+} from "@/modules/assistente/services/eventos";
 import { dispararAgentes } from "@/modules/assistente/services/disparo";
 import { coletarRascunhos } from "@/modules/assistente/services/rascunhos";
 import { db } from "@/server/db";
@@ -70,7 +77,17 @@ const tarefas: Promise<unknown>[] = [];
 const agendar = (tarefa: () => Promise<void>) => {
   tarefas.push(tarefa());
 };
-const semEspera = async () => {};
+/**
+ * O TEMPO DO ENSAIO: em vez de dormir, a espera ADIANTA um relógio. O ritmo
+ * de 4 s entre mensagens do mesmo número continua valendo — só que sem os
+ * 4 s de verdade. Tudo que carimba hora usa `relogio()`.
+ */
+const tempo = { desloc: 0 };
+const esperar = async (ms: number) => {
+  tempo.desloc += ms;
+};
+const relogio = () => new Date(Date.now() + tempo.desloc);
+const daqui = (ms: number) => new Date(relogio().getTime() + ms);
 
 function envelope(event: string, data: unknown, instancia = "loja-ensaio") {
   return {
@@ -123,7 +140,8 @@ const entregar = (id: string) =>
     limite: 5,
     apenasId: id,
     env: ENV,
-    esperar: semEspera,
+    esperar,
+    relogio,
   });
 
 const aviso = (id: string) =>
@@ -359,7 +377,8 @@ describe("os 12 cenários de aceite", () => {
         limite: 5,
         apenasId: confirmado.id,
         env,
-        esperar: semEspera,
+        esperar,
+        relogio,
       });
 
       const falhou = await aviso(confirmado.id);
@@ -529,7 +548,7 @@ describe("os 12 cenários de aceite", () => {
     assert.equal(simulador().tentativasDeEnvio, 1);
 
     // O relógio consulta o provedor — e não acha.
-    const depois = new Date(Date.now() + 30_000);
+    const depois = daqui(30_000);
     await verificarIncertos({ agora: depois, env: ENV });
     pendente = await aviso(id);
     assert.equal(pendente.status, "INCERTO");
@@ -541,7 +560,8 @@ describe("os 12 cenários de aceite", () => {
       agora: depois,
       limite: 5,
       env: ENV,
-      esperar: semEspera,
+      esperar,
+      relogio,
     });
     assert.equal(simulador().tentativasDeEnvio, 1, "reenviou sozinho");
 
@@ -562,7 +582,7 @@ describe("os 12 cenários de aceite", () => {
     assert.equal((await aviso(id)).status, "INCERTO");
 
     simulador().comportamento = "aceita";
-    await verificarIncertos({ agora: new Date(Date.now() + 30_000), env: ENV });
+    await verificarIncertos({ agora: daqui(30_000), env: ENV });
     const achado = await aviso(id);
     assert.equal(achado.status, "ACEITO");
     assert.ok(achado.idMensagemProvedor);
@@ -705,7 +725,8 @@ describe("os 12 cenários de aceite", () => {
       agora: new Date(),
       limite: 5,
       env: ENV,
-      esperar: semEspera,
+      esperar,
+      relogio,
     });
     assert.equal((await aviso(id)).status, "CONFIRMADO");
     assert.equal(simulador().tentativasDeEnvio, 0);
@@ -791,5 +812,182 @@ describe("os 12 cenários de aceite", () => {
       `select count(*)::int as n from aviso_whatsapp`,
     );
     assert.equal(avisos.n, await db.avisoWhatsapp.count());
+  });
+});
+
+describe("o que a revisão apontou", () => {
+  const conexaoBase = () => ({
+    id: cenario.conexaoId,
+    organizacaoId: cenario.organizacaoId,
+  });
+
+  /** Pega o aviso respeitando o ritmo — como a entrega faz. */
+  async function pegar(id: string) {
+    let pegada = await pegarParaEnvio(id, relogio());
+    while (!pegada.pego && pegada.motivo === "ritmo") {
+      await esperar(pegada.esperarMs);
+      pegada = await pegarParaEnvio(id, relogio());
+    }
+    assert.equal(pegada.pego, true);
+  }
+
+  test("send.message que chega antes da resposta deixa a prova — e a resposta perdida vira aceito", async () => {
+    reiniciarSimulador();
+    const id = await avisoConfirmado("Revisão: prova antes da resposta");
+    await pegar(id);
+    const { corpo } = await aviso(id);
+
+    const r = await webhook(
+      envelope("send.message", {
+        key: {
+          id: "3EB0REVISAO0001",
+          remoteJid: "5511900000012@s.whatsapp.net",
+          fromMe: true,
+        },
+        message: { conversation: corpo },
+        messageTimestamp: Math.floor(relogio().getTime() / 1000),
+      }),
+    );
+    assert.equal(r.status, 200);
+    const evento = await db.eventoWhatsapp.findFirstOrThrow({
+      where: { idExterno: "envio:3EB0REVISAO0001" },
+    });
+    assert.equal(evento.status, "PROCESSADO", evento.motivo ?? "");
+
+    const naFila = await aviso(id);
+    assert.equal(naFila.status, "NA_FILA");
+    assert.equal(naFila.idMensagemProvedor, "3EB0REVISAO0001");
+
+    // A resposta HTTP se perdeu. A prova já estava lá: não vira INCERTO.
+    assert.equal(
+      await registrarResultado(
+        id,
+        { tipo: "incerto", motivo: "A Evolution não respondeu em 15 s." },
+        relogio(),
+      ),
+      "ACEITO",
+    );
+    assert.equal((await aviso(id)).status, "ACEITO");
+  });
+
+  test("o 'entregue' que chega antes do id é aplicado quando o id chega", async () => {
+    reiniciarSimulador();
+    const id = await avisoConfirmado("Revisão: entregue antes do id");
+    await pegar(id);
+    const idMensagem = "3EB0REVISAO0002";
+
+    await webhook(
+      envelope("messages.update", {
+        keyId: idMensagem,
+        fromMe: true,
+        status: "DELIVERY_ACK",
+      }),
+    );
+    const cedo = await db.eventoWhatsapp.findFirstOrThrow({
+      where: { idExterno: `status:${idMensagem}:DELIVERY_ACK` },
+    });
+    assert.equal(cedo.status, "IGNORADO");
+
+    assert.equal(
+      await registrarResultado(
+        id,
+        { tipo: "aceito", idMensagem, aceitoEm: relogio() },
+        relogio(),
+      ),
+      "ACEITO",
+    );
+    const depois = await aviso(id);
+    assert.equal(depois.status, "ENTREGUE");
+    assert.ok(depois.entregueEm);
+    const reaplicado = await db.eventoWhatsapp.findUniqueOrThrow({
+      where: { id: cedo.id },
+    });
+    assert.equal(reaplicado.status, "PROCESSADO");
+  });
+
+  test("duas pegadas no mesmo número, uma atrás da outra, respeitam os 4 s", async () => {
+    reiniciarSimulador();
+    const a = await avisoConfirmado("Revisão: ritmo a");
+    const b = await avisoConfirmado("Revisão: ritmo b");
+    await pegar(a);
+
+    const segunda = await pegarParaEnvio(b, relogio());
+    assert.equal(segunda.pego, false);
+    if (segunda.pego) return;
+    assert.equal(segunda.motivo, "ritmo");
+    if (segunda.motivo !== "ritmo") return;
+    assert.ok(segunda.esperarMs > 0 && segunda.esperarMs <= 4000);
+
+    await esperar(segunda.esperarMs);
+    assert.equal((await pegarParaEnvio(b, relogio())).pego, true);
+
+    await db.avisoWhatsapp.updateMany({
+      where: { id: { in: [a, b] } },
+      data: { status: "DESCARTADO" },
+    });
+  });
+
+  test("o pedido que não chega tenta 1, 4 e 9 minutos depois — e na quarta desiste", async () => {
+    reiniciarSimulador({ comportamento: "sem-rede" });
+    const id = await avisoConfirmado("Revisão: tentativas");
+    const em = (ms: number) =>
+      entregarAvisos({
+        agora: daqui(ms),
+        limite: 5,
+        apenasId: id,
+        env: ENV,
+        esperar,
+        relogio,
+      });
+
+    await em(0);
+    let a = await aviso(id);
+    assert.equal(a.status, "CONFIRMADO");
+    assert.equal(a.tentativas, 1);
+    assert.ok(a.proximaTentativaEm);
+
+    await em(2 * 60_000);
+    a = await aviso(id);
+    assert.equal(a.status, "CONFIRMADO");
+    assert.equal(a.tentativas, 2);
+
+    await em(6 * 60_000);
+    a = await aviso(id);
+    assert.equal(a.status, "CONFIRMADO");
+    assert.equal(a.tentativas, 3);
+
+    await em(12 * 60_000);
+    a = await aviso(id);
+    assert.equal(a.status, "FALHOU");
+    assert.equal(a.tentativas, 4);
+    assert.match(a.erro ?? "", /4 tentativas/);
+    reiniciarSimulador();
+  });
+
+  test("o mesmo evento processado por dois lados ao mesmo tempo conta uma tentativa", async () => {
+    const { id } = await registrarEvento(
+      conexaoBase(),
+      {
+        tipo: "connection.update",
+        idExterno: "conexao:revisao-l3",
+        estado: "open",
+        codigo: 200,
+        numero: null,
+      },
+      relogio(),
+    );
+    await Promise.all([
+      processarEvento(id, relogio()),
+      processarEvento(id, relogio()),
+    ]);
+    const e = await db.eventoWhatsapp.findUniqueOrThrow({ where: { id } });
+    assert.equal(e.status, "PROCESSADO");
+    assert.equal(e.tentativas, 1);
+  });
+
+  test("a chave geral só vira na loja do número", async () => {
+    const bruno = await contextoDe(cenario.bruno, cenario.sulId);
+    await assert.rejects(alternarEnvio(bruno, cenario.conexaoId), SemPermissao);
+    assert.equal((await conexao()).ativa, true);
   });
 });

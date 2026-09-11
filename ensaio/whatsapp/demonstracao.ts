@@ -45,7 +45,17 @@ import { contextoDe, limparBancoDeEnsaio, montarCenario } from "./banco";
  * aqui é de gente de verdade.
  */
 
-const semEspera = async () => {};
+/**
+ * O TEMPO DO ENSAIO: em vez de dormir, a espera ADIANTA um relógio. O ritmo
+ * de 4 s entre mensagens do mesmo número continua valendo — só que sem os
+ * 4 s de verdade. Tudo que carimba hora usa `relogio()`.
+ */
+const tempo = { desloc: 0 };
+const esperar = async (ms: number) => {
+  tempo.desloc += ms;
+};
+const relogio = () => new Date(Date.now() + tempo.desloc);
+const daqui = (ms: number) => new Date(relogio().getTime() + ms);
 const ENV: Record<string, string | undefined> = {
   ...process.env,
   NODE_ENV: "development",
@@ -61,7 +71,7 @@ async function main() {
   await limparBancoDeEnsaio();
   const cenario = await montarCenario();
   reiniciarSimulador();
-  const agora = new Date();
+  const agora = relogio();
 
   // O login do Diretor fictício. A senha nasce aqui e vai para um arquivo na
   // pasta temporária — nunca para a tela nem para o repositório.
@@ -84,8 +94,8 @@ async function main() {
   };
 
   const evento = async (e: EventoNormalizado) => {
-    const { id } = await registrarEvento(conexao, e, new Date());
-    await processarEvento(id, new Date(), e);
+    const { id } = await registrarEvento(conexao, e, relogio());
+    await processarEvento(id, relogio(), e);
     return id;
   };
 
@@ -108,15 +118,16 @@ async function main() {
     const { id } = await criarRascunho(
       ana,
       { titulo, texto, unidadeId: cenario.centroId },
-      new Date(),
+      relogio(),
     );
-    await confirmarAviso(ana, id, cenario.vinculoAna, new Date());
+    await confirmarAviso(ana, id, cenario.vinculoAna, relogio());
     await entregarAvisos({
-      agora: new Date(),
+      agora: relogio(),
       limite: 1,
       apenasId: id,
       env: ENV,
-      esperar: semEspera,
+      esperar,
+      relogio,
     });
     return db.avisoWhatsapp.findUniqueOrThrow({ where: { id } });
   };
@@ -135,7 +146,7 @@ async function main() {
     deMim: true,
   };
   await evento(entregueLido);
-  await registrarEvento(conexao, entregueLido, new Date());
+  await registrarEvento(conexao, entregueLido, relogio());
   await evento({
     tipo: "messages.update",
     idExterno: `status:${lido.idMensagemProvedor}:READ`,
@@ -171,7 +182,7 @@ async function main() {
     "A coifa foi limpa e a pendência de segunda-feira pode ser fechada.",
   );
   simulador().comportamento = "aceita";
-  await verificarIncertos({ agora: new Date(Date.now() + 30_000), env: ENV });
+  await verificarIncertos({ agora: daqui(30_000), env: ENV });
 
   // 7. Uma falha: o destinatário não está autorizado para avisos.
   const referenciaDaFalha = gerarReferencia();
@@ -192,17 +203,18 @@ async function main() {
       }),
       destinatarioRef: cenario.vinculoCarla,
       status: "CONFIRMADO",
-      confirmadoEm: new Date(),
+      confirmadoEm: relogio(),
       confirmadoPorId: cenario.ana,
       solicitadoPorId: cenario.ana,
     },
   });
   await entregarAvisos({
-    agora: new Date(),
+    agora: relogio(),
     limite: 1,
     apenasId: falha.id,
     env: ENV,
-    esperar: semEspera,
+    esperar,
+    relogio,
   });
 
   // 8. Um descartado.
@@ -213,9 +225,9 @@ async function main() {
       texto: "Só para ver como fica. Pode apagar.",
       unidadeId: cenario.centroId,
     },
-    new Date(),
+    relogio(),
   );
-  await descartarAviso(carla, descartado.id, new Date());
+  await descartarAviso(carla, descartado.id, relogio());
 
   // 9. Eventos de cada tipo — inclusive os ignorados, e um que falhou.
   await evento({
@@ -230,7 +242,7 @@ async function main() {
     idExterno: "envio:3EB0DEMOFORA01",
     idMensagem: "3EB0DEMOFORA01",
     hashTexto: "0".repeat(64),
-    enviadaEm: new Date(),
+    enviadaEm: relogio(),
   });
   await evento({
     tipo: "messages.upsert",
@@ -257,7 +269,7 @@ async function main() {
       resumo: {},
     },
   });
-  await processarEvento(quebrado.id, new Date());
+  await processarEvento(quebrado.id, relogio());
 
   // 10. O webhook "aplicado" pelo Tetteo — grava a data na conexão.
   await aplicarEventosDaConexao(diretor, cenario.conexaoId, ENV);

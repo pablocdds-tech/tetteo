@@ -59,6 +59,7 @@ export type ConexaoParaPainel = {
   } | null;
   eventosConfiguradosEm: Date | null;
   webhookPendente: string[];
+  avisoDoWebhook: string | null;
   podeConectar: boolean;
 };
 
@@ -260,6 +261,11 @@ function CartaoDeEventos({
         {conexao.webhookPendente.length > 0 && (
           <p className="text-warn text-sm leading-5">
             Falta configurar no servidor: {conexao.webhookPendente.join(", ")}.
+          </p>
+        )}
+        {conexao.avisoDoWebhook && (
+          <p className="text-warn text-sm leading-5">
+            {conexao.avisoDoWebhook}
           </p>
         )}
 

@@ -26,7 +26,6 @@ import {
   definirLoja,
 } from "./services/conexao";
 import {
-  alternarInstancia,
   autorizarVinculo,
   criarVinculo,
   garantirInstancia,
@@ -58,8 +57,17 @@ function errosDoZod(issues: { path: PropertyKey[]; message: string }[]) {
 
 function paraMensagem(erro: unknown): EstadoFormulario {
   if (erro instanceof SemPermissao) return { erro: erro.message };
-  if (erro instanceof Error) return { erro: erro.message };
-  throw erro;
+  // Só a mensagem de um Error "puro" chega à tela: é o que os serviços
+  // escrevem para gente. Erro de banco ou de rede tem outra classe, e a
+  // mensagem dele carrega host, tabela e SQL.
+  if (erro instanceof Error && erro.constructor === Error) {
+    return { erro: erro.message };
+  }
+  console.error(
+    "[assistente] ação falhou:",
+    erro instanceof Error ? erro.name : "erro",
+  );
+  return { erro: "Algo deu errado ao salvar. Tente de novo em instantes." };
 }
 
 export async function criarAgenteAcao(
@@ -155,7 +163,10 @@ export async function removerVinculoAcao(dados: FormData) {
   revalidatePath("/assistente/vinculos");
 }
 
-/** A chave geral. Desligada, a Severina cala por completo. */
+/**
+ * A chave geral. Desligada, a Severina cala por completo — e a permissão é
+ * conferida na loja do número, como na tela WhatsApp.
+ */
 export async function alternarInstanciaAcao(dados: FormData) {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
@@ -163,7 +174,7 @@ export async function alternarInstanciaAcao(dados: FormData) {
   const id = String(dados.get("id") ?? "");
   if (!id) return;
 
-  await alternarInstancia(contexto, id);
+  await alternarEnvio(contexto, id);
   revalidatePath("/assistente");
   revalidatePath("/assistente/vinculos");
 }

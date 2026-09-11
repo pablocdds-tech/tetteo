@@ -12,6 +12,7 @@ import {
 } from "@/app/api/whatsapp/_costura/conexao-tela";
 import { entregarAvisos } from "@/app/api/whatsapp/_costura/entrega";
 import { obterContexto } from "@/core/sessao/contexto";
+import { SemPermissao } from "@/lib/erros";
 import type { EstadoFormulario } from "@/modules/assistente/acoes";
 import {
   confirmarAviso,
@@ -36,10 +37,18 @@ async function contextoOuLogin() {
   return contexto;
 }
 
+/**
+ * Só a mensagem de um Error "puro" (ou de SemPermissao) chega à tela. Erro
+ * de banco tem outra classe e carrega host, tabela e SQL na mensagem.
+ */
 function motivo(erro: unknown): string {
-  return erro instanceof Error
-    ? erro.message
-    : "Algo deu errado. Tente de novo.";
+  if (erro instanceof SemPermissao) return erro.message;
+  if (erro instanceof Error && erro.constructor === Error) return erro.message;
+  console.error(
+    "[whatsapp] ação falhou:",
+    erro instanceof Error ? erro.name : "erro",
+  );
+  return "Algo deu errado ao falar com o servidor. Tente de novo em instantes.";
 }
 
 export type RespostaDeReconexao =

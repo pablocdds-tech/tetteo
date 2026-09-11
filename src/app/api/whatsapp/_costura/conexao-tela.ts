@@ -54,8 +54,18 @@ export type TelaDaConexao = {
   eventos: EventosNaTela | null;
   eventosConfiguradosEm: Date | null;
   webhookPendente: string[];
+  /** O endereço configurado aponta para o domínio público: a Evolution seria barrada. */
+  avisoDoWebhook: string | null;
   podeConectar: boolean;
 };
+
+function mesmoHost(a: string | undefined, b: string | undefined): boolean {
+  try {
+    return Boolean(a) && Boolean(b) && new URL(a!).host === new URL(b!).host;
+  } catch {
+    return false;
+  }
+}
 
 function origemECaminho(url: string): string {
   try {
@@ -137,6 +147,13 @@ export async function lerConexaoParaTela(
   );
 
   const configWebhook = configuracaoWebhook(env);
+  // O webhook só é aceito pela rede interna: apontado para o domínio público,
+  // toda chamada da Evolution tomaria 403 — e a tela diria que está tudo bem.
+  const avisoDoWebhook =
+    configWebhook.tipo === "ok" && mesmoHost(configWebhook.url, env.APP_URL)
+      ? "O endereço do webhook aponta para o domínio público do Tetteo. A Evolution precisa chamar pela rede interna do Docker (http://<contêiner do tetteo>:3000/…), senão toda chamada é recusada."
+      : null;
+
   let eventos: EventosNaTela | null = null;
   if (podeConectar && estado.faltando.length === 0) {
     const provedor = provedorPara(atual, env);
@@ -147,6 +164,7 @@ export async function lerConexaoParaTela(
         ...lidos.valor,
         esperados,
         confere:
+          avisoDoWebhook === null &&
           lidos.valor.ativo &&
           lidos.valor.comSenha &&
           esperados.every((e) => lidos.valor.eventos.includes(e)) &&
@@ -174,6 +192,7 @@ export async function lerConexaoParaTela(
     eventosConfiguradosEm: atual.eventosConfiguradosEm,
     webhookPendente:
       configWebhook.tipo === "pendente" ? configWebhook.faltando : [],
+    avisoDoWebhook,
     podeConectar,
   };
 }

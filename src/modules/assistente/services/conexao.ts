@@ -197,13 +197,6 @@ export async function marcarNoticia(id: string, agora: Date): Promise<void> {
   });
 }
 
-export async function marcarEnvio(id: string, agora: Date): Promise<void> {
-  await db.instanciaWhatsapp.update({
-    where: { id },
-    data: { ultimoEnvioEm: agora },
-  });
-}
-
 export async function registrarEventosConfigurados(
   contexto: ContextoSessao,
   id: string,
@@ -363,14 +356,42 @@ export async function cadastrarConexao(
   const nome = dados.nome.trim();
   if (!nome) throw new Error("Falta o nome da instância na Evolution.");
 
-  const existente = await db.instanciaWhatsapp.findFirst({
-    where: { organizacaoId: contexto.organizacao.id, nome },
+  // Nome de instância é único numa Evolution. Se outra organização já o
+  // usa, o webhook não saberia de quem é o evento — e ninguém receberia.
+  const deOutra = await db.instanciaWhatsapp.findFirst({
+    where: {
+      nome,
+      excluidoEm: null,
+      organizacaoId: { not: contexto.organizacao.id },
+    },
     select: { id: true },
   });
+  if (deOutra) {
+    throw new Error(
+      "Já existe uma conexão com este nome de instância em outra organização.",
+    );
+  }
+
+  const existente = await db.instanciaWhatsapp.findFirst({
+    where: { organizacaoId: contexto.organizacao.id, nome },
+    select: { id: true, unidadeId: true },
+  });
+  // Reaproveitar uma linha é mexer na loja DELA também — inclusive uma linha
+  // excluída, que volta com a loja nova.
+  if (
+    existente &&
+    !(await podeNaLoja(
+      contexto.usuario.id,
+      existente.unidadeId,
+      "assistente.conectar",
+    ))
+  ) {
+    throw new SemPermissao("reaproveitar o cadastro deste número");
+  }
   const conexao = existente
     ? await db.instanciaWhatsapp.update({
         where: { id: existente.id },
-        data: { excluidoEm: null },
+        data: { excluidoEm: null, unidadeId: dados.unidadeId },
         select: { id: true },
       })
     : await db.instanciaWhatsapp.create({

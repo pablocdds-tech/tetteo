@@ -23,9 +23,11 @@ import {
   type GrupoDeAviso,
   type StatusAviso,
 } from "../schemas/aviso";
+import { INTERVALO_MS } from "../schemas/ritmo";
 
 import { registrarAuditoria } from "./auditoria";
 import { podeNaLoja } from "./conexao";
+import { aplicarStatusJaRecebidos } from "./eventos";
 
 /**
  * OS AVISOS — o OutgoingMessage do Tetteo.
@@ -575,9 +577,11 @@ export async function obterAviso(
     else if (a.instancia.estado !== "CONECTADO") {
       espera = "Aguardando o número conectar.";
     } else if (a.proximaTentativaEm) {
+      // A hora da OPERAÇÃO: o contêiner pensa em UTC.
       espera = `Próxima tentativa às ${new Intl.DateTimeFormat("pt-BR", {
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: "America/Sao_Paulo",
       }).format(a.proximaTentativaEm)}.`;
     } else espera = "Na vez de sair.";
   }
@@ -693,21 +697,63 @@ export async function candidatosParaEntrega(
   });
 }
 
-/** Pega o aviso para enviar. `false` = outro já pegou. */
+export type ResultadoDaPegada =
+  | { pego: true }
+  | { pego: false; motivo: "outro-pegou" }
+  | { pego: false; motivo: "ritmo"; esperarMs: number };
+
+/**
+ * Pega o aviso para enviar — e o RITMO vai junto, atômico.
+ *
+ * O `after()` da confirmação e o relógio podem tentar ao mesmo tempo, e
+ * duas rodadas do relógio também se cruzam. Por isso o respiro de 4 s entre
+ * mensagens do mesmo número não mora em quem chama: mora aqui. A linha do
+ * NÚMERO é trancada (`FOR NO KEY UPDATE`, que não briga com quem só insere
+ * evento ou aviso apontando para ela), o último envio é lido debaixo da
+ * tranca, e só então o aviso vira NA_FILA e o número ganha "enviando agora".
+ * Quem chega cedo demais ouve quanto falta e espera — nunca dispara junto.
+ *
+ * O carimbo vale para todo envio que PODE ter saído — aceito ou incerto —
+ * porque é a Meta quem conta as mensagens, não a resposta HTTP.
+ */
 export async function pegarParaEnvio(
   id: string,
   agora: Date,
-): Promise<boolean> {
-  const { count } = await db.avisoWhatsapp.updateMany({
-    where: { id, status: "CONFIRMADO" },
-    data: {
-      status: "NA_FILA",
-      tentativas: { increment: 1 },
-      tentativaIniciadaEm: agora,
-      enfileiradoEm: agora,
-    },
+): Promise<ResultadoDaPegada> {
+  return db.$transaction(async (tx) => {
+    const aviso = await tx.avisoWhatsapp.findUnique({
+      where: { id },
+      select: { instanciaId: true, status: true },
+    });
+    if (!aviso || aviso.status !== "CONFIRMADO") {
+      return { pego: false, motivo: "outro-pegou" };
+    }
+
+    const [instancia] = await tx.$queryRaw<{ ultimoEnvioEm: Date | null }[]>`
+      SELECT "ultimoEnvioEm" FROM "instancia_whatsapp"
+       WHERE "id" = ${aviso.instanciaId}
+       FOR NO KEY UPDATE`;
+    const ultimo = instancia?.ultimoEnvioEm?.getTime() ?? 0;
+    const falta = ultimo + INTERVALO_MS - agora.getTime();
+    if (falta > 0) return { pego: false, motivo: "ritmo", esperarMs: falta };
+
+    const { count } = await tx.avisoWhatsapp.updateMany({
+      where: { id, status: "CONFIRMADO" },
+      data: {
+        status: "NA_FILA",
+        tentativas: { increment: 1 },
+        tentativaIniciadaEm: agora,
+        enfileiradoEm: agora,
+      },
+    });
+    if (count === 0) return { pego: false, motivo: "outro-pegou" };
+
+    await tx.instanciaWhatsapp.update({
+      where: { id: aviso.instanciaId },
+      data: { ultimoEnvioEm: agora },
+    });
+    return { pego: true };
   });
-  return count === 1;
 }
 
 export async function recusarDestino(
@@ -725,6 +771,16 @@ export type ResultadoDoEnvio =
   | { tipo: "aceito"; idMensagem: string; aceitoEm: Date }
   | { tipo: "nao-chegou" | "incerto" | "recusado"; motivo: string };
 
+/**
+ * Grava o que o provedor respondeu — depois de conferir o que ele já CONTOU.
+ *
+ * O evento `send.message` chega antes da resposta HTTP e deixa o id da
+ * mensagem no aviso. Se a resposta se perdeu (tempo esgotado, 5xx) mas o id
+ * está lá, a mensagem saiu: é ACEITO, não INCERTO. Evidência vence resposta.
+ *
+ * E o "entregue" que chegou antes de o id existir é reaplicado assim que o
+ * aviso ganha o id.
+ */
 export async function registrarResultado(
   id: string,
   resultado: ResultadoDoEnvio,
@@ -732,24 +788,52 @@ export async function registrarResultado(
 ): Promise<StatusAviso | null> {
   const atual = await db.avisoWhatsapp.findUnique({
     where: { id },
-    select: { tentativas: true },
+    select: { tentativas: true, instanciaId: true },
   });
   if (!atual) return null;
 
-  let data: Prisma.AvisoWhatsappUpdateManyMutationInput;
-  switch (resultado.tipo) {
-    case "aceito":
-      data = {
+  if (resultado.tipo === "aceito") {
+    const { count } = await db.avisoWhatsapp.updateMany({
+      where: { id, status: "NA_FILA" },
+      data: {
         status: "ACEITO",
         idMensagemProvedor: resultado.idMensagem,
         aceitoEm: resultado.aceitoEm,
         erro: null,
         proximaTentativaEm: null,
-      };
-      break;
+      },
+    });
+    if (count === 0) return null;
+    await aplicarStatusJaRecebidos(atual.instanciaId, resultado.idMensagem);
+    return "ACEITO";
+  }
+
+  const aceitarPelaProva = async (): Promise<StatusAviso | null> => {
+    const { count } = await db.avisoWhatsapp.updateMany({
+      where: { id, status: "NA_FILA", idMensagemProvedor: { not: null } },
+      data: { status: "ACEITO", erro: null, proximaTentativaEm: null },
+    });
+    if (count === 0) return null;
+    const aceito = await db.avisoWhatsapp.findUnique({
+      where: { id },
+      select: { idMensagemProvedor: true },
+    });
+    await aplicarStatusJaRecebidos(
+      atual.instanciaId,
+      aceito?.idMensagemProvedor ?? "",
+    );
+    return "ACEITO";
+  };
+  const pelaProva = await aceitarPelaProva();
+  if (pelaProva) return pelaProva;
+
+  let data: Prisma.AvisoWhatsappUpdateManyMutationInput;
+  switch (resultado.tipo) {
     case "nao-chegou":
+      // Tentativas automáticas só quando o pedido NÃO chegou: 1, 4 e 9
+      // minutos depois. Na quarta falha, FALHOU.
       data =
-        atual.tentativas >= MAX_TENTATIVAS_SEM_CHEGAR
+        atual.tentativas > MAX_TENTATIVAS_SEM_CHEGAR
           ? {
               status: "FALHOU",
               falhouEm: agora,
@@ -777,10 +861,13 @@ export async function registrarResultado(
   }
 
   const { count } = await db.avisoWhatsapp.updateMany({
-    where: { id, status: "NA_FILA" },
+    // Só sem prova: se o `send.message` deixou o id entre a conferência
+    // acima e este ponto, a prova vence de novo.
+    where: { id, status: "NA_FILA", idMensagemProvedor: null },
     data,
   });
-  return count === 1 ? (data.status as StatusAviso) : null;
+  if (count === 1) return data.status as StatusAviso;
+  return aceitarPelaProva();
 }
 
 /** NA_FILA há tempo demais: o processo morreu no meio. Resultado desconhecido. */

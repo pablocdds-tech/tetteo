@@ -206,29 +206,42 @@ async function aplicar(
       });
       if (conhecido) return processado("Confirmação do envio de um aviso.");
 
-      // A mensagem saiu e o Tetteo não sabia: é o aviso cujo envio ficou com
-      // resultado desconhecido. O texto — com a referência única — o acha.
+      // A Evolution emite este evento ENQUANTO ainda responde ao envio: ele
+      // costuma chegar antes do 201, com o aviso ainda NA_FILA e sem id. E
+      // quando a resposta se perde (INCERTO), ele é a prova de que saiu. O
+      // texto — único, pela referência no fim — casa os dois casos.
       if (evento.hashTexto) {
-        const incertos = await db.avisoWhatsapp.findMany({
-          where: { instanciaId, status: "INCERTO" },
-          select: { id: true, corpo: true },
+        const candidatos = await db.avisoWhatsapp.findMany({
+          where: { instanciaId, status: { in: ["NA_FILA", "INCERTO"] } },
+          select: { id: true, status: true, corpo: true },
         });
-        const achado = incertos.find(
+        const achado = candidatos.find(
           (a) => sha256(a.corpo) === evento.hashTexto,
         );
         if (achado) {
+          const prova = {
+            idMensagemProvedor: evento.idMensagem,
+            aceitoEm: evento.enviadaEm ?? agora,
+          };
+          // NA_FILA: guarda a prova e deixa o status para a resposta do
+          // envio — se ela se perder, `registrarResultado` vê o id e não
+          // marca INCERTO. INCERTO: a prova resolve na hora.
           const { count } = await db.avisoWhatsapp.updateMany({
-            where: { id: achado.id, status: "INCERTO" },
-            data: {
-              status: "ACEITO",
-              idMensagemProvedor: evento.idMensagem,
-              aceitoEm: evento.enviadaEm ?? agora,
-              erro: null,
-            },
+            where: { id: achado.id, status: achado.status },
+            data:
+              achado.status === "NA_FILA"
+                ? prova
+                : { ...prova, status: "ACEITO", erro: null },
           });
           if (count === 1) {
+            if (achado.status === "INCERTO") {
+              await aplicarStatusJaRecebidos(instanciaId, evento.idMensagem);
+              return processado(
+                "Resolveu um aviso com resultado desconhecido: a mensagem tinha saído.",
+              );
+            }
             return processado(
-              "Resolveu um aviso com resultado desconhecido: a mensagem tinha saído.",
+              "Confirmação do envio de um aviso, antes da resposta do provedor.",
             );
           }
         }
@@ -242,6 +255,67 @@ async function aplicar(
       if (!evento.vinculoId) return ignorado(MOTIVOS_DE_EVENTO.naoAutorizado);
       return ignorado(MOTIVOS_DE_EVENTO.respostas);
   }
+}
+
+/**
+ * O "ENTREGUE" QUE CHEGOU ANTES DO ID.
+ *
+ * A Evolution avisa o status enquanto ainda responde ao envio: o
+ * `messages.update` pode chegar com o aviso NA_FILA, sem id — e fica
+ * IGNORADO como "não é aviso". Quando o id chega (pela resposta do envio ou
+ * pelo `send.message`), os eventos daquela mensagem são relidos e aplicados
+ * na ordem certa: entregue antes de lido, e com o horário em que cada um
+ * chegou, não o de agora.
+ */
+const ORDEM_DE_REAPLICACAO = [
+  "SERVER_ACK",
+  "DELIVERY_ACK",
+  "READ",
+  "PLAYED",
+  "DELETED",
+  "ERROR",
+];
+
+export async function aplicarStatusJaRecebidos(
+  instanciaId: string,
+  idMensagem: string,
+): Promise<number> {
+  if (!idMensagem) return 0;
+  const guardados = await db.eventoWhatsapp.findMany({
+    where: {
+      instanciaId,
+      tipo: "messages.update",
+      status: "IGNORADO",
+      idExterno: { startsWith: `status:${idMensagem}:` },
+    },
+    select: {
+      id: true,
+      tipo: true,
+      idExterno: true,
+      resumo: true,
+      recebidoEm: true,
+    },
+  });
+  const posicao = (e: { idExterno: string }) =>
+    ORDEM_DE_REAPLICACAO.indexOf(e.idExterno.split(":").pop() ?? "");
+
+  let aplicados = 0;
+  for (const linha of guardados.sort((a, b) => posicao(a) - posicao(b))) {
+    const lido = eventoDaLinha(linha.tipo, linha.idExterno, linha.resumo);
+    if (!lido) continue;
+    const desfecho = await aplicar(lido, instanciaId, linha.recebidoEm);
+    if (desfecho.status !== "PROCESSADO") continue;
+    await db.eventoWhatsapp.updateMany({
+      where: { id: linha.id, status: "IGNORADO" },
+      data: {
+        status: "PROCESSADO",
+        motivo: "Aplicado depois de o id da mensagem chegar.",
+        processadoEm: linha.recebidoEm,
+      },
+    });
+    aplicados++;
+  }
+  return aplicados;
 }
 
 /**
@@ -263,6 +337,7 @@ export async function processarEvento(
       idExterno: true,
       resumo: true,
       status: true,
+      tentativas: true,
       instanciaId: true,
       instancia: { select: { excluidoEm: true } },
     },
@@ -272,6 +347,18 @@ export async function processarEvento(
   if (linha.status === "PROCESSADO" || linha.status === "IGNORADO") {
     return linha.status;
   }
+  // E podem passar juntos pela leitura acima. A linha é REIVINDICADA a partir
+  // do valor lido de `tentativas`: só um dos dois consegue incrementar, e o
+  // outro vai embora sem reescrever o desfecho.
+  const reivindicado = await db.eventoWhatsapp.updateMany({
+    where: {
+      id,
+      tentativas: linha.tentativas,
+      status: { in: ["RECEBIDO", "FALHOU"] },
+    },
+    data: { tentativas: { increment: 1 } },
+  });
+  if (reivindicado.count === 0) return linha.status;
 
   let desfecho: Desfecho;
   try {
@@ -299,7 +386,6 @@ export async function processarEvento(
       status: desfecho.status,
       motivo: desfecho.motivo,
       processadoEm: agora,
-      tentativas: { increment: 1 },
     },
   });
   return desfecho.status;

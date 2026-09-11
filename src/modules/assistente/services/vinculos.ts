@@ -186,29 +186,8 @@ export async function garantirInstancia(contexto: ContextoSessao) {
   });
 }
 
-/**
- * A CHAVE GERAL.
- *
- * Desligada, a Severina cala por completo — o disparo não enfileira e a fila
- * não sai. É o botão do dia em que algo der errado, e ele precisa existir
- * antes de o dia chegar.
- */
-export async function alternarInstancia(contexto: ContextoSessao, id: string) {
-  if (!pode(contexto, "assistente.configurar")) {
-    throw new SemPermissao("ligar e desligar a Severina");
-  }
-
-  const instancia = await db.instanciaWhatsapp.findFirst({
-    where: { id, organizacaoId: contexto.organizacao.id },
-    select: { id: true, ativa: true },
-  });
-  if (!instancia) throw new Error("Número não encontrado.");
-
-  await db.instanciaWhatsapp.update({
-    where: { id },
-    data: { ativa: !instancia.ativa },
-  });
-}
+// A CHAVE GERAL mora em `conexao.ts` (`alternarEnvio`): a permissão é
+// conferida na loja DO NÚMERO, não na loja aberta na tela.
 
 // ---------------------------------------------------------------------------
 // AUTORIZADOS PARA AVISOS — quem pode RECEBER, decidido por um responsável
