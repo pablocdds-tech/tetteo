@@ -311,3 +311,21 @@ O caminho é Cardápio Web → conector do Tetteo (spec `2026-09-10-cardapio-web
 → módulo Pedidos → visão `mcp_leitura.vendas_por_dia` (só leitura) → `FonteTetteo` no MCP.
 Liga-se com `MCP_FONTE=tetteo`, sem mudar o contrato da ferramenta. O total será comparado
 com o `GET /orders/summary` oficial da mesma data.
+
+## 14. Revisão de segurança (11/09/2026)
+
+Uma revisão independente do código apontou sete pontos. Todos foram corrigidos com testes novos
+(commits `b4ac15c` e `66b059c`):
+
+| Gravidade | O que era                                                                                                                             | Correção                                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Alta      | `Referrer-Policy: no-referrer` faz o navegador enviar `Origin: null` ao enviar o formulário; a checagem de Origin recusava todo login | `Referrer-Policy: same-origin`                                                                              |
+| Média     | Tentativas de senha simultâneas liam a mesma contagem de falhas                                                                       | a tentativa é gravada antes da conferência; no máximo 4 conferências bcrypt ao mesmo tempo                  |
+| Média     | Pedidos anônimos sem limite enchiam tabelas e ocupavam o pool do banco                                                                | limite por IP em `/oauth/authorize`, `/oauth/token`, `/oauth/revoke` e `/health`; faxina a cada 10 minutos  |
+| Baixa     | Corpo que não é JSON em `/mcp` era lido inteiro pelo adaptador do SDK                                                                 | 415 antes de ler o corpo                                                                                    |
+| Baixa     | Trocar a senha no Tetteo não derrubava as conexões                                                                                    | a conexão guarda `versao_senha` (impressão digital do hash), conferida a cada chave                         |
+| Baixa     | Revogar por e-mail não achava pessoa suspensa                                                                                         | função `mcp_leitura.id_por_email`                                                                           |
+| Baixa     | O papel podia ler os hashes de todo mundo pela visão                                                                                  | a visão perdeu o hash; `mcp_leitura.hash_para_login(email)` (SECURITY DEFINER) devolve no máximo uma pessoa |
+
+`trust proxy = 1` pressupõe que a porta 8080 não seja publicada direto no servidor: só o
+Traefik fala com o contêiner.

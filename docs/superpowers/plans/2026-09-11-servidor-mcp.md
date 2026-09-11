@@ -6202,3 +6202,12 @@ git commit -m "MCP: o README — rodar, testar, publicar, conectar e revogar"
    uma data.
 7. **(Com OK do Pablo)** Conferir no banco, só com contagens, que a conexão e a chamada
    foram registradas.
+
+---
+
+## Adendo: correções da revisão de segurança
+
+Depois da Tarefa 12, uma revisão independente apontou sete pontos (ver spec §14). As correções
+foram feitas direto nos arquivos, com testes novos, nos commits `b4ac15c` e `66b059c`. Os
+blocos de código deste plano ficam como registro da primeira versão; o código em vigor é o dos
+arquivos. Arquivos novos: `src/limitador.ts` e `src/limitador.test.ts`.

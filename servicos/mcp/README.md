@@ -25,7 +25,9 @@ O login é **OAuth 2.1**, conforme a especificação MCP 2025-11-25:
   na hora.
 
 No banco, o papel `tetteo_mcp` não enxerga nenhuma tabela do Tetteo: lê duas visões mínimas
-(`mcp_leitura`) e escreve só no próprio esquema (`mcp`).
+(`mcp_leitura`), sem hash de senha, e escreve só no próprio esquema (`mcp`). O hash sai só por
+uma função, de uma pessoa por vez. Trocar a senha no Tetteo derruba as conexões feitas com a
+senha antiga, e as páginas abertas (`/oauth/*`, `/health`) têm limite de requisições por IP.
 
 ## Rodar na máquina
 
