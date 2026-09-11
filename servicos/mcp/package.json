@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:integracao": "tsx --test --test-concurrency=1 \"src/**/*.integracao.ts\"",
-    "conexoes": "tsx src/admin/conexoes.ts"
+    "conexoes": "tsx src/admin/conexoes.ts",
+    "ensaio:subir": "tsx src/ensaio/subir-local.ts",
+    "ensaio:demonstrar": "tsx src/ensaio/demonstracao.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/express": "2.0.0",
