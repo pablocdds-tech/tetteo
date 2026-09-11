@@ -81,3 +81,16 @@ test("recusa do Tetteo e rede fora não derrubam nada nem mostram o segredo", as
   });
   assert.ok(!JSON.stringify([recusa, rede, demora]).includes("SEGREDO"));
 });
+
+test("descarta o corpo da resposta, no sucesso e na recusa", async () => {
+  for (const status of [200, 401]) {
+    const resposta = new Response('{"ok":true}', { status });
+    await enviarRegistro({
+      url: "http://x",
+      segredo: "s".repeat(40),
+      corpo: {},
+      fetchImpl: async () => resposta,
+    });
+    assert.equal(resposta.bodyUsed, true, `status ${status}`);
+  }
+});

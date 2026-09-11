@@ -27,6 +27,9 @@ export async function enviarRegistro({
       body: JSON.stringify(corpo),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    // O recado não precisa do corpo da resposta; descartá-lo devolve a
+    // conexão ao reaproveitamento em vez de deixá-la presa.
+    await resposta.body?.cancel().catch(() => {});
     if (!resposta.ok)
       return { enviado: false, motivo: `Tetteo respondeu ${resposta.status}` };
     return { enviado: true };
