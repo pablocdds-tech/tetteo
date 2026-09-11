@@ -207,7 +207,7 @@ async function CorpoDaDespensa({
         categorias={despensa.categorias}
         unidadeId={contexto.unidadeAtiva.id}
         podeVerCustos={podeVerCustos}
-        podeCotar={pode(contexto, "compras.cotar")}
+        podeCotar={pode(contexto, "compras.requisitar")}
         situacaoInicial={situacaoInicial}
         acaoDeCotar={criarCotacaoDaDespensa}
       />

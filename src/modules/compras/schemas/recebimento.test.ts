@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { conferir, type Informado, type LinhaParaConferir } from "./recebimento";
+import {
+  conferir,
+  type Informado,
+  type LinhaParaConferir,
+} from "./recebimento";
 
 // Molho em caixa de 12 × 900 g (10,8 kg) a R$ 95,40; pedido de 2 caixas.
 const molho: LinhaParaConferir = {
@@ -28,7 +32,11 @@ const mussarela: LinhaParaConferir = {
   precoEmbalagem: 3200n,
 };
 
-const inf = (itemDePedidoId: string, boas: bigint, resto: Partial<Informado> = {}): Informado => ({
+const inf = (
+  itemDePedidoId: string,
+  boas: bigint,
+  resto: Partial<Informado> = {},
+): Informado => ({
   itemDePedidoId,
   boas,
   avariadas: 0n,
@@ -44,18 +52,27 @@ const inf = (itemDePedidoId: string, boas: bigint, resto: Partial<Informado> = {
 
 describe("conferência do recebimento", () => {
   test("parcial: entra o que chegou, convertido pelo fator; o resto fica pendente", () => {
-    const r = conferir([molho, mussarela], [inf("molho", 1000n), inf("mussarela", 6500n)]);
+    const r = conferir(
+      [molho, mussarela],
+      [inf("molho", 1000n), inf("mussarela", 6500n)],
+    );
     assert.ok(r.ok);
     const m = r.entradas.find((e) => e.itemDePedidoId === "molho")!;
     assert.equal(m.quantidadeBoa, 10_800n); // 1 caixa = 10,8 kg
     assert.equal(m.valorTotal, 9540n);
-    assert.equal(r.entradas.find((e) => e.itemDePedidoId === "mussarela")!.valorTotal, 20_800n);
+    assert.equal(
+      r.entradas.find((e) => e.itemDePedidoId === "mussarela")!.valorTotal,
+      20_800n,
+    );
     assert.equal(r.completo, false);
     assert.deepEqual(r.divergencias, []);
   });
 
   test("tudo recebido: completo", () => {
-    const r = conferir([molho, mussarela], [inf("molho", 2000n), inf("mussarela", 10_000n)]);
+    const r = conferir(
+      [molho, mussarela],
+      [inf("molho", 2000n), inf("mussarela", 10_000n)],
+    );
     assert.ok(r.ok && r.completo);
   });
 
@@ -74,7 +91,10 @@ describe("conferência do recebimento", () => {
   });
 
   test("excedente aceito entra inteiro e abre divergência com o valor", () => {
-    const r = conferir([molho], [inf("molho", 3000n, { decisaoExcedente: "ACEITAR" })]);
+    const r = conferir(
+      [molho],
+      [inf("molho", 3000n, { decisaoExcedente: "ACEITAR" })],
+    );
     assert.ok(r.ok);
     assert.equal(r.entradas[0].quantidadeBoa, 32_400n);
     assert.equal(r.divergencias[0].tipo, "EXCEDENTE");
@@ -82,7 +102,10 @@ describe("conferência do recebimento", () => {
   });
 
   test("excedente recusado: só o pedido entra; o resto volta na porta", () => {
-    const r = conferir([molho], [inf("molho", 3000n, { decisaoExcedente: "RECUSAR" })]);
+    const r = conferir(
+      [molho],
+      [inf("molho", 3000n, { decisaoExcedente: "RECUSAR" })],
+    );
     assert.ok(r.ok);
     assert.equal(r.entradas[0].quantidadeBoa, 21_600n);
     assert.equal(r.entradas[0].quantidadeRecusada, 10_800n);
@@ -100,12 +123,20 @@ describe("conferência do recebimento", () => {
   });
 
   test("substituição sem decisão não passa; aceita, entra como o que veio", () => {
-    const sem = conferir([molho], [inf("molho", 2000n, { substitutoInsumoId: "outro" })]);
+    const sem = conferir(
+      [molho],
+      [inf("molho", 2000n, { substitutoInsumoId: "outro" })],
+    );
     assert.equal(sem.ok, false);
 
     const aceita = conferir(
       [molho],
-      [inf("molho", 2000n, { substitutoInsumoId: "outro", decisaoSubstituicao: "ACEITAR" })],
+      [
+        inf("molho", 2000n, {
+          substitutoInsumoId: "outro",
+          decisaoSubstituicao: "ACEITAR",
+        }),
+      ],
     );
     assert.ok(aceita.ok);
     assert.equal(aceita.entradas[0].insumoId, "outro");
@@ -113,7 +144,12 @@ describe("conferência do recebimento", () => {
 
     const recusada = conferir(
       [molho],
-      [inf("molho", 2000n, { substitutoInsumoId: "outro", decisaoSubstituicao: "RECUSAR" })],
+      [
+        inf("molho", 2000n, {
+          substitutoInsumoId: "outro",
+          decisaoSubstituicao: "RECUSAR",
+        }),
+      ],
     );
     assert.ok(recusada.ok);
     assert.equal(recusada.entradas[0].quantidadeBoa, 0n);

@@ -33,11 +33,16 @@ import { db } from "@/server/db";
  * existe — e que já impede a mesma nota de virar duas contas.
  */
 
-export type ResultadoDaConferencia = Awaited<ReturnType<typeof conferirRecebimento>>;
+export type ResultadoDaConferencia = Awaited<
+  ReturnType<typeof conferirRecebimento>
+>;
 
 export async function conferirRecebimento(
   ctx: ContextoSessao,
-  dados: DadosDaConferencia & { gerarContaAPagar?: boolean; categoriaId?: string | null },
+  dados: DadosDaConferencia & {
+    gerarContaAPagar?: boolean;
+    categoriaId?: string | null;
+  },
 ) {
   const resultado = await db.$transaction(
     async (tx) => {
@@ -53,7 +58,13 @@ export async function conferirRecebimento(
           recebimentoId: registro.recebimentoId,
           pedidoId: registro.pedidoId,
         });
-        await divergenciasDaNota(tx, ctx, registro, dados.notaExistenteId, nota);
+        await divergenciasDaNota(
+          tx,
+          ctx,
+          registro,
+          dados.notaExistenteId,
+          nota,
+        );
         notaEntradaId = dados.notaExistenteId;
       } else {
         const itens = itensParaNota(registro);
@@ -88,16 +99,26 @@ export async function conferirRecebimento(
     { timeout: 30_000 },
   );
 
-  let contaAPagar: "gerada" | "ja-existia" | "sem-permissao" | "falhou" | null = null;
-  if (dados.gerarContaAPagar && resultado.notaEntradaId && !resultado.jaExistia) {
+  let contaAPagar: "gerada" | "ja-existia" | "sem-permissao" | "falhou" | null =
+    null;
+  if (
+    dados.gerarContaAPagar &&
+    resultado.notaEntradaId &&
+    !resultado.jaExistia
+  ) {
     if (!pode(ctx, "financeiro.lancar")) {
       contaAPagar = "sem-permissao";
     } else {
       try {
         // Importado só aqui: quem não gera conta a pagar não carrega o
         // Financeiro.
-        const { importarNotas } = await import("@/modules/financeiro/services/cadastros");
-        const n = await importarNotas(ctx, [resultado.notaEntradaId], dados.categoriaId ?? null);
+        const { importarNotas } =
+          await import("@/modules/financeiro/services/cadastros");
+        const n = await importarNotas(
+          ctx,
+          [resultado.notaEntradaId],
+          dados.categoriaId ?? null,
+        );
         contaAPagar = n > 0 ? "gerada" : "ja-existia";
       } catch (erro) {
         console.error("conferirRecebimento → conta a pagar:", erro);
@@ -109,13 +130,18 @@ export async function conferirRecebimento(
   return { ...resultado, contaAPagar };
 }
 
-export async function devolverMercadoria(ctx: ContextoSessao, dados: DadosDaDevolucao) {
+export async function devolverMercadoria(
+  ctx: ContextoSessao,
+  dados: DadosDaDevolucao,
+) {
   return db.$transaction(
     async (tx) => {
       const devolucao = await registrarDevolucaoNaTransacao(tx, ctx, dados);
       if (devolucao.jaExistia) return devolucao;
       if (!devolucao.localId) {
-        throw new Error("O recebimento original não diz onde a mercadoria foi guardada.");
+        throw new Error(
+          "O recebimento original não diz onde a mercadoria foi guardada.",
+        );
       }
       await registrarDevolucao(tx, ctx, {
         unidadeId: devolucao.unidadeId,

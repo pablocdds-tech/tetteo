@@ -49,6 +49,9 @@ const PAPEIS = [
       "compras.cotar",
       "compras.pedir",
       "compras.fornecedores",
+      // A loja diz o que precisa e confere o caminhão (Compras, 10/09/2026).
+      "compras.requisitar",
+      "compras.receber",
       "financeiro.ver",
       "checklists.ver",
       "checklists.responder",
@@ -202,6 +205,25 @@ async function main() {
     });
   }
   console.log("acesso: Diretor · rede inteira");
+
+  // A alçada de compras do Diretor: sem limite (decisão do Pablo, 10/09/2026).
+  // Versão 1 só se ainda não houver nenhuma — mudar depois é pela tela, que
+  // cria a versão seguinte e guarda a anterior.
+  const alcadaDoDiretor = await db.alcadaDeCompra.findFirst({
+    where: { organizacaoId: organizacao.id, papelId: diretor.id },
+  });
+  if (!alcadaDoDiretor) {
+    await db.alcadaDeCompra.create({
+      data: {
+        organizacaoId: organizacao.id,
+        papelId: diretor.id,
+        limite: null,
+        versao: 1,
+        chaveVigente: `${organizacao.id}:${diretor.id}`,
+      },
+    });
+  }
+  console.log("alçada de compras: Diretor · sem limite");
 
   if (senhaGerada) {
     const caminho = join(process.cwd(), "credenciais-primeiro-acesso.txt");

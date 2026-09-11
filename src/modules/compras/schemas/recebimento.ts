@@ -101,8 +101,13 @@ export type ResultadoDaConferencia =
   | { ok: false; erros: { itemDePedidoId: string; mensagem: string }[] };
 
 /** Da unidade de compra para a de estoque, pelo fator do pedido. */
-export function paraEstoque(l: LinhaParaConferir, emCompra: Milesimos): Milesimos {
-  return l.fracionavel ? emCompra : dividirArredondando(emCompra * l.fator, 10_000n);
+export function paraEstoque(
+  l: LinhaParaConferir,
+  emCompra: Milesimos,
+): Milesimos {
+  return l.fracionavel
+    ? emCompra
+    : dividirArredondando(emCompra * l.fator, 10_000n);
 }
 
 export function conferir(
@@ -118,16 +123,25 @@ export function conferir(
   for (const inf of informados) {
     const linha = linhas.find((l) => l.itemDePedidoId === inf.itemDePedidoId);
     if (!linha) {
-      erros.push({ itemDePedidoId: inf.itemDePedidoId, mensagem: "Item não pertence a este pedido." });
+      erros.push({
+        itemDePedidoId: inf.itemDePedidoId,
+        mensagem: "Item não pertence a este pedido.",
+      });
       continue;
     }
     if (vistos.has(inf.itemDePedidoId)) {
-      erros.push({ itemDePedidoId: inf.itemDePedidoId, mensagem: "Item repetido na conferência." });
+      erros.push({
+        itemDePedidoId: inf.itemDePedidoId,
+        mensagem: "Item repetido na conferência.",
+      });
       continue;
     }
     vistos.add(inf.itemDePedidoId);
     if (inf.boas < 0n || inf.avariadas < 0n) {
-      erros.push({ itemDePedidoId: linha.itemDePedidoId, mensagem: "Quantidade negativa." });
+      erros.push({
+        itemDePedidoId: linha.itemDePedidoId,
+        mensagem: "Quantidade negativa.",
+      });
       continue;
     }
     if (inf.boas === 0n && inf.avariadas === 0n) continue;
@@ -135,10 +149,13 @@ export function conferir(
     const u = linha.unidade;
     const boa = paraEstoque(linha, inf.boas);
     const avariada = paraEstoque(linha, inf.avariadas);
-    const preco = (q: Milesimos) => totalFracionado(q, linha.precoEmbalagem, linha.fator);
+    const preco = (q: Milesimos) =>
+      totalFracionado(q, linha.precoEmbalagem, linha.fator);
 
     // ---- substituição
-    const substituiu = inf.substitutoInsumoId !== null && inf.substitutoInsumoId !== linha.insumoId;
+    const substituiu =
+      inf.substitutoInsumoId !== null &&
+      inf.substitutoInsumoId !== linha.insumoId;
     if (substituiu && !inf.decisaoSubstituicao) {
       erros.push({
         itemDePedidoId: linha.itemDePedidoId,
@@ -146,11 +163,14 @@ export function conferir(
       });
       continue;
     }
-    const substituicaoRecusada = substituiu && inf.decisaoSubstituicao === "RECUSAR";
+    const substituicaoRecusada =
+      substituiu && inf.decisaoSubstituicao === "RECUSAR";
 
     // ---- excedente (só o que é bom conta para o pedido)
     const aindaFalta = linha.pedido - linha.recebidoAntes;
-    const excedente = substituicaoRecusada ? 0n : boa - (aindaFalta > 0n ? aindaFalta : 0n);
+    const excedente = substituicaoRecusada
+      ? 0n
+      : boa - (aindaFalta > 0n ? aindaFalta : 0n);
     if (excedente > 0n && !inf.decisaoExcedente) {
       erros.push({
         itemDePedidoId: linha.itemDePedidoId,
@@ -171,7 +191,10 @@ export function conferir(
 
     entradas.push({
       itemDePedidoId: linha.itemDePedidoId,
-      insumoId: substituiu && !substituicaoRecusada ? inf.substitutoInsumoId! : linha.insumoId,
+      insumoId:
+        substituiu && !substituicaoRecusada
+          ? inf.substitutoInsumoId!
+          : linha.insumoId,
       embalagensBoas: inf.boas,
       embalagensAvariadas: inf.avariadas,
       quantidadeBoa: entra,
@@ -226,12 +249,18 @@ export function conferir(
   if (entradas.length === 0) {
     return {
       ok: false,
-      erros: [{ itemDePedidoId: "", mensagem: "Nada foi informado. Conte ao menos um item." }],
+      erros: [
+        {
+          itemDePedidoId: "",
+          mensagem: "Nada foi informado. Conte ao menos um item.",
+        },
+      ],
     };
   }
 
   const completo = linhas.every(
-    (l) => l.recebidoAntes + (agoraPorLinha.get(l.itemDePedidoId) ?? 0n) >= l.pedido,
+    (l) =>
+      l.recebidoAntes + (agoraPorLinha.get(l.itemDePedidoId) ?? 0n) >= l.pedido,
   );
 
   return {

@@ -54,7 +54,11 @@ function exigir(ctx: ContextoSessao, chave: string, acao: string) {
 
 type Cliente = Prisma.TransactionClient | typeof db;
 
-async function daLoja(ctx: ContextoSessao, requisicaoId: string, cliente: Cliente) {
+async function daLoja(
+  ctx: ContextoSessao,
+  requisicaoId: string,
+  cliente: Cliente,
+) {
   const loja = lojaAtiva(ctx);
   const requisicao = await cliente.requisicao.findFirst({
     where: {
@@ -62,7 +66,13 @@ async function daLoja(ctx: ContextoSessao, requisicaoId: string, cliente: Client
       organizacaoId: ctx.organizacao.id,
       unidadeId: loja.id,
     },
-    select: { id: true, rodadaId: true, status: true, versao: true, unidadeId: true },
+    select: {
+      id: true,
+      rodadaId: true,
+      status: true,
+      versao: true,
+      unidadeId: true,
+    },
   });
   if (!requisicao) throw new Error("Requisição não encontrada nesta loja.");
   return requisicao;
@@ -233,7 +243,10 @@ async function entradasDaSugestao(
     );
     const falta = pedido - recebido;
     if (falta > 0n) {
-      emPedido.set(linha.insumoId, (emPedido.get(linha.insumoId) ?? 0n) + falta);
+      emPedido.set(
+        linha.insumoId,
+        (emPedido.get(linha.insumoId) ?? 0n) + falta,
+      );
     }
   }
 
@@ -290,11 +303,15 @@ export async function sugestoesDaLoja(ctx: ContextoSessao) {
       rotulo: e.rotulo,
       minimo: e.minimo === null ? null : paraDecimal(e.minimo, CASAS.milesimos),
       disponivel:
-        e.disponivel === null ? null : paraDecimal(e.disponivel, CASAS.milesimos),
+        e.disponivel === null
+          ? null
+          : paraDecimal(e.disponivel, CASAS.milesimos),
       emPedidoAberto: paraDecimal(e.emPedidoAberto, CASAS.milesimos),
       sugestao: {
         quantidade:
-          s.quantidade === null ? null : paraDecimal(s.quantidade, CASAS.milesimos),
+          s.quantidade === null
+            ? null
+            : paraDecimal(s.quantidade, CASAS.milesimos),
         formula: s.formula,
         alertas: s.alertas,
       },
@@ -316,7 +333,9 @@ function lerQuantidade(texto: string): Milesimos {
   // Vazio não é zero, e zero não é compra: um item sem quantidade é uma
   // decisão que ainda não foi tomada.
   if (q === null || q <= 0n) {
-    throw new Error("Informe uma quantidade maior que zero, na unidade de estoque.");
+    throw new Error(
+      "Informe uma quantidade maior que zero, na unidade de estoque.",
+    );
   }
   return q;
 }
@@ -419,7 +438,9 @@ export async function removerItem(
       data: { versao: { increment: 1 } },
     });
     if (versao.count !== 1) {
-      throw new RequisicaoMudou("Esta requisição já foi enviada e não aceita mudanças.");
+      throw new RequisicaoMudou(
+        "Esta requisição já foi enviada e não aceita mudanças.",
+      );
     }
     await tx.itemDeRequisicao.deleteMany({
       where: { id: itemId, requisicaoId: requisicao.id },
@@ -490,7 +511,8 @@ export async function devolverRequisicao(
 ): Promise<void> {
   exigir(ctx, "compras.rodadas", "devolver requisições");
   const texto = motivo.trim();
-  if (!texto) throw new Error("Diga à loja o que corrigir — o motivo vai junto.");
+  if (!texto)
+    throw new Error("Diga à loja o que corrigir — o motivo vai junto.");
 
   await db.$transaction(async (tx) => {
     const requisicao = await tx.requisicao.findFirst({
@@ -504,7 +526,9 @@ export async function devolverRequisicao(
     if (!requisicao) throw new Error("Requisição não encontrada.");
     const estado = await travarRodada(tx, requisicao.rodadaId);
     if (estado !== "COLETANDO") {
-      throw new Error("Só dá para devolver enquanto a rodada coleta requisições.");
+      throw new Error(
+        "Só dá para devolver enquanto a rodada coleta requisições.",
+      );
     }
     const escrita = await tx.requisicao.updateMany({
       where: { id: requisicao.id, status: "ENVIADA" },
@@ -517,7 +541,9 @@ export async function devolverRequisicao(
       },
     });
     if (escrita.count !== 1) {
-      throw new Error("Esta requisição não está enviada — não há o que devolver.");
+      throw new Error(
+        "Esta requisição não está enviada — não há o que devolver.",
+      );
     }
     await registrar(tx, ctx, {
       entidade: "Requisicao",

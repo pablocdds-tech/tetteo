@@ -36,7 +36,9 @@ export async function listarAlcadas(ctx: ContextoSessao) {
   ]);
   return papeis.map((papel) => ({
     papel,
-    vigente: alcadas.find((a) => a.papelId === papel.id && a.chaveVigente !== null) ?? null,
+    vigente:
+      alcadas.find((a) => a.papelId === papel.id && a.chaveVigente !== null) ??
+      null,
     historico: alcadas.filter((a) => a.papelId === papel.id),
   }));
 }
@@ -68,13 +70,17 @@ export async function salvarAlcada(
       throw erro;
     }
     if (valor === null || valor <= 0n) {
-      throw new Error("Informe um limite maior que zero, ou marque 'sem limite'.");
+      throw new Error(
+        "Informe um limite maior que zero, ou marque 'sem limite'.",
+      );
     }
   }
 
   const chave = `${ctx.organizacao.id}:${papelId}`;
   await db.$transaction(async (tx) => {
-    const vigente = await tx.alcadaDeCompra.findUnique({ where: { chaveVigente: chave } });
+    const vigente = await tx.alcadaDeCompra.findUnique({
+      where: { chaveVigente: chave },
+    });
     const ultima = await tx.alcadaDeCompra.findFirst({
       where: { organizacaoId: ctx.organizacao.id, papelId },
       orderBy: { versao: "desc" },
@@ -103,7 +109,11 @@ export async function salvarAlcada(
       entidadeId: papelId,
       acao: "ALTEROU",
       antes: vigente
-        ? { papel: papel.nome, limite: vigente.limite?.toString() ?? "sem limite", versao: vigente.versao }
+        ? {
+            papel: papel.nome,
+            limite: vigente.limite?.toString() ?? "sem limite",
+            versao: vigente.versao,
+          }
         : null,
       depois: remover
         ? { papel: papel.nome, removida: true }
@@ -128,6 +138,12 @@ export async function garantirAlcadaDoDiretor(
   });
   if (existe) return;
   await db.alcadaDeCompra.create({
-    data: { organizacaoId, papelId: papelDiretorId, limite: null, versao: 1, chaveVigente: chave },
+    data: {
+      organizacaoId,
+      papelId: papelDiretorId,
+      limite: null,
+      versao: 1,
+      chaveVigente: chave,
+    },
   });
 }

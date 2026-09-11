@@ -17,7 +17,9 @@ export async function listarDivergencias(
   filtro: { estado?: "ABERTA" | "RESOLVIDA"; pedidoId?: string } = {},
 ) {
   if (!pode(ctx, "compras.ver")) throw new SemPermissao("ver compras");
-  const lojas = ctx.unidadeAtiva ? [ctx.unidadeAtiva.id] : ctx.unidadesVisiveis.map((u) => u.id);
+  const lojas = ctx.unidadeAtiva
+    ? [ctx.unidadeAtiva.id]
+    : ctx.unidadesVisiveis.map((u) => u.id);
   return db.divergenciaDeCompra.findMany({
     where: {
       organizacaoId: ctx.organizacao.id,
@@ -25,7 +27,11 @@ export async function listarDivergencias(
       ...(filtro.estado ? { estado: filtro.estado } : {}),
       ...(filtro.pedidoId ? { pedidoId: filtro.pedidoId } : {}),
     },
-    include: { pedido: { select: { numero: true, fornecedorNome: true, unidadeNome: true } } },
+    include: {
+      pedido: {
+        select: { numero: true, fornecedorNome: true, unidadeNome: true },
+      },
+    },
     orderBy: { criadoEm: "desc" },
     take: 100,
   });
@@ -40,7 +46,8 @@ export async function resolverDivergencia(
     throw new SemPermissao("resolver divergências");
   }
   const texto = resolucao.trim();
-  if (!texto) throw new Error("Escreva o que foi feito — é o que fecha a divergência.");
+  if (!texto)
+    throw new Error("Escreva o que foi feito — é o que fecha a divergência.");
   const r = await db.divergenciaDeCompra.updateMany({
     where: {
       id,

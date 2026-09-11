@@ -58,7 +58,9 @@ import { registrar } from "./auditoria";
 type Tx = Prisma.TransactionClient;
 
 export class ConferenciaInvalida extends Error {
-  constructor(public readonly erros: { itemDePedidoId: string; mensagem: string }[]) {
+  constructor(
+    public readonly erros: { itemDePedidoId: string; mensagem: string }[],
+  ) {
     super(erros.map((e) => e.mensagem).join(" "));
     this.name = "ConferenciaInvalida";
   }
@@ -70,7 +72,8 @@ function lojaAtiva(ctx: ContextoSessao) {
 }
 
 function exigirReceber(ctx: ContextoSessao) {
-  if (!pode(ctx, "compras.receber")) throw new SemPermissao("conferir recebimentos");
+  if (!pode(ctx, "compras.receber"))
+    throw new SemPermissao("conferir recebimentos");
 }
 
 type ItemComRecebidos = Prisma.ItemDePedidoGetPayload<{
@@ -90,7 +93,8 @@ export function linhasDoPedido(itens: ItemComRecebidos[]): LinhaParaConferir[] {
     unidade: i.unidadeEstoque as Unidade,
     fator: fatorDoBanco(i.fatorConversao),
     fracionavel: i.fracionavel,
-    pedido: milesimosDoBanco(i.quantidade) - milesimosDoBanco(i.quantidadeCancelada),
+    pedido:
+      milesimosDoBanco(i.quantidade) - milesimosDoBanco(i.quantidadeCancelada),
     recebidoAntes: i.itensRecebidos
       .filter((r) => r.recebimento.tipo === "ENTRADA")
       .reduce((s, r) => s + milesimosDoBanco(r.quantidadeBoa), 0n),
@@ -121,7 +125,9 @@ async function travarPedido(tx: Tx, pedidoId: string) {
 /** Pedidos aprovados da loja, esperando o caminhão. */
 export async function pedidosParaReceber(ctx: ContextoSessao) {
   if (!pode(ctx, "compras.ver")) throw new SemPermissao("ver compras");
-  const lojas = ctx.unidadeAtiva ? [ctx.unidadeAtiva.id] : ctx.unidadesVisiveis.map((u) => u.id);
+  const lojas = ctx.unidadeAtiva
+    ? [ctx.unidadeAtiva.id]
+    : ctx.unidadesVisiveis.map((u) => u.id);
   const pedidos = await db.pedido.findMany({
     where: {
       organizacaoId: ctx.organizacao.id,
@@ -137,7 +143,10 @@ export async function pedidosParaReceber(ctx: ContextoSessao) {
   });
   return pedidos.map((p) => ({
     id: p.id,
-    referencia: referenciaDoPedido(p.pedidoOrigem?.numero ?? p.numero, p.sequencia),
+    referencia: referenciaDoPedido(
+      p.pedidoOrigem?.numero ?? p.numero,
+      p.sequencia,
+    ),
     loja: p.unidadeNome,
     fornecedor: p.fornecedorNome,
     status: p.status,
@@ -150,21 +159,33 @@ export async function pedidosParaReceber(ctx: ContextoSessao) {
   }));
 }
 
-export type VistaDaConferencia = NonNullable<Awaited<ReturnType<typeof prepararConferencia>>>;
+export type VistaDaConferencia = NonNullable<
+  Awaited<ReturnType<typeof prepararConferencia>>
+>;
 
-export async function prepararConferencia(ctx: ContextoSessao, pedidoId: string) {
+export async function prepararConferencia(
+  ctx: ContextoSessao,
+  pedidoId: string,
+) {
   if (!pode(ctx, "compras.ver")) throw new SemPermissao("ver compras");
   const loja = lojaAtiva(ctx);
 
   const pedido = await db.pedido.findFirst({
-    where: { id: pedidoId, organizacaoId: ctx.organizacao.id, unidadeId: loja.id },
+    where: {
+      id: pedidoId,
+      organizacaoId: ctx.organizacao.id,
+      unidadeId: loja.id,
+    },
     include: {
       pedidoOrigem: { select: { numero: true } },
       itens: {
         orderBy: { ordem: "asc" },
         include: {
           itensRecebidos: {
-            select: { quantidadeBoa: true, recebimento: { select: { tipo: true } } },
+            select: {
+              quantidadeBoa: true,
+              recebimento: { select: { tipo: true } },
+            },
           },
         },
       },
@@ -191,11 +212,21 @@ export async function prepararConferencia(ctx: ContextoSessao, pedidoId: string)
         recebimentoId: null,
         recebidaEm: { gte: new Date(Date.now() - 60 * 86_400_000) },
       },
-      select: { id: true, numero: true, serie: true, recebidaEm: true, valorTotal: true },
+      select: {
+        id: true,
+        numero: true,
+        serie: true,
+        recebidaEm: true,
+        valorTotal: true,
+      },
       orderBy: { recebidaEm: "desc" },
     }),
     db.insumo.findMany({
-      where: { organizacaoId: ctx.organizacao.id, ativo: true, excluidoEm: null },
+      where: {
+        organizacaoId: ctx.organizacao.id,
+        ativo: true,
+        excluidoEm: null,
+      },
       select: { id: true, nome: true, unidadeMedida: true },
       orderBy: { nome: "asc" },
     }),
@@ -209,7 +240,10 @@ export async function prepararConferencia(ctx: ContextoSessao, pedidoId: string)
 
   return {
     id: pedido.id,
-    referencia: referenciaDoPedido(pedido.pedidoOrigem?.numero ?? pedido.numero, pedido.sequencia),
+    referencia: referenciaDoPedido(
+      pedido.pedidoOrigem?.numero ?? pedido.numero,
+      pedido.sequencia,
+    ),
     status: pedido.status,
     situacaoRecebimento: pedido.situacaoRecebimento,
     fornecedor: pedido.fornecedorNome,
@@ -254,7 +288,8 @@ export async function prepararConferencia(ctx: ContextoSessao, pedidoId: string)
       tipo: r.tipo,
       numero: r.numero,
       recebidaEm: r.recebidaEm,
-      recebidoPor: recebedores.find((u) => u.id === r.recebidoPorId)?.nome ?? null,
+      recebidoPor:
+        recebedores.find((u) => u.id === r.recebidoPorId)?.nome ?? null,
       valorConferido: r.valorConferido.toString(),
       notaEntradaId: r.notaEntradaId,
       notaVinculadaExistente: r.notaVinculadaExistente,
@@ -320,15 +355,26 @@ export async function registrarRecebimentoNaTransacao(
   exigirReceber(ctx);
   const loja = lojaAtiva(ctx);
   if (!/^[0-9a-f-]{36}$/i.test(dados.chave)) {
-    throw new Error("A conferência perdeu a identificação. Recarregue a tela e confira de novo.");
+    throw new Error(
+      "A conferência perdeu a identificação. Recarregue a tela e confira de novo.",
+    );
   }
 
   const pedido = await travarPedido(tx, dados.pedidoId);
-  if (!pedido || pedido.organizacaoId !== ctx.organizacao.id || pedido.unidadeId !== loja.id) {
+  if (
+    !pedido ||
+    pedido.organizacaoId !== ctx.organizacao.id ||
+    pedido.unidadeId !== loja.id
+  ) {
     throw new Error("Pedido não encontrado nesta loja.");
   }
   const numeroRaiz = pedido.pedidoOrigemId
-    ? (await tx.pedido.findUniqueOrThrow({ where: { id: pedido.pedidoOrigemId }, select: { numero: true } })).numero
+    ? (
+        await tx.pedido.findUniqueOrThrow({
+          where: { id: pedido.pedidoOrigemId },
+          select: { numero: true },
+        })
+      ).numero
     : pedido.numero;
   const referencia = referenciaDoPedido(numeroRaiz, pedido.sequencia);
 
@@ -340,7 +386,9 @@ export async function registrarRecebimentoNaTransacao(
   });
   if (existente) {
     if (existente.pedidoId !== dados.pedidoId) {
-      throw new Error("Esta conferência pertence a outro pedido. Recarregue a tela.");
+      throw new Error(
+        "Esta conferência pertence a outro pedido. Recarregue a tela.",
+      );
     }
     return {
       jaExistia: true,
@@ -371,7 +419,10 @@ export async function registrarRecebimentoNaTransacao(
     orderBy: { ordem: "asc" },
     include: {
       itensRecebidos: {
-        select: { quantidadeBoa: true, recebimento: { select: { tipo: true } } },
+        select: {
+          quantidadeBoa: true,
+          recebimento: { select: { tipo: true } },
+        },
       },
     },
   });
@@ -380,17 +431,28 @@ export async function registrarRecebimentoNaTransacao(
   if (!r.ok) throw new ConferenciaInvalida(r.erros);
 
   const substitutos = [
-    ...new Set(r.entradas.filter((e) => e.substituicao && e.decisaoSubstituicao === "ACEITAR").map((e) => e.insumoId)),
+    ...new Set(
+      r.entradas
+        .filter((e) => e.substituicao && e.decisaoSubstituicao === "ACEITAR")
+        .map((e) => e.insumoId),
+    ),
   ];
   if (substitutos.length > 0) {
     const achados = await tx.insumo.count({
-      where: { id: { in: substitutos }, organizacaoId: ctx.organizacao.id, excluidoEm: null },
+      where: {
+        id: { in: substitutos },
+        organizacaoId: ctx.organizacao.id,
+        excluidoEm: null,
+      },
     });
-    if (achados !== substitutos.length) throw new Error("O insumo que veio no lugar não foi encontrado.");
+    if (achados !== substitutos.length)
+      throw new Error("O insumo que veio no lugar não foi encontrado.");
   }
 
   const numero =
-    (await tx.recebimento.count({ where: { pedidoId: pedido.id, tipo: "ENTRADA" } })) + 1;
+    (await tx.recebimento.count({
+      where: { pedidoId: pedido.id, tipo: "ENTRADA" },
+    })) + 1;
 
   const recebimento = await tx.recebimento.create({
     data: {
@@ -415,10 +477,19 @@ export async function registrarRecebimentoNaTransacao(
             itemDePedidoId: e.itemDePedidoId,
             insumoId: e.insumoId,
             embalagensBoas: paraDecimal(e.embalagensBoas, CASAS.milesimos),
-            embalagensAvariada: paraDecimal(e.embalagensAvariadas, CASAS.milesimos),
+            embalagensAvariada: paraDecimal(
+              e.embalagensAvariadas,
+              CASAS.milesimos,
+            ),
             quantidadeBoa: paraDecimal(e.quantidadeBoa, CASAS.milesimos),
-            quantidadeAvariada: paraDecimal(e.quantidadeAvariada, CASAS.milesimos),
-            quantidadeRecusada: paraDecimal(e.quantidadeRecusada, CASAS.milesimos),
+            quantidadeAvariada: paraDecimal(
+              e.quantidadeAvariada,
+              CASAS.milesimos,
+            ),
+            quantidadeRecusada: paraDecimal(
+              e.quantidadeRecusada,
+              CASAS.milesimos,
+            ),
             fatorConversao: item.fatorConversao,
             valorUnitario: item.precoUnitario,
             valorTotal: paraDecimal(e.valorTotal, CASAS.centavos),
@@ -509,7 +580,10 @@ export function itensParaNota(r: RecebimentoRegistrado) {
         fatorConversao: paraDecimal(l.fator, CASAS.dezMilesimos),
         quantidade: paraDecimal(e.quantidadeBoa, CASAS.milesimos),
         // Por unidade de estoque, 4 casas: valor ÷ quantidade.
-        valorUnitario: paraDecimal(dividirArredondando(e.valorTotal * 100_000n, e.quantidadeBoa), 4),
+        valorUnitario: paraDecimal(
+          dividirArredondando(e.valorTotal * 100_000n, e.quantidadeBoa),
+          4,
+        ),
         valorTotal: paraDecimal(e.valorTotal, CASAS.centavos),
       };
     });
@@ -525,11 +599,19 @@ export async function divergenciasDaNota(
   ctx: ContextoSessao,
   r: RecebimentoRegistrado,
   notaId: string,
-  nota: { valorTotal: string; itens: { insumoId: string; quantidade: string; valorTotal: string }[] },
+  nota: {
+    valorTotal: string;
+    itens: { insumoId: string; quantidade: string; valorTotal: string }[];
+  },
 ): Promise<void> {
   const novas: Prisma.DivergenciaDeCompraCreateManyInput[] = [];
-  const insumos = new Set([...nota.itens.map((i) => i.insumoId), ...r.entradas.map((e) => e.insumoId)]);
-  const nomes = new Map(r.linhas.map((l) => [l.insumoId, { nome: l.nome, unidade: l.unidade }]));
+  const insumos = new Set([
+    ...nota.itens.map((i) => i.insumoId),
+    ...r.entradas.map((e) => e.insumoId),
+  ]);
+  const nomes = new Map(
+    r.linhas.map((l) => [l.insumoId, { nome: l.nome, unidade: l.unidade }]),
+  );
 
   for (const insumoId of insumos) {
     const naNota = nota.itens
@@ -568,7 +650,8 @@ export async function divergenciasDaNota(
       criadoPorId: ctx.usuario.id,
     });
   }
-  if (novas.length > 0) await tx.divergenciaDeCompra.createMany({ data: novas });
+  if (novas.length > 0)
+    await tx.divergenciaDeCompra.createMany({ data: novas });
 }
 
 /** O fim da transação: liga a nota e atualiza a situação do pedido. */
@@ -600,7 +683,9 @@ export async function concluirNaTransacao(
     where: { id: dados.pedidoId },
     data: {
       situacaoRecebimento: dados.completo ? "COMPLETO" : "PARCIAL",
-      ...(dados.completo ? { status: "CONCLUIDO", concluidoEm: new Date() } : {}),
+      ...(dados.completo
+        ? { status: "CONCLUIDO", concluidoEm: new Date() }
+        : {}),
       versao: { increment: 1 },
     },
   });
@@ -637,17 +722,23 @@ export async function encerrarSaldo(
     ) {
       throw new Error("Pedido não encontrado.");
     }
-    if (pedido.status !== "APROVADO") throw new Error("Este pedido não está em aberto.");
+    if (pedido.status !== "APROVADO")
+      throw new Error("Este pedido não está em aberto.");
 
     const itens = await tx.itemDePedido.findMany({
       where: { pedidoId },
       include: {
         itensRecebidos: {
-          select: { quantidadeBoa: true, recebimento: { select: { tipo: true } } },
+          select: {
+            quantidadeBoa: true,
+            recebimento: { select: { tipo: true } },
+          },
         },
       },
     });
-    const pendentes = linhasDoPedido(itens).filter((l) => l.pedido > l.recebidoAntes);
+    const pendentes = linhasDoPedido(itens).filter(
+      (l) => l.pedido > l.recebidoAntes,
+    );
 
     if (pendentes.length > 0) {
       await tx.divergenciaDeCompra.createMany({
@@ -661,7 +752,10 @@ export async function encerrarSaldo(
             tipo: "SALDO_ENCERRADO" as const,
             detalhe: `${l.nome}: ${quantidadeBr(falta, l.unidade)} não vieram. ${texto}`,
             quantidade: paraDecimal(falta, CASAS.milesimos),
-            impacto: paraDecimal(-totalFracionado(falta, l.precoEmbalagem, l.fator), CASAS.centavos),
+            impacto: paraDecimal(
+              -totalFracionado(falta, l.precoEmbalagem, l.fator),
+              CASAS.centavos,
+            ),
             criadoPorId: ctx.usuario.id,
           };
         }),
@@ -669,14 +763,23 @@ export async function encerrarSaldo(
     }
     await tx.pedido.update({
       where: { id: pedidoId },
-      data: { status: "CONCLUIDO", concluidoEm: new Date(), versao: { increment: 1 } },
+      data: {
+        status: "CONCLUIDO",
+        concluidoEm: new Date(),
+        versao: { increment: 1 },
+      },
     });
     await registrar(tx, ctx, {
       entidade: "Pedido",
       entidadeId: pedidoId,
       acao: "ALTEROU",
       unidadeId: pedido.unidadeId,
-      depois: { status: "CONCLUIDO", saldoEncerrado: true, motivo: texto, linhas: pendentes.length },
+      depois: {
+        status: "CONCLUIDO",
+        saldoEncerrado: true,
+        motivo: texto,
+        linhas: pendentes.length,
+      },
     });
   });
 }
@@ -709,8 +812,10 @@ export async function registrarDevolucaoNaTransacao(
   exigirReceber(ctx);
   const loja = lojaAtiva(ctx);
   const motivo = dados.motivo.trim();
-  if (!motivo) throw new Error("Diga por que a mercadoria está sendo devolvida.");
-  if (!/^[0-9a-f-]{36}$/i.test(dados.chave)) throw new Error("Recarregue a tela e tente de novo.");
+  if (!motivo)
+    throw new Error("Diga por que a mercadoria está sendo devolvida.");
+  if (!/^[0-9a-f-]{36}$/i.test(dados.chave))
+    throw new Error("Recarregue a tela e tente de novo.");
 
   const origem = await tx.recebimento.findFirst({
     where: {
@@ -721,7 +826,9 @@ export async function registrarDevolucaoNaTransacao(
     },
     include: {
       itens: {
-        include: { itemDePedido: { select: { insumoNome: true, unidadeEstoque: true } } },
+        include: {
+          itemDePedido: { select: { insumoNome: true, unidadeEstoque: true } },
+        },
       },
     },
   });
@@ -730,14 +837,27 @@ export async function registrarDevolucaoNaTransacao(
   const pedido = await travarPedido(tx, origem.pedidoId);
   if (!pedido) throw new Error("Pedido não encontrado.");
 
-  const existente = await tx.recebimento.findUnique({ where: { chave: dados.chave } });
+  const existente = await tx.recebimento.findUnique({
+    where: { chave: dados.chave },
+  });
   if (existente) {
-    return { jaExistia: true, devolucaoId: existente.id, unidadeId: existente.unidadeId, localId: existente.localDestinoId, itens: [] };
+    return {
+      jaExistia: true,
+      devolucaoId: existente.id,
+      unidadeId: existente.unidadeId,
+      localId: existente.localDestinoId,
+      itens: [],
+    };
   }
 
   const movimentados = await tx.itemDeRecebimento.findMany({
     where: { recebimento: { pedidoId: origem.pedidoId } },
-    select: { itemDePedidoId: true, insumoId: true, quantidadeBoa: true, recebimento: { select: { tipo: true } } },
+    select: {
+      itemDePedidoId: true,
+      insumoId: true,
+      quantidadeBoa: true,
+      recebimento: { select: { tipo: true } },
+    },
   });
 
   const linhas: {
@@ -755,7 +875,8 @@ export async function registrarDevolucaoNaTransacao(
       if (erro instanceof NumeroInvalido) throw new Error(erro.message);
       throw erro;
     }
-    if (q === null || q <= 0n) throw new Error("Quantidade da devolução precisa ser maior que zero.");
+    if (q === null || q <= 0n)
+      throw new Error("Quantidade da devolução precisa ser maior que zero.");
 
     const mesmo = (m: (typeof movimentados)[number]) =>
       m.itemDePedidoId === item.itemDePedidoId && m.insumoId === item.insumoId;
@@ -769,12 +890,18 @@ export async function registrarDevolucaoNaTransacao(
       throw new Error("Não dá para devolver mais do que entrou.");
     }
     const micros = doBanco(item.valorUnitario, CASAS.micros);
-    linhas.push({ item, quantidade: q, valor: dividirArredondando(q * micros, 10_000_000n) });
+    linhas.push({
+      item,
+      quantidade: q,
+      valor: dividirArredondando(q * micros, 10_000_000n),
+    });
   }
   if (linhas.length === 0) throw new Error("Escolha o que volta.");
 
   const numero =
-    (await tx.recebimento.count({ where: { pedidoId: origem.pedidoId, tipo: "DEVOLUCAO" } })) + 1;
+    (await tx.recebimento.count({
+      where: { pedidoId: origem.pedidoId, tipo: "DEVOLUCAO" },
+    })) + 1;
   const total = linhas.reduce((s, l) => s + l.valor, 0n);
 
   const devolucao = await tx.recebimento.create({
@@ -797,7 +924,10 @@ export async function registrarDevolucaoNaTransacao(
           return {
             itemDePedidoId: l.item.itemDePedidoId,
             insumoId: l.item.insumoId,
-            embalagensBoas: paraDecimal(dividirArredondando(l.quantidade * 10_000n, fator), CASAS.milesimos),
+            embalagensBoas: paraDecimal(
+              dividirArredondando(l.quantidade * 10_000n, fator),
+              CASAS.milesimos,
+            ),
             quantidadeBoa: paraDecimal(l.quantidade, CASAS.milesimos),
             fatorConversao: l.item.fatorConversao,
             valorUnitario: l.item.valorUnitario,

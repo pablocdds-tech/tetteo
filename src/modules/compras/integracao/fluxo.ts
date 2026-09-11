@@ -59,9 +59,21 @@ export async function rodadaEmCotacao(
 ) {
   await db.fornecedorInsumo.createMany({
     data: [
-      { fornecedorId: c.fornecedores.a.id, insumoId: c.insumos.molho.id, nomeEmbalagem: "Caixa" },
-      { fornecedorId: c.fornecedores.b.id, insumoId: c.insumos.molho.id, nomeEmbalagem: "Caixa" },
-      { fornecedorId: c.fornecedores.a.id, insumoId: c.insumos.mussarela.id, nomeEmbalagem: "Peça" },
+      {
+        fornecedorId: c.fornecedores.a.id,
+        insumoId: c.insumos.molho.id,
+        nomeEmbalagem: "Caixa",
+      },
+      {
+        fornecedorId: c.fornecedores.b.id,
+        insumoId: c.insumos.molho.id,
+        nomeEmbalagem: "Caixa",
+      },
+      {
+        fornecedorId: c.fornecedores.a.id,
+        insumoId: c.insumos.mussarela.id,
+        nomeEmbalagem: "Peça",
+      },
     ].map((p) => ({ ...p, organizacaoId: c.org.id })),
     skipDuplicates: true,
   });
@@ -80,14 +92,26 @@ export async function rodadaEmCotacao(
   });
   await moverRodada(comprador, id, { versao: 1, para: "COLETANDO" });
 
-  await pedirNaLoja(c, c.gerenteCentro, c.centro, id, pedidos.centro ?? [
-    [c.insumos.molho.id, "20"],
-    [c.insumos.mussarela.id, "10"],
-  ]);
-  await pedirNaLoja(c, c.gerenteSul, c.sul, id, pedidos.sul ?? [
-    [c.insumos.molho.id, "5"],
-    [c.insumos.oleo.id, "6"],
-  ]);
+  await pedirNaLoja(
+    c,
+    c.gerenteCentro,
+    c.centro,
+    id,
+    pedidos.centro ?? [
+      [c.insumos.molho.id, "20"],
+      [c.insumos.mussarela.id, "10"],
+    ],
+  );
+  await pedirNaLoja(
+    c,
+    c.gerenteSul,
+    c.sul,
+    id,
+    pedidos.sul ?? [
+      [c.insumos.molho.id, "5"],
+      [c.insumos.oleo.id, "6"],
+    ],
+  );
 
   await moverRodada(comprador, id, { versao: 2, para: "COTANDO" });
 
@@ -100,7 +124,8 @@ export async function rodadaEmCotacao(
 
   const sol = (fornecedorId: string) => {
     const s = solicitacoes.find((x) => x.fornecedorId === fornecedorId);
-    if (!s) throw new Error("O fornecedor não recebeu solicitação nesta rodada.");
+    if (!s)
+      throw new Error("O fornecedor não recebeu solicitação nesta rodada.");
     return {
       id: s.id,
       item: (nome: string) => {
@@ -167,8 +192,21 @@ export async function pedidosAprovados(c: Cenario) {
     a.id,
     respostaBruta(
       [
-        { id: a.item("Molho de tomate"), pecas: "12", conteudo: "900", unidadeConteudo: "G", preco: "95,40" },
-        { id: a.item("Mussarela"), nomeEmbalagem: "Peça", pecas: "1", conteudo: "1", unidadeConteudo: "KG", preco: "32" },
+        {
+          id: a.item("Molho de tomate"),
+          pecas: "12",
+          conteudo: "900",
+          unidadeConteudo: "G",
+          preco: "95,40",
+        },
+        {
+          id: a.item("Mussarela"),
+          nomeEmbalagem: "Peça",
+          pecas: "1",
+          conteudo: "1",
+          unidadeConteudo: "KG",
+          preco: "32",
+        },
       ],
       { frete: "25" },
     ),
@@ -178,7 +216,15 @@ export async function pedidosAprovados(c: Cenario) {
     r.comprador,
     b.id,
     respostaBruta(
-      [{ id: b.item("Molho de tomate"), pecas: "1", conteudo: "10", unidadeConteudo: "KG", preco: "300" }],
+      [
+        {
+          id: b.item("Molho de tomate"),
+          pecas: "1",
+          conteudo: "10",
+          unidadeConteudo: "KG",
+          preco: "300",
+        },
+      ],
       { frete: "0" },
     ),
     { origem: "COMPRADOR_DIGITOU" },

@@ -97,7 +97,11 @@ export async function dadosDaComparacao(
     include: {
       fornecedor: { select: { nome: true } },
       itens: { select: { id: true, itemDaRodadaId: true, direcionado: true } },
-      versoes: { orderBy: { numero: "desc" }, take: 1, include: { itens: true } },
+      versoes: {
+        orderBy: { numero: "desc" },
+        take: 1,
+        include: { itens: true },
+      },
     },
     orderBy: { fornecedor: { nome: "asc" } },
   });
@@ -135,7 +139,10 @@ export async function dadosDaComparacao(
         unidadeId: o.unidadeId,
         quantidade: milesimosDoBanco(o.quantidade),
       })),
-      requisicoes: suas.map((o) => ({ unidadeId: o.unidadeId, itemDeRequisicaoId: o.id })),
+      requisicoes: suas.map((o) => ({
+        unidadeId: o.unidadeId,
+        itemDeRequisicaoId: o.id,
+      })),
     };
   });
 
@@ -149,9 +156,14 @@ export async function dadosDaComparacao(
       nome: s.fornecedor.nome,
       versao: versao?.numero ?? 0,
       frete: versao?.frete == null ? null : centavosDoBanco(versao.frete),
-      minimo: versao?.pedidoMinimo == null ? null : centavosDoBanco(versao.pedidoMinimo),
+      minimo:
+        versao?.pedidoMinimo == null
+          ? null
+          : centavosDoBanco(versao.pedidoMinimo),
       prazoDias: versao?.prazoEntregaDias ?? null,
-      itensSolicitados: s.itens.filter((i) => !i.direcionado).map((i) => i.itemDaRodadaId),
+      itensSolicitados: s.itens
+        .filter((i) => !i.direcionado)
+        .map((i) => i.itemDaRodadaId),
       ofertas: (versao?.itens ?? [])
         .filter((o) => doItem.has(o.itemDaSolicitacaoId))
         .map((o) => {
@@ -164,15 +176,20 @@ export async function dadosDaComparacao(
             fator: o.fator === null ? null : fatorDoBanco(o.fator),
             fatorMotivo: o.fatorMotivo,
             fracionavel: o.fracionavel,
-            precoEmbalagem: o.precoEmbalagem === null ? null : centavosDoBanco(o.precoEmbalagem),
+            precoEmbalagem:
+              o.precoEmbalagem === null
+                ? null
+                : centavosDoBanco(o.precoEmbalagem),
             precoZeroAutorizado: o.precoZeroAutorizado,
-            disponivel: o.disponivel === null ? null : milesimosDoBanco(o.disponivel),
+            disponivel:
+              o.disponivel === null ? null : milesimosDoBanco(o.disponivel),
             descricaoEmbalagem: [
               o.nomeEmbalagem,
               descreverEmbalagem(
                 {
                   pecas: o.pecas,
-                  conteudo: o.conteudo === null ? null : fatorDoBanco(o.conteudo),
+                  conteudo:
+                    o.conteudo === null ? null : fatorDoBanco(o.conteudo),
                   unidadeConteudo: o.unidadeConteudo,
                   fracionavel: o.fracionavel,
                 },
@@ -193,13 +210,21 @@ export async function dadosDaComparacao(
   const direcionados = itens
     .filter((i) => i.modo === "DIRECIONADO" && i.fornecedorFixo)
     .map((i) => {
-      const solicitacao = solicitacoes.find((s) => s.fornecedorId === i.fornecedorFixo!.id);
+      const solicitacao = solicitacoes.find(
+        (s) => s.fornecedorId === i.fornecedorFixo!.id,
+      );
       const versao = solicitacao?.versoes[0];
       const meuItem = solicitacao?.itens.find((x) => x.itemDaRodadaId === i.id);
-      const oferta = versao?.itens.find((o) => o.itemDaSolicitacaoId === meuItem?.id);
+      const oferta = versao?.itens.find(
+        (o) => o.itemDaSolicitacaoId === meuItem?.id,
+      );
 
       let preco: PrecoDirecionado | null = null;
-      if (oferta?.situacao === "COTADO" && oferta.fator && oferta.precoEmbalagem !== null) {
+      if (
+        oferta?.situacao === "COTADO" &&
+        oferta.fator &&
+        oferta.precoEmbalagem !== null
+      ) {
         preco = {
           fornecedorId: i.fornecedorFixo!.id,
           fornecedor: i.fornecedorFixo!.nome,
@@ -207,7 +232,8 @@ export async function dadosDaComparacao(
           itemDePropostaId: oferta.id,
           nomeEmbalagem: oferta.nomeEmbalagem,
           pecas: oferta.pecas,
-          conteudo: oferta.conteudo === null ? null : fatorDoBanco(oferta.conteudo),
+          conteudo:
+            oferta.conteudo === null ? null : fatorDoBanco(oferta.conteudo),
           unidadeConteudo: oferta.unidadeConteudo,
           fracionavel: oferta.fracionavel,
           fator: fatorDoBanco(oferta.fator),
@@ -216,7 +242,9 @@ export async function dadosDaComparacao(
         };
       } else {
         const ref = fixos.find(
-          (f) => f.insumoId === i.insumoId && f.fornecedorId === i.fornecedorFixo!.id,
+          (f) =>
+            f.insumoId === i.insumoId &&
+            f.fornecedorId === i.fornecedorFixo!.id,
         );
         if (ref?.fator && ref.precoReferencia !== null) {
           preco = {
@@ -251,7 +279,13 @@ export async function compararRodada(ctx: ContextoSessao, rodadaId: string) {
   const escolhas = await db.escolhaDeItem.findMany({ where: { rodadaId } });
   const lojas = await db.unidade.findMany({
     where: {
-      id: { in: [...new Set(dados.itens.flatMap((i) => i.porLoja.map((l) => l.unidadeId)))] },
+      id: {
+        in: [
+          ...new Set(
+            dados.itens.flatMap((i) => i.porLoja.map((l) => l.unidadeId)),
+          ),
+        ],
+      },
     },
     select: { id: true, nome: true },
   });
@@ -271,7 +305,10 @@ export async function compararRodada(ctx: ContextoSessao, rodadaId: string) {
       itemId: d.item.id,
       nome: d.item.nome,
       unidade: d.item.unidade,
-      necessario: d.item.porLoja.reduce((s, l) => s + l.quantidade, 0n) as Milesimos,
+      necessario: d.item.porLoja.reduce(
+        (s, l) => s + l.quantidade,
+        0n,
+      ) as Milesimos,
       fornecedorFixo: d.item.fornecedorFixo,
       preco: d.preco,
     })),
@@ -280,6 +317,12 @@ export async function compararRodada(ctx: ContextoSessao, rodadaId: string) {
       fornecedor: s.fornecedor.nome,
       status: s.status,
       versao: s.versaoAtual,
+    })),
+    /** Frete e mínimo POR ENTREGA, da última versão de cada um. */
+    fretes: dados.propostas.map((p) => ({
+      fornecedorId: p.fornecedorId,
+      frete: p.frete,
+      minimo: p.minimo,
     })),
     lojas,
   };
@@ -295,9 +338,14 @@ export async function compararRodada(ctx: ContextoSessao, rodadaId: string) {
 export async function escolher(
   ctx: ContextoSessao,
   rodadaId: string,
-  dados: { itemDaRodadaId: string; fornecedorId: string; justificativa: string | null },
+  dados: {
+    itemDaRodadaId: string;
+    fornecedorId: string;
+    justificativa: string | null;
+  },
 ): Promise<void> {
-  if (!pode(ctx, "compras.cotar")) throw new SemPermissao("escolher fornecedores");
+  if (!pode(ctx, "compras.cotar"))
+    throw new SemPermissao("escolher fornecedores");
 
   const comparacao = await dadosDaComparacao(db, ctx.organizacao.id, rodadaId);
   if (!comparacao) throw new Error("Rodada não encontrada.");
@@ -308,22 +356,34 @@ export async function escolher(
   const grade = montarGrade(comparacao.itens, comparacao.propostas);
   const linha = grade.linhas.find((l) => l.item.id === dados.itemDaRodadaId);
   if (!linha) throw new Error("Este item não está em disputa nesta rodada.");
-  const celula = linha.celulas.find((c) => c.fornecedorId === dados.fornecedorId);
-  if (!celula || !["cotado", "disponibilidade-insuficiente"].includes(celula.estado)) {
+  const celula = linha.celulas.find(
+    (c) => c.fornecedorId === dados.fornecedorId,
+  );
+  if (
+    !celula ||
+    !["cotado", "disponibilidade-insuficiente"].includes(celula.estado)
+  ) {
     const motivo: Record<string, string> = {
       "sem-resposta": "este fornecedor não cotou o item",
       indisponivel: "este fornecedor não tem o item",
-      "conferir-fator": "a embalagem dele não tem conversão conhecida — confira o fator antes",
+      "conferir-fator":
+        "a embalagem dele não tem conversão conhecida — confira o fator antes",
       "zero-sem-autorizacao": "o preço zero não foi autorizado",
       "nao-solicitado": "o item não foi pedido a este fornecedor",
     };
-    throw new Error(`Não dá para escolher: ${motivo[celula?.estado ?? "nao-solicitado"]}.`);
+    throw new Error(
+      `Não dá para escolher: ${motivo[celula?.estado ?? "nao-solicitado"]}.`,
+    );
   }
 
   const sugestao = sugerirMenorCusto(grade, comparacao.propostas);
   const justificar =
     celula.estado !== "cotado" ||
-    precisaJustificar(sugestao.ok ? sugestao.sugestao : null, dados.itemDaRodadaId, dados.fornecedorId);
+    precisaJustificar(
+      sugestao.ok ? sugestao.sugestao : null,
+      dados.itemDaRodadaId,
+      dados.fornecedorId,
+    );
   const justificativa = dados.justificativa?.trim().slice(0, 300) || null;
   if (justificar && !justificativa) {
     throw new Error(
@@ -367,14 +427,21 @@ export async function escolher(
 }
 
 /** "Usar a sugestão": grava as escolhas sugeridas, todas de uma vez. */
-export async function aplicarSugestao(ctx: ContextoSessao, rodadaId: string): Promise<number> {
-  if (!pode(ctx, "compras.cotar")) throw new SemPermissao("escolher fornecedores");
+export async function aplicarSugestao(
+  ctx: ContextoSessao,
+  rodadaId: string,
+): Promise<number> {
+  if (!pode(ctx, "compras.cotar"))
+    throw new SemPermissao("escolher fornecedores");
   const comparacao = await dadosDaComparacao(db, ctx.organizacao.id, rodadaId);
   if (!comparacao) throw new Error("Rodada não encontrada.");
   if (comparacao.rodada.estado !== "REVISAO") {
     throw new Error("A escolha é feita com a cotação encerrada, em revisão.");
   }
-  const r = sugerirMenorCusto(montarGrade(comparacao.itens, comparacao.propostas), comparacao.propostas);
+  const r = sugerirMenorCusto(
+    montarGrade(comparacao.itens, comparacao.propostas),
+    comparacao.propostas,
+  );
   if (!r.ok) throw new Error(r.motivo);
 
   await db.$transaction(async (tx) => {
@@ -404,7 +471,10 @@ export async function aplicarSugestao(ctx: ContextoSessao, rodadaId: string): Pr
     entidade: "RodadaDeCompra",
     entidadeId: rodadaId,
     acao: "ALTEROU",
-    depois: { sugestaoAplicada: r.sugestao.escolhas.length, total: r.sugestao.total },
+    depois: {
+      sugestaoAplicada: r.sugestao.escolhas.length,
+      total: r.sugestao.total,
+    },
   });
   return r.sugestao.escolhas.length;
 }
@@ -418,19 +488,31 @@ export async function colocarEmDisputa(
   itemDaRodadaId: string,
   motivo: string,
 ): Promise<void> {
-  if (!pode(ctx, "compras.cotar")) throw new SemPermissao("colocar item em disputa");
+  if (!pode(ctx, "compras.cotar"))
+    throw new SemPermissao("colocar item em disputa");
   const texto = motivo.trim();
   if (!texto) throw new Error("Tirar do fornecedor fixo exige um motivo.");
 
   await db.$transaction(async (tx) => {
     const item = await tx.itemDaRodada.findFirst({
-      where: { id: itemDaRodadaId, rodada: { organizacaoId: ctx.organizacao.id } },
+      where: {
+        id: itemDaRodadaId,
+        rodada: { organizacaoId: ctx.organizacao.id },
+      },
       include: {
-        rodada: { select: { id: true, estado: true, organizacaoId: true, prazoCotacao: true } },
+        rodada: {
+          select: {
+            id: true,
+            estado: true,
+            organizacaoId: true,
+            prazoCotacao: true,
+          },
+        },
       },
     });
     if (!item) throw new Error("Item não encontrado.");
-    if (item.modo !== "DIRECIONADO") throw new Error("Este item já está em disputa.");
+    if (item.modo !== "DIRECIONADO")
+      throw new Error("Este item já está em disputa.");
     if (item.rodada.estado !== "COTANDO") {
       throw new Error("Só dá para colocar em disputa com a cotação aberta.");
     }

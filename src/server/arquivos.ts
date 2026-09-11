@@ -12,7 +12,11 @@ import {
   type TipoAceito,
 } from "./tipo-de-arquivo";
 
-export { LIMITE_BYTES, tipoPelaAssinatura, type TipoAceito } from "./tipo-de-arquivo";
+export {
+  LIMITE_BYTES,
+  tipoPelaAssinatura,
+  type TipoAceito,
+} from "./tipo-de-arquivo";
 
 /**
  * OS ARQUIVOS PRIVADOS.
@@ -57,9 +61,12 @@ export async function gravarArquivo(dados: {
   nomeOriginal: string;
   permissaoLeitura: string;
 }): Promise<{ id: string; tipo: TipoAceito }> {
-  if (dados.bytes.length === 0) throw new ArquivoRecusado("O arquivo está vazio.");
+  if (dados.bytes.length === 0)
+    throw new ArquivoRecusado("O arquivo está vazio.");
   if (dados.bytes.length > LIMITE_BYTES) {
-    throw new ArquivoRecusado("A foto passa de 5 MB. Tire outra, ou reduza antes de enviar.");
+    throw new ArquivoRecusado(
+      "A foto passa de 5 MB. Tire outra, ou reduza antes de enviar.",
+    );
   }
   const tipo = tipoPelaAssinatura(dados.bytes);
   if (!tipo) {
@@ -87,7 +94,8 @@ export async function gravarArquivo(dados: {
       tipo,
       tamanho: dados.bytes.length,
       nomeOriginal:
-        dados.nomeOriginal.replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 120) || "foto",
+        dados.nomeOriginal.replace(/[^\p{L}\p{N} ._-]/gu, "").slice(0, 120) ||
+        "foto",
       permissaoLeitura: dados.permissaoLeitura,
     },
     select: { id: true },
@@ -123,7 +131,9 @@ export async function vincularArquivos(
     data: { entidade: dono.entidade, entidadeId: dono.entidadeId },
   });
   if (r.count !== unicos.length) {
-    throw new Error("Uma das fotos não foi encontrada, ou já pertence a outro registro.");
+    throw new Error(
+      "Uma das fotos não foi encontrada, ou já pertence a outro registro.",
+    );
   }
 }
 

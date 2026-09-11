@@ -76,7 +76,10 @@ async function gravarVersao(
       origem: meta.origem,
       registradaPorId: meta.registradaPorId,
       motivo: meta.motivo,
-      frete: resposta.frete === null ? null : paraDecimal(resposta.frete, CASAS.centavos),
+      frete:
+        resposta.frete === null
+          ? null
+          : paraDecimal(resposta.frete, CASAS.centavos),
       pedidoMinimo:
         resposta.pedidoMinimo === null
           ? null
@@ -115,7 +118,10 @@ async function gravarVersao(
         situacao: "COTADO" as const,
         nomeEmbalagem: o.nomeEmbalagem,
         pecas: o.pecas,
-        conteudo: o.conteudo === null ? null : paraDecimal(o.conteudo, CASAS.dezMilesimos),
+        conteudo:
+          o.conteudo === null
+            ? null
+            : paraDecimal(o.conteudo, CASAS.dezMilesimos),
         unidadeConteudo: o.unidadeConteudo,
         fracionavel: o.fracionavel,
         fator: fator.ok ? paraDecimal(fator.fator, CASAS.dezMilesimos) : null,
@@ -127,7 +133,10 @@ async function gravarVersao(
         precoZeroAutorizado: preco === 0n,
         precoZeroMotivo: preco === 0n ? meta.motivo : null,
         precoZeroPorId: preco === 0n ? meta.registradaPorId : null,
-        disponivel: o.disponivel === null ? null : paraDecimal(o.disponivel, CASAS.milesimos),
+        disponivel:
+          o.disponivel === null
+            ? null
+            : paraDecimal(o.disponivel, CASAS.milesimos),
         observacao: o.observacao,
       };
     }),
@@ -150,7 +159,10 @@ async function itensProprios(tx: Tx, solicitacaoId: string) {
     },
   });
   return new Map<string, ItemProprio>(
-    itens.map((i) => [i.id, { id: i.id, base: i.itemDaRodada.insumo.unidadeMedida }]),
+    itens.map((i) => [
+      i.id,
+      { id: i.id, base: i.itemDaRodada.insumo.unidadeMedida },
+    ]),
   );
 }
 
@@ -207,17 +219,27 @@ export async function registrarPeloLink(
 
       const validacao = validarResposta(bruto, { permitirZero: false });
       if (!validacao.ok) {
-        return invalida("Há campos para corrigir antes de enviar.", validacao.erros);
+        return invalida(
+          "Há campos para corrigir antes de enviar.",
+          validacao.erros,
+        );
       }
 
       const proprios = await itensProprios(tx, s.id);
-      if (validacao.resposta.ofertas.some((o) => !proprios.has(o.itemDaSolicitacaoId))) {
-        return invalida("A resposta trouxe um item que não foi pedido à sua empresa.");
+      if (
+        validacao.resposta.ofertas.some(
+          (o) => !proprios.has(o.itemDaSolicitacaoId),
+        )
+      ) {
+        return invalida(
+          "A resposta trouxe um item que não foi pedido à sua empresa.",
+        );
       }
       if (validacao.resposta.ofertas.length === 0) {
         return {
           ok: false,
-          mensagem: "Nada para enviar: informe o preço de ao menos um item, ou marque os que não tem.",
+          mensagem:
+            "Nada para enviar: informe o preço de ao menos um item, ou marque os que não tem.",
         };
       }
 
@@ -229,7 +251,11 @@ export async function registrarPeloLink(
 
       await tx.solicitacaoDeCotacao.update({
         where: { id: s.id },
-        data: { status: "RESPONDIDA", ultimoEnvioEm: agora, tentativasInvalidas: 0 },
+        data: {
+          status: "RESPONDIDA",
+          ultimoEnvioEm: agora,
+          tentativasInvalidas: 0,
+        },
       });
 
       await registrar(tx, null, {
@@ -261,13 +287,17 @@ export async function registrarPeloComprador(
     motivo?: string | null;
     autorizarZero?: boolean;
   },
-): Promise<{ ok: true; versao: number } | { ok: false; erros: Record<string, string> }> {
+): Promise<
+  { ok: true; versao: number } | { ok: false; erros: Record<string, string> }
+> {
   if (!pode(ctx, "compras.cotar")) throw new SemPermissao("lançar propostas");
   const motivo = opcoes.motivo?.trim().slice(0, 300) || null;
 
   return db.$transaction(
     async (tx) => {
-      const [linha] = await tx.$queryRaw<{ id: string; organizacaoId: string }[]>`
+      const [linha] = await tx.$queryRaw<
+        { id: string; organizacaoId: string }[]
+      >`
         SELECT "id", "organizacaoId" FROM "solicitacao_de_cotacao"
         WHERE "id" = ${solicitacaoId} FOR UPDATE`;
       if (!linha || linha.organizacaoId !== ctx.organizacao.id) {
@@ -298,7 +328,9 @@ export async function registrarPeloComprador(
       });
       if (!validacao.ok) return { ok: false as const, erros: validacao.erros };
 
-      const temZero = validacao.resposta.ofertas.some((o) => o.precoEmbalagem === 0n);
+      const temZero = validacao.resposta.ofertas.some(
+        (o) => o.precoEmbalagem === 0n,
+      );
       if (temZero && !motivo) {
         return {
           ok: false as const,
@@ -310,7 +342,11 @@ export async function registrarPeloComprador(
       }
 
       const proprios = await itensProprios(tx, s.id);
-      if (validacao.resposta.ofertas.some((o) => !proprios.has(o.itemDaSolicitacaoId))) {
+      if (
+        validacao.resposta.ofertas.some(
+          (o) => !proprios.has(o.itemDaSolicitacaoId),
+        )
+      ) {
         throw new Error("A resposta trouxe item de outra solicitação.");
       }
 
@@ -336,7 +372,12 @@ export async function registrarPeloComprador(
         entidade: "SolicitacaoDeCotacao",
         entidadeId: s.id,
         acao: "ALTEROU",
-        depois: { versao: numero, origem: opcoes.origem, motivo, precoZero: temZero },
+        depois: {
+          versao: numero,
+          origem: opcoes.origem,
+          motivo,
+          precoZero: temZero,
+        },
       });
 
       return { ok: true as const, versao: numero };
@@ -346,7 +387,10 @@ export async function registrarPeloComprador(
 }
 
 /** As versões de uma solicitação, da mais nova para a mais antiga. */
-export async function versoesDaSolicitacao(ctx: ContextoSessao, solicitacaoId: string) {
+export async function versoesDaSolicitacao(
+  ctx: ContextoSessao,
+  solicitacaoId: string,
+) {
   if (!pode(ctx, "compras.ver")) throw new SemPermissao("ver compras");
   const s = await db.solicitacaoDeCotacao.findFirst({
     where: { id: solicitacaoId, organizacaoId: ctx.organizacao.id },
@@ -446,7 +490,13 @@ export async function dadosDoLink(
               insumoId: true,
               quantidadeTotal: true,
               ordem: true,
-              insumo: { select: { nome: true, unidadeMedida: true, unidadeRotulo: true } },
+              insumo: {
+                select: {
+                  nome: true,
+                  unidadeMedida: true,
+                  unidadeRotulo: true,
+                },
+              },
             },
           },
         },
@@ -481,7 +531,13 @@ export async function dadosDoLink(
   });
   const unidades = await db.unidade.findMany({
     where: { id: { in: [...new Set(origens.map((o) => o.unidadeId))] } },
-    select: { id: true, nome: true, endereco: true, bairro: true, cidade: true },
+    select: {
+      id: true,
+      nome: true,
+      endereco: true,
+      bairro: true,
+      cidade: true,
+    },
   });
   const nomeDa = new Map(unidades.map((u) => [u.id, u.nome]));
 
@@ -492,7 +548,12 @@ export async function dadosDoLink(
     }),
     s.versaoAtual > 0
       ? db.versaoDeProposta.findUnique({
-          where: { solicitacaoId_numero: { solicitacaoId: s.id, numero: s.versaoAtual } },
+          where: {
+            solicitacaoId_numero: {
+              solicitacaoId: s.id,
+              numero: s.versaoAtual,
+            },
+          },
           include: { itens: true },
         })
       : null,
@@ -515,22 +576,31 @@ export async function dadosDoLink(
       aviso: situacao === "valido" ? null : MENSAGEM_DO_LINK[situacao],
       lojas: unidades.map((u) => ({
         nome: u.nome,
-        endereco: [u.endereco, u.bairro, u.cidade].filter(Boolean).join(", ") || null,
+        endereco:
+          [u.endereco, u.bairro, u.cidade].filter(Boolean).join(", ") || null,
       })),
       itens: s.itens
         .sort((a, b) => a.itemDaRodada.ordem - b.itemDaRodada.ordem)
         .map((i) => {
-          const unidade = i.itemDaRodada.insumo.unidadeRotulo ?? i.itemDaRodada.insumo.unidadeMedida;
+          const unidade =
+            i.itemDaRodada.insumo.unidadeRotulo ??
+            i.itemDaRodada.insumo.unidadeMedida;
           return {
             itemDaSolicitacaoId: i.id,
             nome: i.itemDaRodada.insumo.nome,
             unidade: i.itemDaRodada.insumo.unidadeMedida,
-            quantidade: quantidadeBr(milesimosDoBanco(i.itemDaRodada.quantidadeTotal), unidade),
+            quantidade: quantidadeBr(
+              milesimosDoBanco(i.itemDaRodada.quantidadeTotal),
+              unidade,
+            ),
             porLoja: origens
               .filter((o) => o.insumoId === i.itemDaRodada.insumoId)
               .map((o) => ({
                 loja: nomeDa.get(o.unidadeId) ?? "Loja",
-                quantidade: quantidadeBr(milesimosDoBanco(o.quantidade), unidade),
+                quantidade: quantidadeBr(
+                  milesimosDoBanco(o.quantidade),
+                  unidade,
+                ),
               })),
             direcionado: i.direcionado,
           };

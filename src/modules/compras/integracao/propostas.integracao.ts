@@ -49,7 +49,9 @@ describe("o convite e o link", () => {
     assert.equal(mensagem.estado, "NA_FILA");
     assert.equal(codigo.length, 43);
 
-    const guardada = await db.solicitacaoDeCotacao.findUniqueOrThrow({ where: { id: a.id } });
+    const guardada = await db.solicitacaoDeCotacao.findUniqueOrThrow({
+      where: { id: a.id },
+    });
     assert.notEqual(guardada.tokenHash, codigo);
     assert.ok(!guardada.tokenCifrado!.includes(codigo));
     assert.equal(guardada.status, "CONVIDADO");
@@ -71,18 +73,18 @@ describe("o convite e o link", () => {
 
     // O Sul pediu molho E óleo; A vende molho, então o Sul aparece — mas só
     // com o molho. Óleo nenhum fornecedor vende.
-    assert.deepEqual(
-      r.vista.itens.map((i) => i.nome).sort(),
-      ["Molho de tomate", "Mussarela"],
-    );
+    assert.deepEqual(r.vista.itens.map((i) => i.nome).sort(), [
+      "Molho de tomate",
+      "Mussarela",
+    ]);
     assert.ok(!texto.includes("Óleo"));
     assert.ok(!texto.includes("Distribuidora Exemplo B"));
     assert.ok(!texto.includes("Laticínio Exemplo"));
     const molho = r.vista.itens.find((i) => i.nome === "Molho de tomate")!;
-    assert.deepEqual(
-      molho.porLoja.map((p) => p.loja).sort(),
-      ["Loja Exemplo Centro", "Loja Exemplo Sul"],
-    );
+    assert.deepEqual(molho.porLoja.map((p) => p.loja).sort(), [
+      "Loja Exemplo Centro",
+      "Loja Exemplo Sul",
+    ]);
   });
 });
 
@@ -93,7 +95,13 @@ describe("a resposta pelo link", () => {
       codigo,
       respostaBruta(
         [
-          { id: a.item("Molho de tomate"), pecas: "12", conteudo: "900", unidadeConteudo: "G", preco: "95,40" },
+          {
+            id: a.item("Molho de tomate"),
+            pecas: "12",
+            conteudo: "900",
+            unidadeConteudo: "G",
+            preco: "95,40",
+          },
           { id: a.item("Mussarela"), situacao: "INDISPONIVEL" },
         ],
         { frete: "25" },
@@ -104,13 +112,19 @@ describe("a resposta pelo link", () => {
     const ofertas = await db.itemDeProposta.findMany({
       where: { versao: { solicitacaoId: a.id } },
     });
-    const molho = ofertas.find((o) => o.itemDaSolicitacaoId === a.item("Molho de tomate"))!;
+    const molho = ofertas.find(
+      (o) => o.itemDaSolicitacaoId === a.item("Molho de tomate"),
+    )!;
     assert.equal(molho.fator?.toString(), "10.8");
     assert.equal(molho.precoUnitario?.toString(), "8.833333");
-    const muss = ofertas.find((o) => o.itemDaSolicitacaoId === a.item("Mussarela"))!;
+    const muss = ofertas.find(
+      (o) => o.itemDaSolicitacaoId === a.item("Mussarela"),
+    )!;
     assert.equal(muss.situacao, "INDISPONIVEL");
 
-    const s = await db.solicitacaoDeCotacao.findUniqueOrThrow({ where: { id: a.id } });
+    const s = await db.solicitacaoDeCotacao.findUniqueOrThrow({
+      where: { id: a.id },
+    });
     assert.equal(s.status, "RESPONDIDA");
     assert.equal(s.versaoAtual, 1);
   });
@@ -118,7 +132,10 @@ describe("a resposta pelo link", () => {
   test("nova resposta é versão nova; a anterior não muda", async () => {
     const { a, codigo } = await convidado();
     const molho = a.item("Molho de tomate");
-    await registrarPeloLink(codigo, respostaBruta([{ id: molho, preco: "10" }]));
+    await registrarPeloLink(
+      codigo,
+      respostaBruta([{ id: molho, preco: "10" }]),
+    );
     const segunda = await registrarPeloLink(
       codigo,
       respostaBruta([{ id: molho, preco: "9,50" }]),
@@ -138,7 +155,9 @@ describe("a resposta pelo link", () => {
 
   test("dois envios em menos de 10 segundos: o segundo espera", async () => {
     const { a, codigo } = await convidado();
-    const bruta = respostaBruta([{ id: a.item("Molho de tomate"), preco: "10" }]);
+    const bruta = respostaBruta([
+      { id: a.item("Molho de tomate"), preco: "10" },
+    ]);
     await registrarPeloLink(codigo, bruta);
     const r = await registrarPeloLink(codigo, bruta);
     assert.equal(r.ok, false);
@@ -158,7 +177,9 @@ describe("a resposta pelo link", () => {
     );
     assert.equal(res.ok, false);
     assert.match(!res.ok ? res.mensagem : "", /não foi pedido/);
-    const s = await db.solicitacaoDeCotacao.findUniqueOrThrow({ where: { id: a.id } });
+    const s = await db.solicitacaoDeCotacao.findUniqueOrThrow({
+      where: { id: a.id },
+    });
     assert.equal(s.tentativasInvalidas, 1);
     assert.equal(await db.versaoDeProposta.count(), 0);
   });
@@ -175,7 +196,9 @@ describe("a resposta pelo link", () => {
 
   test("revogado não aceita; reemitido, o novo vale e o antigo não", async () => {
     const { a, codigo, comprador } = await convidado();
-    const bruta = respostaBruta([{ id: a.item("Molho de tomate"), preco: "10" }]);
+    const bruta = respostaBruta([
+      { id: a.item("Molho de tomate"), preco: "10" },
+    ]);
 
     await revogarLink(comprador, a.id, "Mandei para o número errado");
     const revogado = await registrarPeloLink(codigo, bruta);
@@ -186,7 +209,10 @@ describe("a resposta pelo link", () => {
     assert.notEqual(novo, codigo);
     const antigo = await registrarPeloLink(codigo, bruta);
     assert.match(!antigo.ok ? antigo.mensagem : "", /não é válido/);
-    assert.deepEqual(await registrarPeloLink(novo, bruta), { ok: true, versao: 1 });
+    assert.deepEqual(await registrarPeloLink(novo, bruta), {
+      ok: true,
+      versao: 1,
+    });
   });
 
   test("vencido não aceita", async () => {
@@ -226,7 +252,10 @@ describe("depois de encerrada a cotação", () => {
   test("o link recusa; o comprador só registra como negociação, com motivo", async () => {
     const { a, codigo, comprador, id } = await convidado();
     const molho = a.item("Molho de tomate");
-    await registrarPeloLink(codigo, respostaBruta([{ id: molho, preco: "10" }]));
+    await registrarPeloLink(
+      codigo,
+      respostaBruta([{ id: molho, preco: "10" }]),
+    );
     await moverRodada(comprador, id, { versao: 3, para: "REVISAO" });
 
     const pelaPagina = await registrarPeloLink(
@@ -238,16 +267,26 @@ describe("depois de encerrada a cotação", () => {
 
     await assert.rejects(
       () =>
-        registrarPeloComprador(comprador, a.id, respostaBruta([{ id: molho, preco: "9" }]), {
-          origem: "COMPRADOR_DIGITOU",
-        }),
+        registrarPeloComprador(
+          comprador,
+          a.id,
+          respostaBruta([{ id: molho, preco: "9" }]),
+          {
+            origem: "COMPRADOR_DIGITOU",
+          },
+        ),
       /negociação registrada/,
     );
     await assert.rejects(
       () =>
-        registrarPeloComprador(comprador, a.id, respostaBruta([{ id: molho, preco: "9" }]), {
-          origem: "NEGOCIACAO",
-        }),
+        registrarPeloComprador(
+          comprador,
+          a.id,
+          respostaBruta([{ id: molho, preco: "9" }]),
+          {
+            origem: "NEGOCIACAO",
+          },
+        ),
       /negociação registrada/,
     );
 
@@ -273,9 +312,14 @@ describe("pelo comprador", () => {
     const molho = a.item("Molho de tomate");
     const bruta = respostaBruta([{ id: molho, preco: "0" }]);
 
-    const semAutorizar = await registrarPeloComprador(r.comprador, a.id, bruta, {
-      origem: "COMPRADOR_DIGITOU",
-    });
+    const semAutorizar = await registrarPeloComprador(
+      r.comprador,
+      a.id,
+      bruta,
+      {
+        origem: "COMPRADOR_DIGITOU",
+      },
+    );
     assert.equal(semAutorizar.ok, false);
 
     const semMotivo = await registrarPeloComprador(r.comprador, a.id, bruta, {

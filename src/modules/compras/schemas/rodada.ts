@@ -61,7 +61,10 @@ export function transicaoPermitida(
   para: EstadoDaRodada,
 ): Transicao {
   if (de === para) {
-    return { ok: false, mensagem: `A rodada já está em "${ROTULO_DO_ESTADO[de]}".` };
+    return {
+      ok: false,
+      mensagem: `A rodada já está em "${ROTULO_DO_ESTADO[de]}".`,
+    };
   }
   if (para === "CANCELADA") {
     if (de === "FECHADA" || de === "CANCELADA") {
@@ -180,7 +183,7 @@ export function aberturaDaSemana(
   const hoje = new Date(Date.UTC(ano, mes - 1, dia));
   const desdeSegunda = (hoje.getUTCDay() + 6) % 7;
   const alvo = new Date(
-    hoje.getTime() + ((agenda.diaDaSemana + 6) % 7 - desdeSegunda) * DIA_MS,
+    hoje.getTime() + (((agenda.diaDaSemana + 6) % 7) - desdeSegunda) * DIA_MS,
   );
   const [hora, minuto] = agenda.horaAbertura.split(":").map(Number);
   return instanteLocal(

@@ -28,7 +28,8 @@ export function alcadaQueAprova(
 ): Alcada | null {
   const cobrem = alcadas.filter(
     (a) =>
-      papeisDaPessoa.includes(a.papelId) && (a.limite === null || a.limite >= total),
+      papeisDaPessoa.includes(a.papelId) &&
+      (a.limite === null || a.limite >= total),
   );
   if (cobrem.length === 0) return null;
   return cobrem.reduce((melhor, a) => {

@@ -19,7 +19,10 @@ test("link em dia é válido", () => {
 
 test("vencido", () => {
   assert.equal(
-    situacaoDoLink({ ...valido, expiraEm: new Date("2026-09-10T14:59:59Z") }, agora),
+    situacaoDoLink(
+      { ...valido, expiraEm: new Date("2026-09-10T14:59:59Z") },
+      agora,
+    ),
     "vencido",
   );
   assert.equal(situacaoDoLink({ ...valido, expiraEm: null }, agora), "vencido");
@@ -27,18 +30,30 @@ test("vencido", () => {
 
 test("revogado vence qualquer outra situação", () => {
   assert.equal(
-    situacaoDoLink({ ...valido, revogadoEm: agora, tentativasInvalidas: 50 }, agora),
+    situacaoDoLink(
+      { ...valido, revogadoEm: agora, tentativasInvalidas: 50 },
+      agora,
+    ),
     "revogado",
   );
 });
 
 test("dez envios inválidos bloqueiam", () => {
-  assert.equal(situacaoDoLink({ ...valido, tentativasInvalidas: 10 }, agora), "bloqueado");
-  assert.equal(situacaoDoLink({ ...valido, tentativasInvalidas: 9 }, agora), "valido");
+  assert.equal(
+    situacaoDoLink({ ...valido, tentativasInvalidas: 10 }, agora),
+    "bloqueado",
+  );
+  assert.equal(
+    situacaoDoLink({ ...valido, tentativasInvalidas: 9 }, agora),
+    "valido",
+  );
 });
 
 test("rodada fora de cotação não aceita proposta", () => {
-  assert.equal(situacaoDoLink({ ...valido, rodadaEmCotacao: false }, agora), "encerrado");
+  assert.equal(
+    situacaoDoLink({ ...valido, rodadaEmCotacao: false }, agora),
+    "encerrado",
+  );
 });
 
 test("limite de versões e o intervalo entre envios", () => {

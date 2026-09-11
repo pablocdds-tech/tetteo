@@ -3,33 +3,56 @@ import type { ManifestoDoApp } from "@/core/registry/tipos";
 import { PERMISSOES_COMPRAS } from "./permissoes";
 
 /**
- * Compras.
+ * Compras — do pedido da loja à conferência do recebimento.
  *
- * O Estoque diz quanto saiu, a Ficha diz quanto deveria custar. Compras
- * responde a pergunta que vem antes: por quanto dá para comprar?
+ * A loja diz o que precisa (requisição), a rede consolida (rodada), os
+ * fornecedores cotam (link), o comprador compara e escolhe, o Diretor aprova,
+ * a fila envia, e a loja confere o que chegou — com a entrada no estoque pela
+ * nota de entrada.
  *
- * É onde o dinheiro é economizado de verdade. Mexer no preço do cardápio
- * assusta o cliente; trocar de fornecedor não assusta ninguém e costuma valer
- * mais.
- *
- * Exige unidade: preço de hortifrúti no Centro não é preço na Zona Sul, e uma
- * cotação de rede esconderia justamente a diferença que importa.
+ * "Consolida" na rede: a rodada é da rede inteira. O que é físico —
+ * requisição, pedido, recebimento — continua por loja, e cada tela diz isso.
  */
 export const manifestoCompras: ManifestoDoApp = {
   chave: "compras",
   nome: "Compras",
-  subtitulo: "Cotações & pedidos",
+  subtitulo: "Rodadas, cotações & recebimento",
   icone: "carrinho",
   cor: { fundo: "#E23B2E", frente: "#FFFFFF" },
   area: "gestao",
   rota: "/compras",
   navegacao: [
-    { rota: "/compras", nome: "Pedidos" },
-    { rota: "/compras/cotacoes", nome: "Cotações" },
+    { rota: "/compras", nome: "Rodadas" },
+    {
+      rota: "/compras/requisicao",
+      nome: "Requisição",
+      permissao: "compras.requisitar",
+    },
+    {
+      rota: "/compras/comparacao",
+      nome: "Comparação",
+      permissao: "compras.cotar",
+    },
+    {
+      rota: "/compras/aprovacao",
+      nome: "Aprovação",
+      permissao: "compras.aprovar",
+    },
+    { rota: "/compras/pedidos", nome: "Pedidos e envios" },
+    {
+      rota: "/compras/recebimento",
+      nome: "Recebimento",
+      permissao: "compras.receber",
+    },
     { rota: "/compras/fornecedores", nome: "Fornecedores" },
+    {
+      rota: "/compras/configuracoes",
+      nome: "Configurações",
+      permissao: "compras.configurar",
+    },
   ],
   permissaoParaVer: "compras.ver",
   permissoes: [...PERMISSOES_COMPRAS],
-  eventosQuePublica: ["pedido.emitido", "pedido.recebido"],
-  comportamentoNaRede: "exige-unidade",
+  eventosQuePublica: ["pedido.aprovado", "recebimento.conferido"],
+  comportamentoNaRede: "consolida",
 };

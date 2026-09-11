@@ -5,7 +5,11 @@ import { SemPermissao } from "@/lib/erros";
 import { sigla, type Unidade } from "@/lib/unidades";
 import { db } from "@/server/db";
 
-import { alcadaQueAprova, limiteDaPessoa, type Alcada } from "../schemas/alcada";
+import {
+  alcadaQueAprova,
+  limiteDaPessoa,
+  type Alcada,
+} from "../schemas/alcada";
 import {
   CASAS,
   NumeroInvalido,
@@ -72,7 +76,12 @@ export class PedidoMudou extends Error {
   }
 }
 
-const ATIVOS = ["RASCUNHO", "AGUARDANDO_APROVACAO", "APROVADO", "CONCLUIDO"] as const;
+const ATIVOS = [
+  "RASCUNHO",
+  "AGUARDANDO_APROVACAO",
+  "APROVADO",
+  "CONCLUIDO",
+] as const;
 
 const ROTULO_DO_STATUS: Record<string, string> = {
   RASCUNHO: "rascunho",
@@ -101,7 +110,9 @@ function exigir(ctx: ContextoSessao, chave: string, acao: string) {
 }
 
 function lojasVisiveis(ctx: ContextoSessao) {
-  return ctx.unidadeAtiva ? [ctx.unidadeAtiva.id] : ctx.unidadesVisiveis.map((u) => u.id);
+  return ctx.unidadeAtiva
+    ? [ctx.unidadeAtiva.id]
+    : ctx.unidadesVisiveis.map((u) => u.id);
 }
 
 function janela(de: Date | null, ate: Date | null): string | null {
@@ -130,14 +141,18 @@ export async function gerarPedidos(
 
   return db.$transaction(
     async (tx) => {
-      const [travada] = await tx.$queryRaw<{ estado: string; organizacaoId: string }[]>`
+      const [travada] = await tx.$queryRaw<
+        { estado: string; organizacaoId: string }[]
+      >`
         SELECT "estado"::text AS "estado", "organizacaoId" FROM "rodada_de_compra"
         WHERE "id" = ${rodadaId} FOR UPDATE`;
       if (!travada || travada.organizacaoId !== ctx.organizacao.id) {
         throw new Error("Rodada não encontrada.");
       }
       if (travada.estado !== "REVISAO") {
-        throw new Error("Os pedidos são gerados com a rodada em revisão (cotação encerrada).");
+        throw new Error(
+          "Os pedidos são gerados com a rodada em revisão (cotação encerrada).",
+        );
       }
       const jaGerados = await tx.pedido.count({
         where: { rodadaId, tipo: "PEDIDO", status: { in: [...ATIVOS] } },
@@ -148,12 +163,19 @@ export async function gerarPedidos(
         );
       }
 
-      const dados = (await dadosDaComparacao(tx, ctx.organizacao.id, rodadaId))!;
+      const dados = (await dadosDaComparacao(
+        tx,
+        ctx.organizacao.id,
+        rodadaId,
+      ))!;
       const escolhas = await tx.escolhaDeItem.findMany({ where: { rodadaId } });
       const escolhaDe = new Map(escolhas.map((e) => [e.itemDaRodadaId, e]));
 
       const faltando = dados.itens
-        .filter((i) => i.modo === "COTAVEL" && !escolhaDe.has(i.id) && !ignorar.has(i.id))
+        .filter(
+          (i) =>
+            i.modo === "COTAVEL" && !escolhaDe.has(i.id) && !ignorar.has(i.id),
+        )
         .map((i) => i.nome);
       if (faltando.length > 0) {
         throw new Error(
@@ -168,9 +190,18 @@ export async function gerarPedidos(
         entradas: EntradaDaLinha[];
       };
       const grupos = new Map<string, Grupo>();
-      const grupoDe = (unidadeId: string, fornecedorId: string, frete: Centavos | null) => {
+      const grupoDe = (
+        unidadeId: string,
+        fornecedorId: string,
+        frete: Centavos | null,
+      ) => {
         const chave = `${unidadeId}|${fornecedorId}`;
-        const g = grupos.get(chave) ?? { unidadeId, fornecedorId, frete, entradas: [] };
+        const g = grupos.get(chave) ?? {
+          unidadeId,
+          fornecedorId,
+          frete,
+          entradas: [],
+        };
         grupos.set(chave, g);
         return g;
       };
@@ -179,7 +210,9 @@ export async function gerarPedidos(
         where: {
           id: {
             in: escolhas
-              .filter((e) => !ignorar.has(e.itemDaRodadaId) && e.itemDePropostaId)
+              .filter(
+                (e) => !ignorar.has(e.itemDaRodadaId) && e.itemDePropostaId,
+              )
               .map((e) => e.itemDePropostaId!),
           },
         },
@@ -189,7 +222,10 @@ export async function gerarPedidos(
               numero: true,
               frete: true,
               solicitacao: {
-                select: { fornecedorId: true, fornecedor: { select: { nome: true } } },
+                select: {
+                  fornecedorId: true,
+                  fornecedor: { select: { nome: true } },
+                },
               },
             },
           },
@@ -211,9 +247,12 @@ export async function gerarPedidos(
             `${item.nome}: a proposta escolhida não tem preço e conversão válidos. Escolha de novo.`,
           );
         }
-        const frete = o.versao.frete === null ? null : centavosDoBanco(o.versao.frete);
+        const frete =
+          o.versao.frete === null ? null : centavosDoBanco(o.versao.frete);
         for (const loja of item.requisicoes) {
-          const quantidade = item.porLoja.find((p) => p.unidadeId === loja.unidadeId)!.quantidade;
+          const quantidade = item.porLoja.find(
+            (p) => p.unidadeId === loja.unidadeId,
+          )!.quantidade;
           grupoDe(loja.unidadeId, escolha.fornecedorId, frete).entradas.push({
             insumoId: item.insumoId,
             nome: item.nome,
@@ -242,8 +281,14 @@ export async function gerarPedidos(
         }
         const preco = d.preco;
         for (const loja of d.item.requisicoes) {
-          const quantidade = d.item.porLoja.find((p) => p.unidadeId === loja.unidadeId)!.quantidade;
-          grupoDe(loja.unidadeId, preco.fornecedorId, preco.frete).entradas.push({
+          const quantidade = d.item.porLoja.find(
+            (p) => p.unidadeId === loja.unidadeId,
+          )!.quantidade;
+          grupoDe(
+            loja.unidadeId,
+            preco.fornecedorId,
+            preco.frete,
+          ).entradas.push({
             insumoId: d.item.insumoId,
             nome: d.item.nome,
             unidade: d.item.unidade,
@@ -269,10 +314,18 @@ export async function gerarPedidos(
       if (grupos.size === 0) throw new Error("Nada a pedir nesta rodada.");
 
       const fornecedores = await tx.fornecedor.findMany({
-        where: { id: { in: [...new Set([...grupos.values()].map((g) => g.fornecedorId))] } },
+        where: {
+          id: {
+            in: [...new Set([...grupos.values()].map((g) => g.fornecedorId))],
+          },
+        },
       });
       const unidades = await tx.unidade.findMany({
-        where: { id: { in: [...new Set([...grupos.values()].map((g) => g.unidadeId))] } },
+        where: {
+          id: {
+            in: [...new Set([...grupos.values()].map((g) => g.unidadeId))],
+          },
+        },
       });
 
       const criados: string[] = [];
@@ -313,12 +366,18 @@ export async function gerarPedidos(
                 unidadeEstoque: l.unidade,
                 nomeEmbalagem: l.nomeEmbalagem,
                 pecas: l.pecas,
-                conteudo: l.conteudo === null ? null : paraDecimal(l.conteudo, CASAS.dezMilesimos),
+                conteudo:
+                  l.conteudo === null
+                    ? null
+                    : paraDecimal(l.conteudo, CASAS.dezMilesimos),
                 unidadeConteudo: l.unidadeConteudo,
                 fracionavel: l.fracionavel,
                 fatorConversao: paraDecimal(l.fator, CASAS.dezMilesimos),
                 embalagens: paraDecimal(l.embalagensMil, CASAS.milesimos),
-                quantidadeNecessaria: paraDecimal(l.necessario, CASAS.milesimos),
+                quantidadeNecessaria: paraDecimal(
+                  l.necessario,
+                  CASAS.milesimos,
+                ),
                 quantidade: paraDecimal(l.comprado, CASAS.milesimos),
                 adicional: paraDecimal(l.adicional, CASAS.milesimos),
                 precoEmbalagem: paraDecimal(l.precoEmbalagem, CASAS.centavos),
@@ -392,7 +451,7 @@ function linhasDaMensagem(pedido: PedidoParaTexto): LinhaDaMensagem[] {
         quantidade: quantidadeBr(comprado, unidade),
         preco: i.fracionavel
           ? `${reais(centavosDoBanco(i.precoEmbalagem))} o ${sigla(unidade)}`
-          : `${reais(centavosDoBanco(i.precoEmbalagem))} a ${nomeEmb.toLowerCase()}`,
+          : `${reais(centavosDoBanco(i.precoEmbalagem))} por ${nomeEmb.toLowerCase()}`,
         total: reais(centavosDoBanco(i.total)),
       };
     });
@@ -466,7 +525,9 @@ async function recusarSeMudou(
     const ultima = await ultimaMudanca("Pedido", pedidoId);
     throw new PedidoMudou(
       `Este pedido já está ${ROTULO_DO_STATUS[linha.status] ?? linha.status}` +
-        (ultima ? ` (${ultima.quem ?? "sistema"}, ${hora.format(ultima.quando)})` : "") +
+        (ultima
+          ? ` (${ultima.quem ?? "sistema"}, ${hora.format(ultima.quando)})`
+          : "") +
         ".",
     );
   }
@@ -478,7 +539,11 @@ async function recusarSeMudou(
 }
 
 /** Quando o último pedido pendente da rodada é decidido, ela vai para envio. */
-async function avancarRodadaSeTudoDecidido(tx: Tx, ctx: ContextoSessao, rodadaId: string) {
+async function avancarRodadaSeTudoDecidido(
+  tx: Tx,
+  ctx: ContextoSessao,
+  rodadaId: string,
+) {
   const [rodada] = await tx.$queryRaw<{ estado: string; versao: number }[]>`
     SELECT "estado"::text AS "estado", "versao" FROM "rodada_de_compra"
     WHERE "id" = ${rodadaId} FOR UPDATE`;
@@ -506,7 +571,8 @@ async function avancarRodadaSeTudoDecidido(tx: Tx, ctx: ContextoSessao, rodadaId
       estado: "DESPACHANDO",
       versao: rodada.versao + 2,
       caminho: "REVISAO → APROVADA → DESPACHANDO",
-      motivo: "Último pedido pendente decidido; as mensagens aprovadas estão na fila.",
+      motivo:
+        "Último pedido pendente decidido; as mensagens aprovadas estão na fila.",
     },
   });
 }
@@ -515,7 +581,11 @@ export async function aprovarPedido(
   ctx: ContextoSessao,
   pedidoId: string,
   versao: number,
-): Promise<{ mensagemId: string; estadoDaMensagem: string; motivoBloqueio: string | null }> {
+): Promise<{
+  mensagemId: string;
+  estadoDaMensagem: string;
+  motivoBloqueio: string | null;
+}> {
   exigir(ctx, "compras.aprovar", "aprovar pedidos");
 
   return db.$transaction(
@@ -543,7 +613,10 @@ export async function aprovarPedido(
       const papeis = acessos.map((a) => a.papelId);
       const alcadas: Alcada[] = (
         await tx.alcadaDeCompra.findMany({
-          where: { organizacaoId: ctx.organizacao.id, chaveVigente: { not: null } },
+          where: {
+            organizacaoId: ctx.organizacao.id,
+            chaveVigente: { not: null },
+          },
         })
       ).map((a) => ({
         id: a.id,
@@ -581,7 +654,11 @@ export async function aprovarPedido(
 
       const fornecedor = await tx.fornecedor.findUniqueOrThrow({
         where: { id: pedido.fornecedorId },
-        select: { contato: true, telefonePedidos: true, autorizadoMensagens: true },
+        select: {
+          contato: true,
+          telefonePedidos: true,
+          autorizadoMensagens: true,
+        },
       });
       const agora = new Date();
 
@@ -593,10 +670,13 @@ export async function aprovarPedido(
           aprovadoEm: agora,
           aprovadoPorId: ctx.usuario.id,
           // O destino congelado é o do momento da APROVAÇÃO.
-          destinoTelefone: fornecedor.autorizadoMensagens ? fornecedor.telefonePedidos : null,
+          destinoTelefone: fornecedor.autorizadoMensagens
+            ? fornecedor.telefonePedidos
+            : null,
         },
       });
-      if (escrita.count !== 1) throw new PedidoMudou("O pedido mudou enquanto você olhava.");
+      if (escrita.count !== 1)
+        throw new PedidoMudou("O pedido mudou enquanto você olhava.");
 
       await tx.aprovacaoDeCompra.create({
         data: {
@@ -608,7 +688,9 @@ export async function aprovarPedido(
           alcadaVersao: alcada?.versao ?? null,
           valor: pedido.total,
           decisao: "APROVADO",
-          motivo: implicita ? "Diretor sem alçada cadastrada: aprova sem limite." : null,
+          motivo: implicita
+            ? "Diretor sem alçada cadastrada: aprova sem limite."
+            : null,
         },
       });
 
@@ -624,7 +706,11 @@ export async function aprovarPedido(
         referenciaTipo: "Pedido",
         referenciaId: pedido.id,
         sequencia: pedido.sequencia,
-        corpo: textoParaFornecedor(pedido, organizacao.nome, fornecedor.contato),
+        corpo: textoParaFornecedor(
+          pedido,
+          organizacao.nome,
+          fornecedor.contato,
+        ),
         chave: `pedido:${pedido.id}:${pedido.sequencia}`,
         criadoPorId: ctx.usuario.id,
       });
@@ -637,13 +723,16 @@ export async function aprovarPedido(
         antes: { status: "AGUARDANDO_APROVACAO", versao },
         depois: {
           status: "APROVADO",
-          alcada: alcada ? `${alcada.id} v${alcada.versao}` : "implícita (Diretor)",
+          alcada: alcada
+            ? `${alcada.id} v${alcada.versao}`
+            : "implícita (Diretor)",
           valor: total,
           mensagem: mensagem.estado,
         },
       });
 
-      if (pedido.rodadaId) await avancarRodadaSeTudoDecidido(tx, ctx, pedido.rodadaId);
+      if (pedido.rodadaId)
+        await avancarRodadaSeTudoDecidido(tx, ctx, pedido.rodadaId);
 
       return {
         mensagemId: mensagem.id,
@@ -663,7 +752,10 @@ export async function recusarPedido(
 ): Promise<void> {
   exigir(ctx, "compras.aprovar", "recusar pedidos");
   const texto = motivo.trim();
-  if (!texto) throw new Error("Diga por que o pedido foi recusado — quem comprou precisa saber.");
+  if (!texto)
+    throw new Error(
+      "Diga por que o pedido foi recusado — quem comprou precisa saber.",
+    );
 
   await db.$transaction(async (tx) => {
     const linha = await travarPedido(tx, ctx, pedidoId);
@@ -700,7 +792,8 @@ export async function recusarPedido(
       antes: { status: "AGUARDANDO_APROVACAO" },
       depois: { status: "RECUSADO", motivo: texto },
     });
-    if (pedido.rodadaId) await avancarRodadaSeTudoDecidido(tx, ctx, pedido.rodadaId);
+    if (pedido.rodadaId)
+      await avancarRodadaSeTudoDecidido(tx, ctx, pedido.rodadaId);
   });
 }
 
@@ -725,7 +818,9 @@ export async function ajustarItemPendente(
         "Pedido aprovado não se edita. Para acrescentar, faça um adendo; para diminuir, uma alteração — as duas vão ao fornecedor e ficam registradas.",
       );
     }
-    const item = await tx.itemDePedido.findFirst({ where: { id: itemId, pedidoId } });
+    const item = await tx.itemDePedido.findFirst({
+      where: { id: itemId, pedidoId },
+    });
     if (!item) throw new Error("Item não encontrado neste pedido.");
 
     let valor: bigint | null;
@@ -734,18 +829,24 @@ export async function ajustarItemPendente(
     } catch (erro) {
       if (erro instanceof NumeroInvalido) {
         throw new Error(
-          item.fracionavel ? erro.message : "Informe um número inteiro de embalagens.",
+          item.fracionavel
+            ? erro.message
+            : "Informe um número inteiro de embalagens.",
         );
       }
       throw erro;
     }
     if (valor === null || valor <= 0n) {
-      throw new Error("Para tirar o item, recuse o pedido ou gere de novo sem ele.");
+      throw new Error(
+        "Para tirar o item, recuse o pedido ou gere de novo sem ele.",
+      );
     }
 
     const fator = fatorDoBanco(item.fatorConversao);
     const preco = centavosDoBanco(item.precoEmbalagem);
-    const comprado = item.fracionavel ? valor : quantidadeDeEmbalagens(valor, fator);
+    const comprado = item.fracionavel
+      ? valor
+      : quantidadeDeEmbalagens(valor, fator);
     const total = item.fracionavel
       ? totalFracionado(valor, preco, fator)
       : totalPorEmbalagens(valor, preco);
@@ -757,19 +858,31 @@ export async function ajustarItemPendente(
           ? paraDecimal(valor, CASAS.milesimos)
           : paraDecimal(valor * 1000n, CASAS.milesimos),
         quantidade: paraDecimal(comprado, CASAS.milesimos),
-        adicional: paraDecimal(comprado - milesimosDoBanco(item.quantidadeNecessaria), CASAS.milesimos),
+        adicional: paraDecimal(
+          comprado - milesimosDoBanco(item.quantidadeNecessaria),
+          CASAS.milesimos,
+        ),
         total: paraDecimal(total, CASAS.centavos),
       },
     });
 
-    const itens = await tx.itemDePedido.findMany({ where: { pedidoId }, select: { total: true } });
-    const pedido = await tx.pedido.findUniqueOrThrow({ where: { id: pedidoId }, select: { frete: true } });
+    const itens = await tx.itemDePedido.findMany({
+      where: { pedidoId },
+      select: { total: true },
+    });
+    const pedido = await tx.pedido.findUniqueOrThrow({
+      where: { id: pedidoId },
+      select: { frete: true },
+    });
     const subtotal = itens.reduce((s, i) => s + centavosDoBanco(i.total), 0n);
     await tx.pedido.update({
       where: { id: pedidoId },
       data: {
         subtotal: paraDecimal(subtotal, CASAS.centavos),
-        total: paraDecimal(subtotal + centavosDoBanco(pedido.frete), CASAS.centavos),
+        total: paraDecimal(
+          subtotal + centavosDoBanco(pedido.frete),
+          CASAS.centavos,
+        ),
         versao: { increment: 1 },
       },
     });
@@ -831,7 +944,9 @@ export async function registrarConfirmacao(
   exigir(ctx, "compras.pedir", "registrar a confirmação do fornecedor");
   const texto = dados.texto.trim();
   if (!texto) {
-    throw new Error("Copie ou resuma o que o fornecedor respondeu — é a prova da confirmação.");
+    throw new Error(
+      "Copie ou resuma o que o fornecedor respondeu — é a prova da confirmação.",
+    );
   }
   const pedido = await db.pedido.findFirst({
     where: {
@@ -872,10 +987,16 @@ export type FiltroDePedidos = {
   status?: string;
 };
 
-export async function listarPedidos(ctx: ContextoSessao, filtro: FiltroDePedidos = {}) {
+export async function listarPedidos(
+  ctx: ContextoSessao,
+  filtro: FiltroDePedidos = {},
+) {
   exigir(ctx, "compras.ver", "ver compras");
   const lojas = lojasVisiveis(ctx);
-  if (filtro.unidadeId && !ctx.unidadesVisiveis.some((u) => u.id === filtro.unidadeId)) {
+  if (
+    filtro.unidadeId &&
+    !ctx.unidadesVisiveis.some((u) => u.id === filtro.unidadeId)
+  ) {
     throw new SemPermissao("ver pedidos de outra loja");
   }
 
@@ -896,7 +1017,10 @@ export async function listarPedidos(ctx: ContextoSessao, filtro: FiltroDePedidos
   });
 
   const mensagens = await db.mensagemAoFornecedor.findMany({
-    where: { referenciaTipo: "Pedido", referenciaId: { in: pedidos.map((p) => p.id) } },
+    where: {
+      referenciaTipo: "Pedido",
+      referenciaId: { in: pedidos.map((p) => p.id) },
+    },
     orderBy: { enfileiradaEm: "desc" },
     select: {
       referenciaId: true,
@@ -911,7 +1035,10 @@ export async function listarPedidos(ctx: ContextoSessao, filtro: FiltroDePedidos
     const envio = mensagens.find((m) => m.referenciaId === p.id) ?? null;
     return {
       id: p.id,
-      referencia: referenciaDoPedido(p.pedidoOrigem?.numero ?? p.numero, p.sequencia),
+      referencia: referenciaDoPedido(
+        p.pedidoOrigem?.numero ?? p.numero,
+        p.sequencia,
+      ),
       tipo: p.tipo,
       rodada: p.rodada?.numero ?? null,
       unidadeId: p.unidadeId,
@@ -932,7 +1059,9 @@ export async function listarPedidos(ctx: ContextoSessao, filtro: FiltroDePedidos
   });
 }
 
-export type PedidoCompleto = NonNullable<Awaited<ReturnType<typeof obterPedido>>>;
+export type PedidoCompleto = NonNullable<
+  Awaited<ReturnType<typeof obterPedido>>
+>;
 
 export async function obterPedido(ctx: ContextoSessao, pedidoId: string) {
   exigir(ctx, "compras.ver", "ver compras");
@@ -959,7 +1088,13 @@ export async function obterPedido(ctx: ContextoSessao, pedidoId: string) {
       aprovacoes: { orderBy: { criadoEm: "asc" } },
       pedidoOrigem: { select: { id: true, numero: true } },
       adendos: {
-        select: { id: true, numero: true, sequencia: true, status: true, total: true },
+        select: {
+          id: true,
+          numero: true,
+          sequencia: true,
+          status: true,
+          total: true,
+        },
         orderBy: { sequencia: "asc" },
       },
       alteracoes: { include: { itens: true }, orderBy: { sequencia: "asc" } },
@@ -988,7 +1123,8 @@ export async function obterPedido(ctx: ContextoSessao, pedidoId: string) {
     },
     select: { id: true, nome: true },
   });
-  const nome = (id: string | null) => pessoas.find((p) => p.id === id)?.nome ?? null;
+  const nome = (id: string | null) =>
+    pessoas.find((p) => p.id === id)?.nome ?? null;
 
   const mensagens = await mensagensDaReferencia("Pedido", pedido.id);
   const numeroRaiz = pedido.pedidoOrigem?.numero ?? pedido.numero;
@@ -1000,8 +1136,14 @@ export async function obterPedido(ctx: ContextoSessao, pedidoId: string) {
     criadoPor: nome(pedido.criadoPorId),
     confirmacaoRegistradaPor: nome(pedido.confirmacaoRegistradaPorId),
     enviadoManualmentePor: nome(pedido.enviadoManualmentePorId),
-    aprovacoesComNome: pedido.aprovacoes.map((a) => ({ ...a, aprovador: nome(a.aprovadorId) })),
-    recebimentosComNome: pedido.recebimentos.map((r) => ({ ...r, recebidoPor: nome(r.recebidoPorId) })),
+    aprovacoesComNome: pedido.aprovacoes.map((a) => ({
+      ...a,
+      aprovador: nome(a.aprovadorId),
+    })),
+    recebimentosComNome: pedido.recebimentos.map((r) => ({
+      ...r,
+      recebidoPor: nome(r.recebidoPorId),
+    })),
     mensagens,
   };
 }
@@ -1039,7 +1181,9 @@ export async function pendentesDeAprovacao(ctx: ContextoSessao) {
     const total = centavosDoBanco(p.total);
     const alcada = alcadaQueAprova(alcadas, papeis, total);
     const implicita =
-      !alcada && ctx.ehDiretor && !alcadas.some((a) => papeis.includes(a.papelId));
+      !alcada &&
+      ctx.ehDiretor &&
+      !alcadas.some((a) => papeis.includes(a.papelId));
     return {
       ...p,
       possoAprovar: podeAprovar && (!!alcada || implicita),

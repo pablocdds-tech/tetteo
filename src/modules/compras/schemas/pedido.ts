@@ -54,7 +54,8 @@ export type LinhaDoPedido = EntradaDaLinha & {
 };
 
 export function montarLinha(e: EntradaDaLinha): LinhaDoPedido {
-  if (e.necessario <= 0n) throw new Error(`${e.nome}: quantidade precisa ser maior que zero.`);
+  if (e.necessario <= 0n)
+    throw new Error(`${e.nome}: quantidade precisa ser maior que zero.`);
   if (e.fator <= 0n) throw new Error(`${e.nome}: fator da embalagem inválido.`);
 
   if (e.fracionavel) {

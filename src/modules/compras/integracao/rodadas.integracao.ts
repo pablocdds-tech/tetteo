@@ -153,9 +153,15 @@ describe("rodada", () => {
     });
     const porNome = new Map(itens.map((i) => [i.insumo.nome, i]));
     assert.equal(porNome.get("Mussarela")?.quantidadeTotal.toString(), "15");
-    assert.equal(porNome.get("Molho de tomate")?.quantidadeTotal.toString(), "4.5");
+    assert.equal(
+      porNome.get("Molho de tomate")?.quantidadeTotal.toString(),
+      "4.5",
+    );
     assert.equal(porNome.get("Mussarela")?.modo, "DIRECIONADO");
-    assert.equal(porNome.get("Mussarela")?.fornecedorFixoId, c.fornecedores.c.id);
+    assert.equal(
+      porNome.get("Mussarela")?.fornecedorFixoId,
+      c.fornecedores.c.id,
+    );
 
     const solicitacoes = await db.solicitacaoDeCotacao.findMany({
       where: { rodadaId: id },
@@ -166,7 +172,9 @@ describe("rodada", () => {
     const de = (fornecedorId: string) =>
       solicitacoes
         .find((s) => s.fornecedorId === fornecedorId)
-        ?.itens.map((i) => `${i.itemDaRodada.insumo.nome}${i.direcionado ? "*" : ""}`)
+        ?.itens.map(
+          (i) => `${i.itemDaRodada.insumo.nome}${i.direcionado ? "*" : ""}`,
+        )
         .sort();
 
     // A mussarela fixa vai SÓ para o fixo — e marcada. O fornecedor A também
@@ -178,7 +186,9 @@ describe("rodada", () => {
 
   test("loja que não enviou fica de fora, e a auditoria diz qual", async () => {
     const { id, comprador } = await rodadaColetando();
-    await pedir(c.gerenteCentro, c.centro, id, [[c.insumos.mussarela.id, "10"]]);
+    await pedir(c.gerenteCentro, c.centro, id, [
+      [c.insumos.mussarela.id, "10"],
+    ]);
     await pedir(c.gerenteSul, c.sul, id, [[c.insumos.oleo.id, "2"]], false);
 
     await moverRodada(comprador, id, { versao: 2, para: "COTANDO" });
@@ -197,7 +207,9 @@ describe("rodada", () => {
 
   test("reabrir sem motivo é recusado", async () => {
     const { id, comprador } = await rodadaColetando();
-    await pedir(c.gerenteCentro, c.centro, id, [[c.insumos.mussarela.id, "10"]]);
+    await pedir(c.gerenteCentro, c.centro, id, [
+      [c.insumos.mussarela.id, "10"],
+    ]);
     await moverRodada(comprador, id, { versao: 2, para: "COTANDO" });
     await moverRodada(comprador, id, { versao: 3, para: "REVISAO" });
     await assert.rejects(
@@ -210,7 +222,10 @@ describe("rodada", () => {
       motivo: "Fornecedor B mandou preço novo",
     });
     const rodada = await db.rodadaDeCompra.findUniqueOrThrow({ where: { id } });
-    assert.equal(rodada.motivoUltimaReabertura, "Fornecedor B mandou preço novo");
+    assert.equal(
+      rodada.motivoUltimaReabertura,
+      "Fornecedor B mandou preço novo",
+    );
   });
 });
 
@@ -271,7 +286,9 @@ describe("requisição da loja", () => {
 
   test("envio depois da consolidação é recusado", async () => {
     const { id, comprador } = await rodadaColetando();
-    await pedir(c.gerenteCentro, c.centro, id, [[c.insumos.mussarela.id, "10"]]);
+    await pedir(c.gerenteCentro, c.centro, id, [
+      [c.insumos.mussarela.id, "10"],
+    ]);
     const { ctx, requisicaoId } = await pedir(
       c.gerenteSul,
       c.sul,
@@ -301,9 +318,14 @@ describe("requisição da loja", () => {
     const ctx = await c.ctx(c.gerenteCentro, c.centro);
     const linhas = await sugestoesDaLoja(ctx);
 
-    const mussarela = linhas.find((l) => l.insumoId === c.insumos.mussarela.id)!;
+    const mussarela = linhas.find(
+      (l) => l.insumoId === c.insumos.mussarela.id,
+    )!;
     assert.equal(mussarela.sugestao.quantidade, "11.500");
-    assert.equal(mussarela.sugestao.formula, "mínimo 15 kg – disponível 3,5 kg = 11,5 kg");
+    assert.equal(
+      mussarela.sugestao.formula,
+      "mínimo 15 kg – disponível 3,5 kg = 11,5 kg",
+    );
 
     // Nunca contado no Centro: sem sugestão, com alerta — não zero.
     const molho = linhas.find((l) => l.insumoId === c.insumos.molho.id)!;
@@ -360,7 +382,10 @@ describe("agenda", () => {
     assert.equal(await db.rodadaDeCompra.count(), 1);
 
     // Na semana seguinte, sim.
-    assert.equal(await abrirRodadasAgendadas(new Date("2026-09-17T15:00:00Z")), 1);
+    assert.equal(
+      await abrirRodadasAgendadas(new Date("2026-09-17T15:00:00Z")),
+      1,
+    );
   });
 
   test("antes da hora não abre", async () => {
@@ -376,6 +401,9 @@ describe("agenda", () => {
       unidadeIds: [c.centro.id],
       ativa: true,
     });
-    assert.equal(await abrirRodadasAgendadas(new Date("2026-09-10T15:00:00Z")), 0);
+    assert.equal(
+      await abrirRodadasAgendadas(new Date("2026-09-10T15:00:00Z")),
+      0,
+    );
   });
 });

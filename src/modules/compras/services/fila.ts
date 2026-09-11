@@ -68,16 +68,20 @@ function exigir(ctx: ContextoSessao, chave: string, acao: string) {
 }
 
 /** Por que não dá para mandar para este fornecedor — ou `null` se dá. */
-function bloqueio(f: {
-  ativo: boolean;
-  excluidoEm: Date | null;
-  telefonePedidos: string | null;
-  autorizadoMensagens: boolean;
-} | null): string | null {
+function bloqueio(
+  f: {
+    ativo: boolean;
+    excluidoEm: Date | null;
+    telefonePedidos: string | null;
+    autorizadoMensagens: boolean;
+  } | null,
+): string | null {
   if (!f || f.excluidoEm) return "Fornecedor não encontrado.";
   if (!f.ativo) return "Fornecedor desativado.";
-  if (!f.telefonePedidos) return "Fornecedor sem telefone de pedidos cadastrado.";
-  if (!f.autorizadoMensagens) return "Fornecedor não autorizou receber mensagens.";
+  if (!f.telefonePedidos)
+    return "Fornecedor sem telefone de pedidos cadastrado.";
+  if (!f.autorizadoMensagens)
+    return "Fornecedor não autorizou receber mensagens.";
   return null;
 }
 
@@ -97,7 +101,11 @@ export async function enfileirar(
     chave: string;
     criadoPorId: string | null;
   },
-): Promise<{ id: string; estado: EstadoDaMensagem; motivoBloqueio: string | null }> {
+): Promise<{
+  id: string;
+  estado: EstadoDaMensagem;
+  motivoBloqueio: string | null;
+}> {
   const existente = await tx.mensagemAoFornecedor.findUnique({
     where: { chave: dados.chave },
     select: { id: true, estado: true, motivoBloqueio: true },
@@ -200,7 +208,10 @@ export async function corpoParaEnvio(id: string): Promise<string> {
   if (m.tipo !== "CONVITE_COTACAO" || !m.corpo.includes(MARCADOR_DO_LINK)) {
     return m.corpo;
   }
-  return m.corpo.replace(MARCADOR_DO_LINK, await linkDaSolicitacao(m.referenciaId));
+  return m.corpo.replace(
+    MARCADOR_DO_LINK,
+    await linkDaSolicitacao(m.referenciaId),
+  );
 }
 
 export function baseDoLink(): string {
@@ -213,13 +224,17 @@ export function baseDoLink(): string {
   return base.replace(/\/+$/, "");
 }
 
-export async function linkDaSolicitacao(solicitacaoId: string): Promise<string> {
+export async function linkDaSolicitacao(
+  solicitacaoId: string,
+): Promise<string> {
   const s = await db.solicitacaoDeCotacao.findUniqueOrThrow({
     where: { id: solicitacaoId },
     select: { tokenCifrado: true, tokenRevogadoEm: true },
   });
   if (!s.tokenCifrado || s.tokenRevogadoEm) {
-    throw new Error("O link desta solicitação foi revogado e não foi reemitido.");
+    throw new Error(
+      "O link desta solicitação foi revogado e não foi reemitido.",
+    );
   }
   // O código vai DEPOIS do "#": o navegador não o envia ao servidor, e ele
   // não aparece em registro de acesso de ninguém.
@@ -292,7 +307,10 @@ export async function marcarResultado(
       leaseDono: null,
       ...(acabou
         ? { estado: "FALHOU", falhouEm: agora }
-        : { estado: "NA_FILA", proximaTentativaEm: proximaTentativa(atual.tentativas, agora) }),
+        : {
+            estado: "NA_FILA",
+            proximaTentativaEm: proximaTentativa(atual.tentativas, agora),
+          }),
     },
   });
 }
@@ -373,7 +391,8 @@ export async function resolverIncerta(
 ): Promise<void> {
   exigir(ctx, "compras.enviar", "resolver mensagens incertas");
   const m = await daOrganizacao(ctx, id);
-  if (m.estado !== "INCERTA") throw new Error("Esta mensagem não está incerta.");
+  if (m.estado !== "INCERTA")
+    throw new Error("Esta mensagem não está incerta.");
 
   const resolucao =
     decisao === "saiu"
@@ -395,7 +414,8 @@ export async function resolverIncerta(
           }),
     },
   });
-  if (r.count !== 1) throw new Error("A mensagem mudou enquanto você olhava. Recarregue.");
+  if (r.count !== 1)
+    throw new Error("A mensagem mudou enquanto você olhava. Recarregue.");
 
   await registrar(db, ctx, {
     entidade: "MensagemAoFornecedor",
@@ -407,7 +427,10 @@ export async function resolverIncerta(
   });
 }
 
-export async function reprocessar(ctx: ContextoSessao, id: string): Promise<void> {
+export async function reprocessar(
+  ctx: ContextoSessao,
+  id: string,
+): Promise<void> {
   exigir(ctx, "compras.enviar", "reprocessar mensagens");
   const m = await daOrganizacao(ctx, id);
   if (m.estado !== "FALHOU") {
@@ -440,15 +463,26 @@ export async function reprocessar(ctx: ContextoSessao, id: string): Promise<void
  * sozinha. Vale para bloqueada, na fila e falhou — o que já saiu não se
  * redireciona.
  */
-export async function atualizarDestino(ctx: ContextoSessao, id: string): Promise<void> {
+export async function atualizarDestino(
+  ctx: ContextoSessao,
+  id: string,
+): Promise<void> {
   exigir(ctx, "compras.enviar", "mudar o destino de uma mensagem");
   const m = await daOrganizacao(ctx, id);
-  if (!["BLOQUEADA", "NA_FILA", "FALHOU"].includes(m.estado) || !m.fornecedorId) {
+  if (
+    !["BLOQUEADA", "NA_FILA", "FALHOU"].includes(m.estado) ||
+    !m.fornecedorId
+  ) {
     throw new Error("O destino desta mensagem não pode mais mudar.");
   }
   const fornecedor = await db.fornecedor.findFirst({
     where: { id: m.fornecedorId, organizacaoId: ctx.organizacao.id },
-    select: { ativo: true, excluidoEm: true, telefonePedidos: true, autorizadoMensagens: true },
+    select: {
+      ativo: true,
+      excluidoEm: true,
+      telefonePedidos: true,
+      autorizadoMensagens: true,
+    },
   });
   const motivo = bloqueio(fornecedor);
 
@@ -483,16 +517,23 @@ export async function atualizarDestino(ctx: ContextoSessao, id: string): Promise
  * ligado, o relógio a mandaria de novo — e o fornecedor receberia dois
  * pedidos iguais.
  */
-export async function marcarEnviadaAMao(ctx: ContextoSessao, id: string): Promise<void> {
+export async function marcarEnviadaAMao(
+  ctx: ContextoSessao,
+  id: string,
+): Promise<void> {
   exigir(ctx, "compras.enviar", "marcar mensagens como enviadas");
   const m = await daOrganizacao(ctx, id);
   if (m.estado === "ENVIANDO") {
-    throw new Error("Esta mensagem está saindo agora pelo canal. Espere um minuto.");
+    throw new Error(
+      "Esta mensagem está saindo agora pelo canal. Espere um minuto.",
+    );
   }
   if (m.enviadaAMaoEm) return;
 
   const agora = new Date();
-  const aindaIaSair = ["BLOQUEADA", "NA_FILA", "FALHOU", "INCERTA"].includes(m.estado);
+  const aindaIaSair = ["BLOQUEADA", "NA_FILA", "FALHOU", "INCERTA"].includes(
+    m.estado,
+  );
 
   await db.$transaction(async (tx) => {
     await tx.mensagemAoFornecedor.update({
@@ -512,7 +553,10 @@ export async function marcarEnviadaAMao(ctx: ContextoSessao, id: string): Promis
     if (m.referenciaTipo === "Pedido") {
       await tx.pedido.updateMany({
         where: { id: m.referenciaId, enviadoManualmenteEm: null },
-        data: { enviadoManualmenteEm: agora, enviadoManualmentePorId: ctx.usuario.id },
+        data: {
+          enviadoManualmenteEm: agora,
+          enviadoManualmentePorId: ctx.usuario.id,
+        },
       });
     }
     await registrar(tx, ctx, {
@@ -521,7 +565,10 @@ export async function marcarEnviadaAMao(ctx: ContextoSessao, id: string): Promis
       acao: "ALTEROU",
       unidadeId: m.unidadeId,
       antes: { estado: m.estado },
-      depois: { enviadaAMao: true, estado: aindaIaSair ? "CANCELADA" : m.estado },
+      depois: {
+        enviadaAMao: true,
+        estado: aindaIaSair ? "CANCELADA" : m.estado,
+      },
     });
   });
 }
@@ -546,7 +593,9 @@ export async function pausarCanal(
 ): Promise<void> {
   exigir(ctx, "compras.enviar", "pausar o envio");
   if (pausar && !motivo?.trim()) {
-    throw new Error("Diga por que o envio está sendo pausado — aparece para todos no painel.");
+    throw new Error(
+      "Diga por que o envio está sendo pausado — aparece para todos no painel.",
+    );
   }
   await db.canalDeCompras.upsert({
     where: { organizacaoId: ctx.organizacao.id },
@@ -598,7 +647,10 @@ export async function definirDestinoDeTeste(
  * Envio de teste: vai SÓ para o número de teste. Sem número de teste, não há
  * teste — nunca cai no telefone de um fornecedor por omissão.
  */
-export async function enviarTeste(ctx: ContextoSessao, texto: string): Promise<string> {
+export async function enviarTeste(
+  ctx: ContextoSessao,
+  texto: string,
+): Promise<string> {
   exigir(ctx, "compras.enviar", "enviar mensagem de teste");
   const canal = await canalDaOrganizacao(ctx.organizacao.id);
   if (!canal.destinoTeste) {

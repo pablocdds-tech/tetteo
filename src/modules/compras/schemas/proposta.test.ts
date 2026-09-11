@@ -20,7 +20,10 @@ const item = (
   ...resto,
 });
 
-const resposta = (itens: RespostaBruta["itens"], resto: Partial<RespostaBruta> = {}) => ({
+const resposta = (
+  itens: RespostaBruta["itens"],
+  resto: Partial<RespostaBruta> = {},
+) => ({
   frete: "",
   pedidoMinimo: "",
   prazoEntregaDias: "",
@@ -81,7 +84,9 @@ describe("resposta do fornecedor", () => {
   });
 
   test("frete vazio é 'não informado'; frete zero é frete zero", () => {
-    const vazio = validarResposta(resposta([item("a")]), { permitirZero: false });
+    const vazio = validarResposta(resposta([item("a")]), {
+      permitirZero: false,
+    });
     assert.ok(vazio.ok && vazio.resposta.frete === null);
     const zero = validarResposta(resposta([item("a")], { frete: "0" }), {
       permitirZero: false,
@@ -98,14 +103,19 @@ describe("resposta do fornecedor", () => {
   });
 
   test("item repetido é recusado", () => {
-    const r = validarResposta(resposta([item("a"), item("a")]), { permitirZero: false });
+    const r = validarResposta(resposta([item("a"), item("a")]), {
+      permitirZero: false,
+    });
     assert.equal(r.ok, false);
   });
 
   test("preço ambíguo é recusado com explicação", () => {
-    const r = validarResposta(resposta([item("a", { precoEmbalagem: "1.200" })]), {
-      permitirZero: false,
-    });
+    const r = validarResposta(
+      resposta([item("a", { precoEmbalagem: "1.200" })]),
+      {
+        permitirZero: false,
+      },
+    );
     assert.match(!r.ok ? r.erros["preco:a"] : "", /vírgula/);
   });
 

@@ -96,9 +96,18 @@ describe("a fila", () => {
     const [id] = await naFila(1);
     const agora = new Date();
     await reivindicar("r1", 8, agora);
-    await marcarResultado(id, "r1", { tipo: "incerta", erro: "tempo esgotado" }, SIMULADOR, agora);
+    await marcarResultado(
+      id,
+      "r1",
+      { tipo: "incerta", erro: "tempo esgotado" },
+      SIMULADOR,
+      agora,
+    );
     assert.equal(await estado(id), "INCERTA");
-    assert.deepEqual(await reivindicar("r2", 8, new Date(agora.getTime() + 60 * MIN)), []);
+    assert.deepEqual(
+      await reivindicar("r2", 8, new Date(agora.getTime() + 60 * MIN)),
+      [],
+    );
   });
 
   test("recusada antes de sair: espera crescente, e falha de vez na quinta", async () => {
@@ -110,13 +119,19 @@ describe("a fila", () => {
       await marcarResultado(
         id,
         "r1",
-        { tipo: "recusada-antes", erro: "conexão recusada", tentarDeNovo: true },
+        {
+          tipo: "recusada-antes",
+          erro: "conexão recusada",
+          tentarDeNovo: true,
+        },
         SIMULADOR,
         new Date(t),
       );
       t += 30 * MIN;
     }
-    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({ where: { id } });
+    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({
+      where: { id },
+    });
     assert.equal(m.estado, "FALHOU");
     assert.equal(m.tentativas, 5);
   });
@@ -127,7 +142,11 @@ describe("a fila", () => {
     await marcarResultado(
       id,
       "r1",
-      { tipo: "recusada-antes", erro: "número inexistente", tentarDeNovo: false },
+      {
+        tipo: "recusada-antes",
+        erro: "número inexistente",
+        tentarDeNovo: false,
+      },
       SIMULADOR,
       new Date(),
     );
@@ -141,8 +160,16 @@ describe("a fila", () => {
     assert.equal(await vencerTravas(new Date(agora + 3 * MIN)), 1);
     assert.equal(await estado(id), "INCERTA");
 
-    await marcarResultado(id, "r1", { tipo: "aceita", idProvedor: "SIM-1" }, SIMULADOR, new Date());
-    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({ where: { id } });
+    await marcarResultado(
+      id,
+      "r1",
+      { tipo: "aceita", idProvedor: "SIM-1" },
+      SIMULADOR,
+      new Date(),
+    );
+    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({
+      where: { id },
+    });
     assert.equal(m.estado, "ACEITA_PELO_CANAL");
     assert.equal(m.idProvedor, "SIM-1");
     assert.equal(m.simulada, true);
@@ -153,7 +180,13 @@ describe("a fila", () => {
     const agora = new Date();
     await reivindicar("r1", 8, agora);
     for (const id of [um, dois]) {
-      await marcarResultado(id, "r1", { tipo: "incerta", erro: "?" }, SIMULADOR, agora);
+      await marcarResultado(
+        id,
+        "r1",
+        { tipo: "incerta", erro: "?" },
+        SIMULADOR,
+        agora,
+      );
     }
     await aplicarConsulta(um, "nao-encontrada", agora);
     await aplicarConsulta(dois, "aceita", agora);
@@ -164,10 +197,19 @@ describe("a fila", () => {
   test("incerta decidida por pessoa exige permissão, e fica auditada", async () => {
     const [id] = await naFila(1);
     await reivindicar("r1", 8, new Date());
-    await marcarResultado(id, "r1", { tipo: "incerta", erro: "?" }, SIMULADOR, new Date());
+    await marcarResultado(
+      id,
+      "r1",
+      { tipo: "incerta", erro: "?" },
+      SIMULADOR,
+      new Date(),
+    );
 
     const gerente = await c.ctx(c.gerenteCentro, c.centro);
-    await assert.rejects(() => resolverIncerta(gerente, id, "reenviar"), SemPermissao);
+    await assert.rejects(
+      () => resolverIncerta(gerente, id, "reenviar"),
+      SemPermissao,
+    );
 
     const comprador = await c.ctx(c.comprador, null);
     await resolverIncerta(comprador, id, "reenviar");
@@ -203,12 +245,16 @@ describe("o destino", () => {
     });
 
     const comprador = await c.ctx(c.comprador, null);
-    const antes = (await painelDeEnvios(comprador)).mensagens.find((m) => m.id === id)!;
+    const antes = (await painelDeEnvios(comprador)).mensagens.find(
+      (m) => m.id === id,
+    )!;
     assert.equal(antes.destino, "5500000000001");
     assert.equal(antes.destinoMudou, true);
 
     await atualizarDestino(comprador, id);
-    const depois = await db.mensagemAoFornecedor.findUniqueOrThrow({ where: { id } });
+    const depois = await db.mensagemAoFornecedor.findUniqueOrThrow({
+      where: { id },
+    });
     assert.equal(depois.destino, "5500000000099");
     assert.equal(depois.estado, "NA_FILA");
   });
@@ -226,7 +272,9 @@ describe("o destino", () => {
     await definirDestinoDeTeste(diretor, "(84) 99999-0000");
 
     const id = await enviarTeste(comprador, "oi");
-    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({ where: { id } });
+    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({
+      where: { id },
+    });
     assert.equal(m.destino, "5584999990000");
     assert.equal(m.fornecedorId, null);
     assert.equal(m.ehTeste, true);
@@ -248,7 +296,9 @@ describe("o canal", () => {
     const [id] = await naFila(1);
     const comprador = await c.ctx(c.comprador, null);
     await marcarEnviadaAMao(comprador, id);
-    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({ where: { id } });
+    const m = await db.mensagemAoFornecedor.findUniqueOrThrow({
+      where: { id },
+    });
     assert.equal(m.estado, "CANCELADA");
     assert.ok(m.enviadaAMaoEm);
     assert.deepEqual(await reivindicar("r1", 8, new Date()), []);

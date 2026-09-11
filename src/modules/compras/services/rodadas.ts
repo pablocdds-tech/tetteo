@@ -85,7 +85,11 @@ export async function criarRodada(
       "O prazo da cotação precisa vir depois do prazo das requisições.",
     );
   }
-  if (dados.entregaDe && dados.entregaAte && dados.entregaAte < dados.entregaDe) {
+  if (
+    dados.entregaDe &&
+    dados.entregaAte &&
+    dados.entregaAte < dados.entregaDe
+  ) {
     throw new Error("A janela de entrega termina antes de começar.");
   }
 
@@ -224,7 +228,9 @@ async function nomesDeLojas(ids: string[]) {
   return new Map(unidades.map((u) => [u.id, u.nome]));
 }
 
-export type RodadaCompleta = NonNullable<Awaited<ReturnType<typeof obterRodada>>>;
+export type RodadaCompleta = NonNullable<
+  Awaited<ReturnType<typeof obterRodada>>
+>;
 
 export async function obterRodada(ctx: ContextoSessao, id: string) {
   exigir(ctx, "compras.ver", "ver compras");
@@ -391,11 +397,16 @@ export async function moverRodada(
 
       if (dados.para === "APROVADA") {
         const pendentes = await tx.pedido.count({
-          where: { rodadaId: id, status: { in: ["RASCUNHO", "AGUARDANDO_APROVACAO"] } },
+          where: {
+            rodadaId: id,
+            status: { in: ["RASCUNHO", "AGUARDANDO_APROVACAO"] },
+          },
         });
         const total = await tx.pedido.count({ where: { rodadaId: id } });
         if (total === 0) {
-          throw new Error("A rodada ainda não tem pedidos. Gere os pedidos a partir da comparação.");
+          throw new Error(
+            "A rodada ainda não tem pedidos. Gere os pedidos a partir da comparação.",
+          );
         }
         if (pendentes > 0) {
           throw new Error(
@@ -410,10 +421,15 @@ export async function moverRodada(
             referenciaTipo: "Pedido",
             referenciaId: {
               in: (
-                await tx.pedido.findMany({ where: { rodadaId: id }, select: { id: true } })
+                await tx.pedido.findMany({
+                  where: { rodadaId: id },
+                  select: { id: true },
+                })
               ).map((p) => p.id),
             },
-            estado: { in: ["BLOQUEADA", "NA_FILA", "ENVIANDO", "INCERTA", "FALHOU"] },
+            estado: {
+              in: ["BLOQUEADA", "NA_FILA", "ENVIANDO", "INCERTA", "FALHOU"],
+            },
           },
         });
         if (abertas > 0) {
@@ -442,7 +458,9 @@ export async function moverRodada(
       // Com a linha travada isto não deveria acontecer; se acontecer, a
       // transação inteira volta em vez de gravar meio estado.
       if (escrita.count !== 1) {
-        throw new RodadaMudou("A rodada mudou enquanto você olhava. Recarregue.");
+        throw new RodadaMudou(
+          "A rodada mudou enquanto você olhava. Recarregue.",
+        );
       }
 
       await registrar(tx, ctx, {
@@ -536,7 +554,9 @@ async function consolidar(
       rodadaId,
       insumoId,
       quantidadeTotal: paraDecimal(total, CASAS.milesimos),
-      modo: fixoDe.has(insumoId) ? ("DIRECIONADO" as const) : ("COTAVEL" as const),
+      modo: fixoDe.has(insumoId)
+        ? ("DIRECIONADO" as const)
+        : ("COTAVEL" as const),
       fornecedorFixoId: fixoDe.get(insumoId) ?? null,
       ordem,
     })),

@@ -44,7 +44,10 @@ export async function rodarRelogio(
   for (const m of await incertasParaConsultar()) {
     // Só o canal que tentou sabe responder sobre a própria mensagem.
     if (m.canal && m.canal !== canal.nome) continue;
-    const consulta = await canal.consultar({ chave: m.chave, idProvedor: m.idProvedor });
+    const consulta = await canal.consultar({
+      chave: m.chave,
+      idProvedor: m.idProvedor,
+    });
     await aplicarConsulta(m.id, consulta, agora);
     if (consulta !== "desconhecido") conferidas++;
   }
@@ -78,7 +81,11 @@ export async function rodarRelogio(
       continue;
     }
 
-    const resultado = await canal.enviar({ destino: m.destino, texto, chave: m.chave });
+    const resultado = await canal.enviar({
+      destino: m.destino,
+      texto,
+      chave: m.chave,
+    });
     await marcarResultado(m.id, opcoes.dono, resultado, identidade, new Date());
     if (resultado.tipo === "aceita") enviadas++;
     else if (resultado.tipo === "incerta") incertas++;

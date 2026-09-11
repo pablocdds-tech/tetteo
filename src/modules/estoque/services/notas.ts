@@ -253,8 +253,21 @@ async function recalcularTotal(notaId: string) {
  * Os insumos são TRAVADOS (em ordem, para duas notas nunca se esperarem em
  * cruz): duas entradas do mesmo queijo ao mesmo tempo não calculam a média a
  * partir do mesmo saldo antigo.
+ *
+ * A trava é `FOR NO KEY UPDATE`, e não `FOR UPDATE`: todo INSERT que aponta
+ * para o insumo (movimento, item de nota, item de pedido) confere a chave
+ * estrangeira com `FOR KEY SHARE`, que colide com `FOR UPDATE` mas não com
+ * `FOR NO KEY UPDATE`. Com `FOR UPDATE`, o inventário (que trava a posição e
+ * depois grava o movimento) e esta função (que trava o insumo e depois mexe
+ * na posição) se esperariam em cruz. Duas notas do mesmo insumo continuam em
+ * fila — `NO KEY UPDATE` colide com ele mesmo.
  */
 async function postarNota(tx: Tx, notaId: string, usuarioId: string) {
+  // A nota primeiro, na ordem de travas combinada com o Inventário (nota →
+  // insumo → posição). Dois "lançar" ao mesmo tempo na mesma nota: o segundo
+  // espera, relê e encontra a nota já lançada — nunca dá entrada duas vezes.
+  await tx.$queryRaw`
+    SELECT "id" FROM "nota_entrada" WHERE "id" = ${notaId} FOR NO KEY UPDATE`;
   const nota = await tx.notaEntrada.findUniqueOrThrow({
     where: { id: notaId },
     include: { itens: true },
@@ -273,7 +286,7 @@ async function postarNota(tx: Tx, notaId: string, usuarioId: string) {
   const insumoIds = [...new Set(nota.itens.map((i) => i.insumoId))].sort();
   await tx.$queryRaw`
     SELECT "id" FROM "insumo" WHERE "id" IN (${Prisma.join(insumoIds)})
-    ORDER BY "id" FOR UPDATE`;
+    ORDER BY "id" FOR NO KEY UPDATE`;
 
   // O saldo atual de cada insumo na unidade INTEIRA: a média ponderada é do
   // insumo, não do lugar. O mesmo queijo não tem dois custos por estar em
@@ -298,7 +311,10 @@ async function postarNota(tx: Tx, notaId: string, usuarioId: string) {
 
   for (const insumoId of insumoIds) {
     const doInsumo = nota.itens.filter((i) => i.insumoId === insumoId);
-    const quantidadeEntrada = doInsumo.reduce((s, i) => s + Number(i.quantidade), 0);
+    const quantidadeEntrada = doInsumo.reduce(
+      (s, i) => s + Number(i.quantidade),
+      0,
+    );
     const valorEntrada = doInsumo.reduce((s, i) => s + Number(i.valorTotal), 0);
     const precoEntrada = valorEntrada / quantidadeEntrada;
 
@@ -478,14 +494,21 @@ export async function lancarEntradaDeRecebimento(
   if (!contexto.unidadesVisiveis.some((u) => u.id === dados.unidadeId)) {
     throw new SemPermissao("dar entrada em outra loja");
   }
-  if (dados.itens.length === 0) throw new Error("Nada entrou nesta conferência.");
+  if (dados.itens.length === 0)
+    throw new Error("Nada entrou nesta conferência.");
 
   const local = await tx.localEstoque.findFirst({
-    where: { id: dados.localDestinoId, unidadeId: dados.unidadeId, ativo: true },
+    where: {
+      id: dados.localDestinoId,
+      unidadeId: dados.unidadeId,
+      ativo: true,
+    },
     select: { id: true },
   });
   if (!local) {
-    throw new Error("Escolha onde a mercadoria foi guardada — um lugar desta loja.");
+    throw new Error(
+      "Escolha onde a mercadoria foi guardada — um lugar desta loja.",
+    );
   }
 
   const valorTotal = dados.itens
@@ -523,7 +546,10 @@ export async function lancarEntradaDeRecebimento(
     });
     notaId = nota.id;
   } catch (erro) {
-    if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === "P2002") {
+    if (
+      erro instanceof Prisma.PrismaClientKnownRequestError &&
+      erro.code === "P2002"
+    ) {
       throw new Error(
         "Esta nota (número e série) já foi lançada para este fornecedor. Vincule o recebimento a ela em vez de lançar de novo.",
       );
@@ -560,8 +586,17 @@ export async function lancarEntradaDeRecebimento(
 export async function vincularNotaAoRecebimento(
   tx: Tx,
   contexto: ContextoSessao,
-  dados: { notaId: string; unidadeId: string; fornecedorId: string; recebimentoId: string; pedidoId: string },
-): Promise<{ itens: { insumoId: string; quantidade: string; valorTotal: string }[]; valorTotal: string }> {
+  dados: {
+    notaId: string;
+    unidadeId: string;
+    fornecedorId: string;
+    recebimentoId: string;
+    pedidoId: string;
+  },
+): Promise<{
+  itens: { insumoId: string; quantidade: string; valorTotal: string }[];
+  valorTotal: string;
+}> {
   exigirEntrada(contexto);
 
   const r = await tx.notaEntrada.updateMany({
@@ -633,7 +668,9 @@ export async function registrarDevolucao(
       },
     });
     await tx.posicaoEstoque.upsert({
-      where: { localId_insumoId: { localId: dados.localId, insumoId: item.insumoId } },
+      where: {
+        localId_insumoId: { localId: dados.localId, insumoId: item.insumoId },
+      },
       update: { quantidade: { decrement: item.quantidade } },
       create: {
         unidadeId: dados.unidadeId,
@@ -646,7 +683,10 @@ export async function registrarDevolucao(
 }
 
 /** Notas lançadas deste fornecedor, nesta loja, ainda sem conferência ligada. */
-export async function notasParaVincular(contexto: ContextoSessao, fornecedorId: string) {
+export async function notasParaVincular(
+  contexto: ContextoSessao,
+  fornecedorId: string,
+) {
   const unidade = exigirUnidade(contexto);
   return db.notaEntrada.findMany({
     where: {
@@ -656,7 +696,13 @@ export async function notasParaVincular(contexto: ContextoSessao, fornecedorId: 
       recebimentoId: null,
       recebidaEm: { gte: new Date(Date.now() - 60 * 86_400_000) },
     },
-    select: { id: true, numero: true, serie: true, recebidaEm: true, valorTotal: true },
+    select: {
+      id: true,
+      numero: true,
+      serie: true,
+      recebidaEm: true,
+      valorTotal: true,
+    },
     orderBy: { recebidaEm: "desc" },
   });
 }

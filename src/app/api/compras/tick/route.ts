@@ -31,5 +31,9 @@ export async function POST(request: Request) {
   }
   const canal = canalAtivo();
   const resultado = await rodarRelogio(canal, { dono: `tick-${randomUUID()}` });
-  return NextResponse.json({ canal: canal.nome, simulado: canal.simulado, ...resultado });
+  return NextResponse.json({
+    canal: canal.nome,
+    simulado: canal.simulado,
+    ...resultado,
+  });
 }

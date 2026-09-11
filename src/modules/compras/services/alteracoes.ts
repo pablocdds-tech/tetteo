@@ -83,7 +83,8 @@ export async function criarAdendo(
   exigir(ctx, "compras.pedir", "fazer adendos");
   const texto = motivo.trim();
   if (!texto) throw new Error("Diga por que o adendo é necessário.");
-  if (itens.length === 0) throw new Error("O adendo precisa de ao menos um item.");
+  if (itens.length === 0)
+    throw new Error("O adendo precisa de ao menos um item.");
 
   const quantidades = new Map<string, Milesimos>();
   for (const i of itens) {
@@ -94,8 +95,10 @@ export async function criarAdendo(
       if (erro instanceof NumeroInvalido) throw new Error(erro.message);
       throw erro;
     }
-    if (q === null || q <= 0n) throw new Error("Quantidade do adendo precisa ser maior que zero.");
-    if (quantidades.has(i.insumoId)) throw new Error("Insumo repetido no adendo.");
+    if (q === null || q <= 0n)
+      throw new Error("Quantidade do adendo precisa ser maior que zero.");
+    if (quantidades.has(i.insumoId))
+      throw new Error("Insumo repetido no adendo.");
     quantidades.set(i.insumoId, q);
   }
 
@@ -110,15 +113,22 @@ export async function criarAdendo(
         throw new Error("Pedido não encontrado.");
       }
       if (origem.pedidoOrigemId) {
-        throw new Error("Faça o adendo no pedido original, não em outro adendo.");
+        throw new Error(
+          "Faça o adendo no pedido original, não em outro adendo.",
+        );
       }
       if (origem.status !== "APROVADO") {
-        throw new Error("Adendo só vale para pedido aprovado e ainda em aberto.");
+        throw new Error(
+          "Adendo só vale para pedido aprovado e ainda em aberto.",
+        );
       }
 
       const pedido = await tx.pedido.findUniqueOrThrow({
         where: { id: pedidoOrigemId },
-        include: { itens: true, rodada: { select: { id: true, estado: true } } },
+        include: {
+          itens: true,
+          rodada: { select: { id: true, estado: true } },
+        },
       });
       if (pedido.rodada?.estado === "FECHADA") {
         throw new Error(
@@ -127,7 +137,10 @@ export async function criarAdendo(
       }
 
       const insumos = await tx.insumo.findMany({
-        where: { id: { in: [...quantidades.keys()] }, organizacaoId: ctx.organizacao.id },
+        where: {
+          id: { in: [...quantidades.keys()] },
+          organizacaoId: ctx.organizacao.id,
+        },
         select: { id: true, nome: true, unidadeMedida: true },
       });
 
@@ -146,7 +159,10 @@ export async function criarAdendo(
             necessario,
             nomeEmbalagem: noOriginal.nomeEmbalagem,
             pecas: noOriginal.pecas,
-            conteudo: noOriginal.conteudo === null ? null : fatorDoBanco(noOriginal.conteudo),
+            conteudo:
+              noOriginal.conteudo === null
+                ? null
+                : fatorDoBanco(noOriginal.conteudo),
             unidadeConteudo: noOriginal.unidadeConteudo,
             fracionavel: noOriginal.fracionavel,
             fator: fatorDoBanco(noOriginal.fatorConversao),
@@ -182,7 +198,8 @@ export async function criarAdendo(
             necessario,
             nomeEmbalagem: oferta.nomeEmbalagem,
             pecas: oferta.pecas,
-            conteudo: oferta.conteudo === null ? null : fatorDoBanco(oferta.conteudo),
+            conteudo:
+              oferta.conteudo === null ? null : fatorDoBanco(oferta.conteudo),
             unidadeConteudo: oferta.unidadeConteudo,
             fracionavel: oferta.fracionavel,
             fator: fatorDoBanco(oferta.fator!),
@@ -216,7 +233,10 @@ export async function criarAdendo(
           necessario,
           nomeEmbalagem: referencia.nomeEmbalagem,
           pecas: referencia.pecas,
-          conteudo: referencia.conteudo === null ? null : fatorDoBanco(referencia.conteudo),
+          conteudo:
+            referencia.conteudo === null
+              ? null
+              : fatorDoBanco(referencia.conteudo),
           unidadeConteudo: referencia.unidadeConteudo,
           fracionavel: referencia.fracionavel,
           fator: fatorDoBanco(referencia.fator!),
@@ -269,7 +289,10 @@ export async function criarAdendo(
               unidadeEstoque: l.unidade as Unidade,
               nomeEmbalagem: l.nomeEmbalagem,
               pecas: l.pecas,
-              conteudo: l.conteudo === null ? null : paraDecimal(l.conteudo, CASAS.dezMilesimos),
+              conteudo:
+                l.conteudo === null
+                  ? null
+                  : paraDecimal(l.conteudo, CASAS.dezMilesimos),
               unidadeConteudo: l.unidadeConteudo,
               fracionavel: l.fracionavel,
               fatorConversao: paraDecimal(l.fator, CASAS.dezMilesimos),
@@ -322,7 +345,8 @@ export async function criarAlteracao(
 ): Promise<string> {
   exigir(ctx, "compras.pedir", "alterar pedidos");
   const motivo = dados.motivo.trim();
-  if (!motivo) throw new Error("Diga o motivo — ele vai junto para o fornecedor.");
+  if (!motivo)
+    throw new Error("Diga o motivo — ele vai junto para o fornecedor.");
 
   return db.$transaction(
     async (tx) => {
@@ -343,7 +367,9 @@ export async function criarAlteracao(
       }
       // A sequência vem do ORIGINAL — travado depois do próprio pedido, sempre
       // nesta ordem, para duas alterações nunca se esperarem em cruz.
-      const raiz = linha.pedidoOrigemId ? await travar(tx, linha.pedidoOrigemId) : linha;
+      const raiz = linha.pedidoOrigemId
+        ? await travar(tx, linha.pedidoOrigemId)
+        : linha;
 
       const pedido = await tx.pedido.findUniqueOrThrow({
         where: { id: pedidoId },
@@ -362,7 +388,10 @@ export async function criarAlteracao(
 
       const recebidoDe = (i: (typeof pedido.itens)[number]) =>
         i.itensRecebidos.reduce(
-          (s, r) => s + milesimosDoBanco(r.quantidadeBoa) + milesimosDoBanco(r.quantidadeAvariada),
+          (s, r) =>
+            s +
+            milesimosDoBanco(r.quantidadeBoa) +
+            milesimosDoBanco(r.quantidadeAvariada),
           0n,
         );
 
@@ -386,19 +415,30 @@ export async function criarAlteracao(
 
       for (const { item, depoisTexto } of alvos) {
         const fator = fatorDoBanco(item.fatorConversao);
-        const qtdAntes = milesimosDoBanco(item.quantidade) - milesimosDoBanco(item.quantidadeCancelada);
-        const embAntes = item.fracionavel ? qtdAntes : (qtdAntes * 10_000n) / fator;
+        const qtdAntes =
+          milesimosDoBanco(item.quantidade) -
+          milesimosDoBanco(item.quantidadeCancelada);
+        const embAntes = item.fracionavel
+          ? qtdAntes
+          : (qtdAntes * 10_000n) / fator;
 
         let depois: bigint | null;
         try {
-          depois = digitado(depoisTexto, item.fracionavel ? CASAS.milesimos : 0);
+          depois = digitado(
+            depoisTexto,
+            item.fracionavel ? CASAS.milesimos : 0,
+          );
         } catch (erro) {
-          if (erro instanceof NumeroInvalido) throw new Error(`${item.insumoNome}: ${erro.message}`);
+          if (erro instanceof NumeroInvalido)
+            throw new Error(`${item.insumoNome}: ${erro.message}`);
           throw erro;
         }
-        if (depois === null) throw new Error(`${item.insumoNome}: informe a nova quantidade.`);
+        if (depois === null)
+          throw new Error(`${item.insumoNome}: informe a nova quantidade.`);
         const embDepois = item.fracionavel ? depois : depois * 1000n;
-        const qtdDepois = item.fracionavel ? depois : quantidadeDeEmbalagens(depois, fator);
+        const qtdDepois = item.fracionavel
+          ? depois
+          : quantidadeDeEmbalagens(depois, fator);
 
         if (qtdDepois >= qtdAntes) {
           throw new Error(
@@ -415,7 +455,10 @@ export async function criarAlteracao(
       }
 
       const sequencia = raiz!.ultimaSequencia + 1;
-      await tx.pedido.update({ where: { id: raiz!.id }, data: { ultimaSequencia: sequencia } });
+      await tx.pedido.update({
+        where: { id: raiz!.id },
+        data: { ultimaSequencia: sequencia },
+      });
 
       const alteracao = await tx.alteracaoDePedido.create({
         data: {
@@ -451,7 +494,9 @@ export async function criarAlteracao(
         });
       }
 
-      const cancelouTudo = mudancas.length === pedido.itens.length && mudancas.every((m) => m.qtdDepois === 0n);
+      const cancelouTudo =
+        mudancas.length === pedido.itens.length &&
+        mudancas.every((m) => m.qtdDepois === 0n);
       if (dados.tipo === "CANCELAMENTO" || cancelouTudo) {
         await tx.pedido.update({
           where: { id: pedidoId },
@@ -463,7 +508,10 @@ export async function criarAlteracao(
           },
         });
       } else {
-        await tx.pedido.update({ where: { id: pedidoId }, data: { versao: { increment: 1 } } });
+        await tx.pedido.update({
+          where: { id: pedidoId },
+          data: { versao: { increment: 1 } },
+        });
       }
 
       const organizacao = await tx.organizacao.findUniqueOrThrow({
@@ -533,9 +581,14 @@ export async function registrarConcordancia(
 ): Promise<void> {
   exigir(ctx, "compras.pedir", "registrar a resposta do fornecedor");
   const conteudo = texto.trim();
-  if (!conteudo) throw new Error("Copie ou resuma o que o fornecedor respondeu.");
+  if (!conteudo)
+    throw new Error("Copie ou resuma o que o fornecedor respondeu.");
   const r = await db.alteracaoDePedido.updateMany({
-    where: { id: alteracaoId, organizacaoId: ctx.organizacao.id, concordancia: "PENDENTE" },
+    where: {
+      id: alteracaoId,
+      organizacaoId: ctx.organizacao.id,
+      concordancia: "PENDENTE",
+    },
     data: {
       concordancia: resposta,
       concordanciaTexto: conteudo.slice(0, 500),
@@ -543,7 +596,8 @@ export async function registrarConcordancia(
       concordanciaPorId: ctx.usuario.id,
     },
   });
-  if (r.count !== 1) throw new Error("Esta alteração não está aguardando resposta.");
+  if (r.count !== 1)
+    throw new Error("Esta alteração não está aguardando resposta.");
   await registrar(db, ctx, {
     entidade: "AlteracaoDePedido",
     entidadeId: alteracaoId,

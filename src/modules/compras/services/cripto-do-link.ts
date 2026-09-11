@@ -65,7 +65,11 @@ export function decifrar(cifrado: string): string {
   ]).toString("utf8");
 }
 
-export function novoCodigo(): { codigo: string; hash: string; cifrado: string } {
+export function novoCodigo(): {
+  codigo: string;
+  hash: string;
+  cifrado: string;
+} {
   const codigo = randomBytes(32).toString("base64url");
   return { codigo, hash: hashDoCodigo(codigo), cifrado: cifrar(codigo) };
 }

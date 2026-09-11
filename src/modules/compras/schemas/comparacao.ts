@@ -148,7 +148,10 @@ function celulaDe(
   necessario: Milesimos,
   proposta: PropostaParaComparar,
 ): Celula {
-  const vazia = (estado: EstadoDaCelula, extra: Partial<Celula> = {}): Celula => ({
+  const vazia = (
+    estado: EstadoDaCelula,
+    extra: Partial<Celula> = {},
+  ): Celula => ({
     fornecedorId: proposta.fornecedorId,
     itemDePropostaId: null,
     estado,
@@ -167,7 +170,8 @@ function celulaDe(
     ...extra,
   });
 
-  if (!proposta.itensSolicitados.includes(item.id)) return vazia("nao-solicitado");
+  if (!proposta.itensSolicitados.includes(item.id))
+    return vazia("nao-solicitado");
 
   const oferta = proposta.ofertas.find((o) => o.itemId === item.id);
   if (!oferta) return vazia("sem-resposta");
@@ -249,7 +253,8 @@ export function montarGrade(
       if (
         !melhor ||
         c.custo! < melhor.custo! ||
-        (c.custo === melhor.custo && c.precoPorUnidade! < melhor.precoPorUnidade!)
+        (c.custo === melhor.custo &&
+          c.precoPorUnidade! < melhor.precoPorUnidade!)
       ) {
         melhor = c;
       }
@@ -262,7 +267,9 @@ export function montarGrade(
     const minhas = linhas
       .map((l) => l.celulas.find((c) => c.fornecedorId === p.fornecedorId)!)
       .filter((c) => c.comparavel);
-    const solicitados = disputados.filter((i) => p.itensSolicitados.includes(i.id));
+    const solicitados = disputados.filter((i) =>
+      p.itensSolicitados.includes(i.id),
+    );
 
     const porLoja = new Map<string, Centavos>();
     for (const c of minhas) {
@@ -272,7 +279,8 @@ export function montarGrade(
     }
     const lojasAtendidas = [...porLoja.values()].filter((v) => v > 0n).length;
     const subtotal = minhas.reduce((s, c) => s + c.custo!, 0n);
-    const freteTotal = p.frete === null ? null : p.frete * BigInt(lojasAtendidas);
+    const freteTotal =
+      p.frete === null ? null : p.frete * BigInt(lojasAtendidas);
 
     return {
       fornecedorId: p.fornecedorId,
@@ -300,7 +308,11 @@ export function montarGrade(
 // --------------------------------------------------------------- A SUGESTÃO
 
 export type Sugestao = {
-  escolhas: { itemId: string; fornecedorId: string; itemDePropostaId: string }[];
+  escolhas: {
+    itemId: string;
+    fornecedorId: string;
+    itemDePropostaId: string;
+  }[];
   mercadoria: Centavos;
   frete: Centavos;
   total: Centavos;
@@ -320,7 +332,10 @@ export type ResultadoDaSugestao =
 
 export const MAX_FORNECEDORES_NA_COMBINACAO = 12;
 
-export function sugerirMenorCusto(grade: Grade, propostas: PropostaParaComparar[]): ResultadoDaSugestao {
+export function sugerirMenorCusto(
+  grade: Grade,
+  propostas: PropostaParaComparar[],
+): ResultadoDaSugestao {
   const fora: Sugestao["fora"] = [];
   const elegiveis: PropostaParaComparar[] = [];
 
@@ -381,7 +396,8 @@ export function sugerirMenorCusto(grade: Grade, propostas: PropostaParaComparar[
     let mercadoria = 0n;
     for (const c of escolhas.values()) {
       mercadoria += c.custo!;
-      const lojas = porFornecedorLoja.get(c.fornecedorId) ?? new Map<string, Centavos>();
+      const lojas =
+        porFornecedorLoja.get(c.fornecedorId) ?? new Map<string, Centavos>();
       for (const l of c.porLoja) {
         lojas.set(l.unidadeId, (lojas.get(l.unidadeId) ?? 0n) + l.custo);
       }
@@ -409,7 +425,11 @@ export function sugerirMenorCusto(grade: Grade, propostas: PropostaParaComparar[
     };
   };
 
-  const empacotar = (a: Avaliacao, metodo: Sugestao["metodo"], avisos: string[]): ResultadoDaSugestao => ({
+  const empacotar = (
+    a: Avaliacao,
+    metodo: Sugestao["metodo"],
+    avisos: string[],
+  ): ResultadoDaSugestao => ({
     ok: true,
     sugestao: {
       escolhas: [...a.escolhas].map(([itemId, c]) => ({
@@ -432,7 +452,11 @@ export function sugerirMenorCusto(grade: Grade, propostas: PropostaParaComparar[
     const a = avaliar(idsElegiveis)!;
     return empacotar(a, "por-item", [
       `Com ${elegiveis.length} fornecedores, a sugestão pega o mais barato de cada item e não testa as combinações.`,
-      ...(a.minimosOk ? [] : ["Algum fornecedor pode não atingir o pedido mínimo nesta sugestão — confira."]),
+      ...(a.minimosOk
+        ? []
+        : [
+            "Algum fornecedor pode não atingir o pedido mínimo nesta sugestão — confira.",
+          ]),
     ]);
   }
 
@@ -475,4 +499,3 @@ export function precisaJustificar(
   const sugerida = sugestao.escolhas.find((e) => e.itemId === itemId);
   return !!sugerida && sugerida.fornecedorId !== fornecedorId;
 }
-

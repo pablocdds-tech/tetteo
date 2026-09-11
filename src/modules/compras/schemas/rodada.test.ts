@@ -45,11 +45,17 @@ describe("transições da rodada", () => {
 
 describe("a semana da rodada automática", () => {
   test("1º de janeiro de 2026 (quinta) é a semana 1", () => {
-    assert.equal(ocorrenciaDaSemana(new Date("2026-01-01T12:00:00Z"), SP), "2026-W01");
+    assert.equal(
+      ocorrenciaDaSemana(new Date("2026-01-01T12:00:00Z"), SP),
+      "2026-W01",
+    );
   });
 
   test("31 de dezembro de 2026 é a semana 53", () => {
-    assert.equal(ocorrenciaDaSemana(new Date("2026-12-31T12:00:00Z"), SP), "2026-W53");
+    assert.equal(
+      ocorrenciaDaSemana(new Date("2026-12-31T12:00:00Z"), SP),
+      "2026-W53",
+    );
   });
 
   test("domingo 23h30 em São Paulo ainda é a semana do domingo", () => {

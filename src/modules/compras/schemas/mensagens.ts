@@ -54,7 +54,8 @@ function cabecalho(c: Cabecalho, titulo: string): string[] {
 
 function linhas(itens: LinhaDaMensagem[]): string[] {
   return itens.map(
-    (l) => `• ${l.nome}: ${l.quanto} = ${l.quantidade} · ${l.preco} → ${l.total}`,
+    (l) =>
+      `• ${l.nome}: ${l.quanto} = ${l.quantidade} · ${l.preco} → ${l.total}`,
   );
 }
 

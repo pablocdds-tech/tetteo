@@ -44,14 +44,20 @@ export async function salvarAgenda(
   }
   const nome = dados.nome.trim();
   if (nome.length < 2) throw new Error("Dê um nome à agenda.");
-  if (!Number.isInteger(dados.diaDaSemana) || dados.diaDaSemana < 0 || dados.diaDaSemana > 6) {
+  if (
+    !Number.isInteger(dados.diaDaSemana) ||
+    dados.diaDaSemana < 0 ||
+    dados.diaDaSemana > 6
+  ) {
     throw new Error("Escolha o dia da semana.");
   }
   if (!HORA.test(dados.horaAbertura)) {
     throw new Error("Informe a hora como 07:00.");
   }
   if (dados.horasParaCotacao <= dados.horasParaRequisicao) {
-    throw new Error("O prazo da cotação precisa vir depois do prazo das requisições.");
+    throw new Error(
+      "O prazo da cotação precisa vir depois do prazo das requisições.",
+    );
   }
   if (dados.entregaAteDias < dados.entregaDeDias) {
     throw new Error("A janela de entrega termina antes de começar.");
@@ -88,8 +94,16 @@ export async function salvarAgenda(
       entidade: "AgendaDeRodada",
       entidadeId: dados.id,
       acao: "ALTEROU",
-      antes: { diaDaSemana: antes.diaDaSemana, horaAbertura: antes.horaAbertura, ativa: antes.ativa },
-      depois: { diaDaSemana: campos.diaDaSemana, horaAbertura: campos.horaAbertura, ativa: campos.ativa },
+      antes: {
+        diaDaSemana: antes.diaDaSemana,
+        horaAbertura: antes.horaAbertura,
+        ativa: antes.ativa,
+      },
+      depois: {
+        diaDaSemana: campos.diaDaSemana,
+        horaAbertura: campos.horaAbertura,
+        ativa: campos.ativa,
+      },
     });
     return { id: dados.id };
   }
@@ -134,7 +148,9 @@ export async function abrirRodadasAgendadas(agora: Date): Promise<number> {
   const fusos = new Map(
     (
       await db.organizacao.findMany({
-        where: { id: { in: [...new Set(agendas.map((a) => a.organizacaoId))] } },
+        where: {
+          id: { in: [...new Set(agendas.map((a) => a.organizacaoId))] },
+        },
         select: { id: true, fusoHorario: true, ativa: true },
       })
     ).map((o) => [o.id, o]),
@@ -177,8 +193,12 @@ export async function abrirRodadasAgendadas(agora: Date): Promise<number> {
             prazoCotacao: new Date(
               abertura.getTime() + agenda.horasParaCotacao * HORA_MS,
             ),
-            entregaDe: new Date(abertura.getTime() + agenda.entregaDeDias * DIA_MS),
-            entregaAte: new Date(abertura.getTime() + agenda.entregaAteDias * DIA_MS),
+            entregaDe: new Date(
+              abertura.getTime() + agenda.entregaDeDias * DIA_MS,
+            ),
+            entregaAte: new Date(
+              abertura.getTime() + agenda.entregaAteDias * DIA_MS,
+            ),
             responsavelId: agenda.responsavelId,
           },
           select: { id: true },
@@ -195,7 +215,11 @@ export async function abrirRodadasAgendadas(agora: Date): Promise<number> {
           entidade: "RodadaDeCompra",
           entidadeId: rodada.id,
           acao: "CRIOU",
-          depois: { agenda: agenda.nome, ocorrencia, versaoDaAgenda: agenda.versao },
+          depois: {
+            agenda: agenda.nome,
+            ocorrencia,
+            versaoDaAgenda: agenda.versao,
+          },
         });
       });
       abertas++;

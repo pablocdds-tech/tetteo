@@ -28,6 +28,13 @@ export interface CanalDeFornecedor {
   nome: "simulador" | "whatsapp";
   /** Quando `true`, nada sai para fora — e a tela diz isso em voz alta. */
   simulado: boolean;
-  enviar(m: { destino: string; texto: string; chave: string }): Promise<ResultadoDoCanal>;
-  consultar(m: { chave: string; idProvedor: string | null }): Promise<ConsultaDoCanal>;
+  enviar(m: {
+    destino: string;
+    texto: string;
+    chave: string;
+  }): Promise<ResultadoDoCanal>;
+  consultar(m: {
+    chave: string;
+    idProvedor: string | null;
+  }): Promise<ConsultaDoCanal>;
 }

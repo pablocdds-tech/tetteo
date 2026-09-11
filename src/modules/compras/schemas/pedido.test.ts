@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { alcadaQueAprova, limiteDaPessoa, type Alcada } from "./alcada";
-import { conferirTotal, montarLinha, montarPedido, type EntradaDaLinha } from "./pedido";
+import {
+  conferirTotal,
+  montarLinha,
+  montarPedido,
+  type EntradaDaLinha,
+} from "./pedido";
 
 const entrada = (resto: Partial<EntradaDaLinha> = {}): EntradaDaLinha => ({
   insumoId: "molho",
@@ -33,7 +38,12 @@ describe("linhas do pedido", () => {
 
   test("a granel: arredonda uma vez, meio para cima", () => {
     const l = montarLinha(
-      entrada({ necessario: 6_537n, fator: 10_000n, fracionavel: true, precoEmbalagem: 3190n }),
+      entrada({
+        necessario: 6_537n,
+        fator: 10_000n,
+        fracionavel: true,
+        precoEmbalagem: 3190n,
+      }),
     );
     assert.equal(l.adicional, 0n);
     assert.equal(l.total, 20_853n);
@@ -44,7 +54,13 @@ describe("linhas do pedido", () => {
     const p = montarPedido(
       [
         entrada(),
-        entrada({ insumoId: "q", necessario: 6_537n, fator: 10_000n, fracionavel: true, precoEmbalagem: 3190n }),
+        entrada({
+          insumoId: "q",
+          necessario: 6_537n,
+          fator: 10_000n,
+          fracionavel: true,
+          precoEmbalagem: 3190n,
+        }),
       ],
       2500n,
     );
@@ -55,7 +71,10 @@ describe("linhas do pedido", () => {
   });
 
   test("quantidade zero não vira linha", () => {
-    assert.throws(() => montarLinha(entrada({ necessario: 0n })), /maior que zero/);
+    assert.throws(
+      () => montarLinha(entrada({ necessario: 0n })),
+      /maior que zero/,
+    );
   });
 });
 

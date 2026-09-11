@@ -69,7 +69,9 @@ test("a alteração mostra antes e depois, e pede concordância", () => {
     organizacao: "Rede Exemplo",
     fornecedor: "Distribuidora Exemplo A",
     cancelamento: false,
-    mudancas: [{ nome: "Molho de tomate", antes: "2 caixas", depois: "1 caixa" }],
+    mudancas: [
+      { nome: "Molho de tomate", antes: "2 caixas", depois: "1 caixa" },
+    ],
     motivo: "Chegou doação de outra loja",
   });
   assert.match(t, /de 2 caixas para 1 caixa/);
@@ -91,8 +93,14 @@ test("o convite leva o marcador do link, nunca o código", () => {
 
 test("novas tentativas: 1, 4, 9, 16 minutos, e desiste na quinta", () => {
   const agora = new Date("2026-09-10T12:00:00Z");
-  assert.equal(proximaTentativa(1, agora).toISOString(), "2026-09-10T12:01:00.000Z");
-  assert.equal(proximaTentativa(4, agora).toISOString(), "2026-09-10T12:16:00.000Z");
+  assert.equal(
+    proximaTentativa(1, agora).toISOString(),
+    "2026-09-10T12:01:00.000Z",
+  );
+  assert.equal(
+    proximaTentativa(4, agora).toISOString(),
+    "2026-09-10T12:16:00.000Z",
+  );
   assert.equal(desistiu(4), false);
   assert.equal(desistiu(5), true);
 });

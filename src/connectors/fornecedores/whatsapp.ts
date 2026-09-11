@@ -3,11 +3,13 @@ import type { CanalDeFornecedor, ResultadoDoCanal } from "./contrato";
 /**
  * O WHATSAPP DE COMPRAS (Evolution API) — pronto e DESLIGADO.
  *
- * Liga com `COMPRAS_CANAL=whatsapp` e `COMPRAS_EVOLUTION_INSTANCIA`. É uma
- * instância SEPARADA da Severina, de propósito: o número da Severina é uma
- * conta pessoal com muitos contatos, e rajada de pedido para fornecedor é o
- * tipo de uso que faz a Meta bloquear um número. Apontar as duas para a
- * mesma instância é recusado.
+ * Liga com `COMPRAS_CANAL=whatsapp`, `COMPRAS_EVOLUTION_INSTANCIA` e
+ * `COMPRAS_EVOLUTION_API_KEY` (o token DESTA instância — na Evolution 2.3.7 o
+ * token é por instância, e o `EVOLUTION_API_KEY` do sistema é o da Severina).
+ * É uma instância SEPARADA da Severina, de propósito: o número da Severina é
+ * uma conta pessoal com muitos contatos, e rajada de pedido para fornecedor é
+ * o tipo de uso que faz a Meta bloquear um número. Apontar as duas para a
+ * mesma instância é recusado. A URL da Evolution é a mesma (`EVOLUTION_URL`).
  *
  * O que ainda depende da integração real (desenho §12):
  *   - "entregue": precisa do webhook de confirmação da Evolution;
@@ -27,9 +29,16 @@ function recusada(erro: string, tentarDeNovo: boolean): ResultadoDoCanal {
  * ou conexão caída no meio: pode ter saído — incerta. Na dúvida, incerta.
  */
 function classificar(erro: unknown): ResultadoDoCanal {
-  const e = erro as { name?: string; message?: string; cause?: { code?: string } };
+  const e = erro as {
+    name?: string;
+    message?: string;
+    cause?: { code?: string };
+  };
   const codigo = e?.cause?.code ?? "";
-  const texto = `${e?.name ?? "Erro"}: ${e?.message ?? String(erro)}`.slice(0, 300);
+  const texto = `${e?.name ?? "Erro"}: ${e?.message ?? String(erro)}`.slice(
+    0,
+    300,
+  );
   if (["ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN"].includes(codigo)) {
     return recusada(`Evolution fora do ar (${codigo}).`, true);
   }
@@ -37,8 +46,10 @@ function classificar(erro: unknown): ResultadoDoCanal {
 }
 
 export function criarWhatsapp(): CanalDeFornecedor {
-  const url = (process.env.EVOLUTION_URL ?? "http://evolution_api:8080").replace(/\/+$/, "");
-  const chave = process.env.EVOLUTION_API_KEY ?? "";
+  const url = (
+    process.env.EVOLUTION_URL ?? "http://evolution_api:8080"
+  ).replace(/\/+$/, "");
+  const chave = process.env.COMPRAS_EVOLUTION_API_KEY ?? "";
   const instancia = process.env.COMPRAS_EVOLUTION_INSTANCIA ?? "";
 
   return {
@@ -47,10 +58,16 @@ export function criarWhatsapp(): CanalDeFornecedor {
 
     async enviar({ destino, texto }) {
       if (process.env.NODE_ENV === "test") {
-        return recusada("WhatsApp desligado em teste: nenhuma mensagem real sai.", false);
+        return recusada(
+          "WhatsApp desligado em teste: nenhuma mensagem real sai.",
+          false,
+        );
       }
-      if (!instancia) {
-        return recusada("COMPRAS_EVOLUTION_INSTANCIA não está configurada.", false);
+      if (!instancia || !chave) {
+        return recusada(
+          "O WhatsApp de Compras não está configurado (instância e token próprios).",
+          false,
+        );
       }
       if (instancia === process.env.EVOLUTION_INSTANCIA) {
         return recusada(
@@ -82,13 +99,19 @@ export function criarWhatsapp(): CanalDeFornecedor {
         // Aceitou e não disse com que id: saiu, mas não há como provar depois.
         return id
           ? { tipo: "aceita", idProvedor: id }
-          : { tipo: "incerta", erro: "A Evolution respondeu sem id de mensagem." };
+          : {
+              tipo: "incerta",
+              erro: "A Evolution respondeu sem id de mensagem.",
+            };
       }
       if (resposta.status === 429 || resposta.status >= 500) {
         return recusada(`Evolution ${resposta.status}.`, true);
       }
       // Recorte curto: a resposta da Evolution às vezes traz o payload inteiro.
-      return recusada(`Evolution ${resposta.status}: ${corpo.slice(0, 200)}`, false);
+      return recusada(
+        `Evolution ${resposta.status}: ${corpo.slice(0, 200)}`,
+        false,
+      );
     },
 
     async consultar() {

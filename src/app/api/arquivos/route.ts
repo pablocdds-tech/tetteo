@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { obterContexto, pode } from "@/core/sessao/contexto";
-import { ArquivoRecusado, LIMITE_BYTES, gravarArquivo } from "@/server/arquivos";
+import {
+  ArquivoRecusado,
+  LIMITE_BYTES,
+  gravarArquivo,
+} from "@/server/arquivos";
 
 /**
  * POST /api/arquivos — envio de foto.
@@ -19,7 +23,8 @@ type Finalidade = keyof typeof FINALIDADES;
 
 export async function POST(request: Request) {
   const ctx = await obterContexto();
-  if (!ctx) return NextResponse.json({ erro: "Entre no sistema." }, { status: 401 });
+  if (!ctx)
+    return NextResponse.json({ erro: "Entre no sistema." }, { status: 401 });
 
   let dados: FormData;
   try {
@@ -30,12 +35,22 @@ export async function POST(request: Request) {
 
   const finalidade = String(dados.get("finalidade") ?? "") as Finalidade;
   const regra = FINALIDADES[finalidade];
-  if (!regra) return NextResponse.json({ erro: "Finalidade desconhecida." }, { status: 400 });
+  if (!regra)
+    return NextResponse.json(
+      { erro: "Finalidade desconhecida." },
+      { status: 400 },
+    );
   if (!pode(ctx, regra.exigir)) {
-    return NextResponse.json({ erro: "Seu perfil não pode enviar esta foto." }, { status: 403 });
+    return NextResponse.json(
+      { erro: "Seu perfil não pode enviar esta foto." },
+      { status: 403 },
+    );
   }
   if (!ctx.unidadeAtiva) {
-    return NextResponse.json({ erro: "Escolha a loja antes de enviar a foto." }, { status: 400 });
+    return NextResponse.json(
+      { erro: "Escolha a loja antes de enviar a foto." },
+      { status: 400 },
+    );
   }
 
   const arquivo = dados.get("arquivo");
@@ -44,7 +59,10 @@ export async function POST(request: Request) {
   }
   // Recusa pelo tamanho declarado ANTES de ler o conteúdo para a memória.
   if (arquivo.size > LIMITE_BYTES) {
-    return NextResponse.json({ erro: "A foto passa de 5 MB." }, { status: 413 });
+    return NextResponse.json(
+      { erro: "A foto passa de 5 MB." },
+      { status: 413 },
+    );
   }
 
   try {
@@ -62,6 +80,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ erro: erro.message }, { status: 400 });
     }
     console.error("POST /api/arquivos:", erro);
-    return NextResponse.json({ erro: "Não deu para guardar a foto." }, { status: 500 });
+    return NextResponse.json(
+      { erro: "Não deu para guardar a foto." },
+      { status: 500 },
+    );
   }
 }

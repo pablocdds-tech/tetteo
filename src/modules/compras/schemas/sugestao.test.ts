@@ -51,13 +51,21 @@ describe("sugestão de compra", () => {
   });
 
   test("conta negativa não vira compra", () => {
-    const s = sugerirCompra({ ...base, disponivel: 17000n, emPedidoAberto: 0n });
+    const s = sugerirCompra({
+      ...base,
+      disponivel: 17000n,
+      emPedidoAberto: 0n,
+    });
     assert.equal(s.quantidade, null);
     assert.match(s.formula ?? "", /não precisa \(sobram 2 kg\)/);
   });
 
   test("conta zerada também não vira compra — nunca 0", () => {
-    const s = sugerirCompra({ ...base, disponivel: 15000n, emPedidoAberto: 0n });
+    const s = sugerirCompra({
+      ...base,
+      disponivel: 15000n,
+      emPedidoAberto: 0n,
+    });
     assert.equal(s.quantidade, null);
   });
 });

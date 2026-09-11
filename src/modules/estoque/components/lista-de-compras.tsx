@@ -22,7 +22,7 @@ import type { EscolhaDeCompra } from "./rascunho-de-compras";
  *
  * O rascunho do pedido, montado a partir do que a despensa mostrou. Enquanto
  * está aqui, NÃO EXISTE no banco — é uma lista na memória da aba. Ela só vira
- * registro quando alguém clica em criar a cotação, e a tela diz isso em
+ * registro quando alguém a leva para a requisição da loja, e a tela diz isso em
  * palavras, porque uma lista que parece salva e não está é a forma mais barata
  * de perder o trabalho de meia hora.
  *
@@ -41,10 +41,10 @@ import type { EscolhaDeCompra } from "./rascunho-de-compras";
  *
  * O BOTÃO FICA À VISTA. No computador a lista acompanha a rolagem, abaixo do
  * topo fixo, e só os itens rolam por dentro dela. Com quinze insumos na lista,
- * uma lista que crescesse junto empurraria "Criar cotação" para fora da tela
+ * uma lista que crescesse junto empurraria o botão para fora da tela
  * justamente quando ela está pronta.
  *
- * A ação de criar a cotação chega por PROPRIEDADE, não por importação: um App
+ * A ação de levar para a requisição chega por PROPRIEDADE, não por importação: um App
  * nunca importa de outro App (a trava está no `eslint.config.mjs`). Quem junta
  * Estoque e Compras é a camada de rota, que pode conhecer os dois.
  */
@@ -53,7 +53,10 @@ export type EstadoDaCotacao = {
   erro?: string;
   /** Os insumos cujo campo de quantidade não passou. */
   invalidos?: string[];
-  /** A cotação criada. A tela limpa o rascunho e vai até ela. */
+  /**
+   * A rodada cuja requisição recebeu os itens (o nome ficou da cotação de
+   * 04/08). A tela limpa o rascunho e vai até a requisição.
+   */
   cotacaoId?: string;
 };
 
@@ -72,7 +75,6 @@ export function ListaDeCompras({
   aoMudarQuantidade: (insumoId: string, quantidade: string) => void;
   aoLimpar: () => void;
 }) {
-  const idNome = useId();
   const idResumo = useId();
 
   const router = useRouter();
@@ -92,10 +94,10 @@ export function ListaDeCompras({
         ? await acao(anterior, dados)
         : {};
       if (resultado.cotacaoId) {
-        // Virou cotação: o rascunho cumpriu o papel. Deixá-lo na tela
-        // convidaria a mandar a mesma lista de novo amanhã.
+        // Entrou na requisição da loja: o rascunho cumpriu o papel. Deixá-lo
+        // na tela convidaria a mandar a mesma lista de novo amanhã.
         aoLimpar();
-        router.push(`/compras/cotacoes/${resultado.cotacaoId}`);
+        router.push(`/compras/requisicao?rodada=${resultado.cotacaoId}`);
       }
       return resultado;
     } finally {
@@ -174,26 +176,11 @@ export function ListaDeCompras({
 
             {podeCotar && acao ? (
               <>
-                <div className="flex w-full flex-col gap-1.5">
-                  <label
-                    htmlFor={idNome}
-                    className="text-ink-2 text-sm font-semibold"
-                  >
-                    Nome da cotação
-                  </label>
-                  <input
-                    id={idNome}
-                    name="descricao"
-                    required
-                    maxLength={120}
-                    placeholder="Ex.: Semana 37 — hortifrúti"
-                    className="bg-surface border-line-2 text-ink placeholder:text-ink-3 hover:border-ink-3 focus:border-accent h-11 w-full rounded-md border px-3 text-base transition-[border-color,box-shadow] duration-150 focus:shadow-[0_0_0_3px_var(--accent-sub)] focus:outline-none md:h-[42px] md:text-sm"
-                  />
-                  <span className="text-ink-3 text-xs leading-[18px]">
-                    Até aqui nada foi gravado. A cotação nasce aberta em
-                    Compras, com estes itens e estas quantidades.
-                  </span>
-                </div>
+                <p className="text-ink-3 text-xs leading-[18px]">
+                  Até aqui nada foi gravado. Os itens entram na requisição desta
+                  loja, na rodada de compra aberta — e você confere lá antes de
+                  enviar ao comprador.
+                </p>
 
                 {estado.erro && (
                   <p
@@ -206,14 +193,14 @@ export function ListaDeCompras({
 
                 <Botao type="submit" carregando={enviando}>
                   <Icone nome="carrinho" tamanho={15} />
-                  Criar cotação em Compras
+                  Levar para a requisição da loja
                 </Botao>
               </>
             ) : (
               <p className="text-ink-3 text-xs leading-[18px]">
-                Seu perfil não inclui criar cotações. A lista continua aqui para
-                você conferir — para transformá-la num pedido, peça a quem cuida
-                das compras.
+                Seu perfil não inclui preparar a requisição da loja. A lista
+                continua aqui para você conferir — para virar compra, peça a
+                quem prepara a requisição.
               </p>
             )}
           </div>

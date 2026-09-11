@@ -110,14 +110,21 @@ export function validarResposta(
   if (!analise.success) {
     return {
       ok: false,
-      erros: { geral: "A resposta chegou num formato que o sistema não entende." },
+      erros: {
+        geral: "A resposta chegou num formato que o sistema não entende.",
+      },
     };
   }
   const d = analise.data;
   const erros: Record<string, string> = {};
 
   const frete = numero(d.frete, CASAS.centavos, "frete", erros);
-  const pedidoMinimo = numero(d.pedidoMinimo, CASAS.centavos, "pedidoMinimo", erros);
+  const pedidoMinimo = numero(
+    d.pedidoMinimo,
+    CASAS.centavos,
+    "pedidoMinimo",
+    erros,
+  );
 
   let prazoEntregaDias: number | null = null;
   if (d.prazoEntregaDias) {
@@ -166,7 +173,12 @@ export function validarResposta(
       continue;
     }
 
-    const preco = numero(item.precoEmbalagem, CASAS.centavos, `preco:${id}`, erros);
+    const preco = numero(
+      item.precoEmbalagem,
+      CASAS.centavos,
+      `preco:${id}`,
+      erros,
+    );
     if (item.precoEmbalagem === "") {
       erros[`preco:${id}`] =
         "Informe o preço da embalagem, ou marque que não tem este item.";
@@ -177,19 +189,31 @@ export function validarResposta(
 
     const pecas = item.pecas === "" ? 1 : Number(item.pecas);
     if (!Number.isInteger(pecas) || pecas < 1 || pecas > 100_000) {
-      erros[`pecas:${id}`] = "Informe quantas peças vêm na embalagem (1 ou mais).";
+      erros[`pecas:${id}`] =
+        "Informe quantas peças vêm na embalagem (1 ou mais).";
     }
 
-    const conteudo = numero(item.conteudo, CASAS.dezMilesimos, `conteudo:${id}`, erros);
+    const conteudo = numero(
+      item.conteudo,
+      CASAS.dezMilesimos,
+      `conteudo:${id}`,
+      erros,
+    );
     const unidadeConteudo = item.unidadeConteudo || null;
     if (conteudo !== null && conteudo <= 0n) {
       erros[`conteudo:${id}`] = "O conteúdo precisa ser maior que zero.";
     }
     if (conteudo !== null && !unidadeConteudo) {
-      erros[`conteudo:${id}`] = "Diga a unidade do conteúdo (kg, g, L, ml ou un).";
+      erros[`conteudo:${id}`] =
+        "Diga a unidade do conteúdo (kg, g, L, ml ou un).";
     }
 
-    const disponivel = numero(item.disponivel, CASAS.milesimos, `disponivel:${id}`, erros);
+    const disponivel = numero(
+      item.disponivel,
+      CASAS.milesimos,
+      `disponivel:${id}`,
+      erros,
+    );
 
     ofertas.push({
       itemDaSolicitacaoId: id,

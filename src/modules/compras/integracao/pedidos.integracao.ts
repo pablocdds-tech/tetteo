@@ -48,8 +48,21 @@ async function emRevisao() {
     a.id,
     respostaBruta(
       [
-        { id: a.item("Molho de tomate"), pecas: "12", conteudo: "900", unidadeConteudo: "G", preco: "95,40" },
-        { id: a.item("Mussarela"), nomeEmbalagem: "Peça", pecas: "1", conteudo: "1", unidadeConteudo: "KG", preco: "32" },
+        {
+          id: a.item("Molho de tomate"),
+          pecas: "12",
+          conteudo: "900",
+          unidadeConteudo: "G",
+          preco: "95,40",
+        },
+        {
+          id: a.item("Mussarela"),
+          nomeEmbalagem: "Peça",
+          pecas: "1",
+          conteudo: "1",
+          unidadeConteudo: "KG",
+          preco: "32",
+        },
       ],
       { frete: "25" },
     ),
@@ -59,7 +72,15 @@ async function emRevisao() {
     r.comprador,
     b.id,
     respostaBruta(
-      [{ id: b.item("Molho de tomate"), pecas: "1", conteudo: "10", unidadeConteudo: "KG", preco: "300" }],
+      [
+        {
+          id: b.item("Molho de tomate"),
+          pecas: "1",
+          conteudo: "10",
+          unidadeConteudo: "KG",
+          preco: "300",
+        },
+      ],
       { frete: "0" },
     ),
     { origem: "COMPRADOR_DIGITOU" },
@@ -114,7 +135,9 @@ describe("gerar pedidos", () => {
     assert.equal(depois.fornecedorNome, "Distribuidora Exemplo A");
     assert.equal(depois.total.toString(), "535.8");
     assert.equal(
-      depois.itens.find((i) => i.insumoNome === "Molho de tomate")!.precoEmbalagem.toString(),
+      depois.itens
+        .find((i) => i.insumoNome === "Molho de tomate")!
+        .precoEmbalagem.toString(),
       "95.4",
     );
   });
@@ -171,43 +194,70 @@ describe("aprovar", () => {
     assert.ok(recusa && recusa.reason instanceof PedidoMudou);
 
     assert.equal(
-      await db.mensagemAoFornecedor.count({ where: { referenciaId: centro.id } }),
+      await db.mensagemAoFornecedor.count({
+        where: { referenciaId: centro.id },
+      }),
       1,
     );
-    assert.equal(await db.aprovacaoDeCompra.count({ where: { pedidoId: centro.id } }), 1);
+    assert.equal(
+      await db.aprovacaoDeCompra.count({ where: { pedidoId: centro.id } }),
+      1,
+    );
   });
 
   test("a alçada é conferida no servidor — inclusive para o Diretor", async () => {
     const { sul, diretor, comprador } = await comPedidos();
 
     // Comprador não tem compras.aprovar.
-    await assert.rejects(() => aprovarPedido(comprador, sul.id, 1), SemPermissao);
+    await assert.rejects(
+      () => aprovarPedido(comprador, sul.id, 1),
+      SemPermissao,
+    );
 
     // Um Aprovador com alçada de R$ 100 não aprova R$ 120,40.
     const papel = await db.papel.create({
       data: {
         organizacaoId: c.org.id,
         nome: "Aprovador",
-        permissoes: { create: [{ chave: "compras.ver" }, { chave: "compras.aprovar" }] },
+        permissoes: {
+          create: [{ chave: "compras.ver" }, { chave: "compras.aprovar" }],
+        },
       },
     });
     const pessoa = await db.usuario.create({
-      data: { nome: "Aprovador Exemplo", email: `aprovador.${Date.now()}@exemplo.test`, status: "ATIVO" },
+      data: {
+        nome: "Aprovador Exemplo",
+        email: `aprovador.${Date.now()}@exemplo.test`,
+        status: "ATIVO",
+      },
     });
     await db.acesso.create({
-      data: { usuarioId: pessoa.id, organizacaoId: c.org.id, unidadeId: null, papelId: papel.id },
+      data: {
+        usuarioId: pessoa.id,
+        organizacaoId: c.org.id,
+        unidadeId: null,
+        papelId: papel.id,
+      },
     });
     await salvarAlcada(diretor, papel.id, "100,00");
     const aprovador = await c.ctx(pessoa, null);
-    await assert.rejects(() => aprovarPedido(aprovador, sul.id, 1), AcimaDaAlcada);
+    await assert.rejects(
+      () => aprovarPedido(aprovador, sul.id, 1),
+      AcimaDaAlcada,
+    );
 
     // Com alçada cadastrada para o papel dele, o Diretor também obedece.
     await salvarAlcada(diretor, c.papeis.Diretor, "50,00");
-    await assert.rejects(() => aprovarPedido(diretor, sul.id, 1), AcimaDaAlcada);
+    await assert.rejects(
+      () => aprovarPedido(diretor, sul.id, 1),
+      AcimaDaAlcada,
+    );
     await salvarAlcada(diretor, c.papeis.Diretor, null);
     await aprovarPedido(diretor, sul.id, 1);
 
-    const aprovacao = await db.aprovacaoDeCompra.findFirstOrThrow({ where: { pedidoId: sul.id } });
+    const aprovacao = await db.aprovacaoDeCompra.findFirstOrThrow({
+      where: { pedidoId: sul.id },
+    });
     assert.equal(aprovacao.alcadaVersao, 2);
   });
 
@@ -216,14 +266,19 @@ describe("aprovar", () => {
     const molho = centro.itens.find((i) => i.insumoNome === "Molho de tomate")!;
 
     await ajustarItemPendente(comprador, centro.id, molho.id, "3");
-    await assert.rejects(() => aprovarPedido(diretor, centro.id, 1), PedidoMudou);
+    await assert.rejects(
+      () => aprovarPedido(diretor, centro.id, 1),
+      PedidoMudou,
+    );
     await aprovarPedido(diretor, centro.id, 2);
 
     await assert.rejects(
       () => ajustarItemPendente(comprador, centro.id, molho.id, "4"),
       /não se edita/,
     );
-    const depois = await db.pedido.findUniqueOrThrow({ where: { id: centro.id } });
+    const depois = await db.pedido.findUniqueOrThrow({
+      where: { id: centro.id },
+    });
     assert.equal(depois.total.toString(), "631.2"); // 3 × 95,40 + 320 + 25
   });
 
@@ -231,7 +286,10 @@ describe("aprovar", () => {
     const { centro } = await comPedidos();
     const gerenteSul = await c.ctx(c.gerenteSul, c.sul);
     const lista = await listarPedidos(gerenteSul);
-    assert.deepEqual(lista.map((p) => p.loja), ["Loja Exemplo Sul"]);
+    assert.deepEqual(
+      lista.map((p) => p.loja),
+      ["Loja Exemplo Sul"],
+    );
     assert.equal(await obterPedido(gerenteSul, centro.id), null);
   });
 
@@ -269,13 +327,17 @@ describe("depois de aprovado", () => {
     assert.match(adendo.itens[0].origemPreco, /Mesmo preço/);
 
     await aprovarPedido(diretor, adendoId, 1);
-    const m = await db.mensagemAoFornecedor.findFirstOrThrow({ where: { referenciaId: adendoId } });
+    const m = await db.mensagemAoFornecedor.findFirstOrThrow({
+      where: { referenciaId: adendoId },
+    });
     assert.equal(m.chave, `pedido:${adendoId}:2`);
     assert.equal(m.tipo, "ADENDO");
     assert.match(m.corpo, /Adendo PC-\d{4}\/2/);
     assert.doesNotMatch(m.corpo, /Mussarela/);
 
-    const original = await db.pedido.findUniqueOrThrow({ where: { id: centro.id } });
+    const original = await db.pedido.findUniqueOrThrow({
+      where: { id: centro.id },
+    });
     assert.equal(original.ultimaSequencia, 2);
   });
 
@@ -307,14 +369,20 @@ describe("depois de aprovado", () => {
         motivo: "Cardápio do fim de semana mudou",
       }),
     ]);
-    const alteracoes = await db.alteracaoDePedido.findMany({ where: { pedidoId: centro.id } });
+    const alteracoes = await db.alteracaoDePedido.findMany({
+      where: { pedidoId: centro.id },
+    });
     assert.deepEqual(alteracoes.map((a) => a.sequencia).sort(), [2, 3]);
 
-    const mensagens = await db.mensagemAoFornecedor.findMany({ where: { tipo: "ALTERACAO" } });
+    const mensagens = await db.mensagemAoFornecedor.findMany({
+      where: { tipo: "ALTERACAO" },
+    });
     assert.equal(mensagens.length, 2);
     assert.ok(mensagens.some((m) => /de 2 caixa para 1 caixa/.test(m.corpo)));
 
-    const item = await db.itemDePedido.findUniqueOrThrow({ where: { id: molho.id } });
+    const item = await db.itemDePedido.findUniqueOrThrow({
+      where: { id: molho.id },
+    });
     assert.equal(item.quantidadeCancelada.toString(), "10.8");
   });
 
@@ -328,7 +396,9 @@ describe("depois de aprovado", () => {
     });
     const pedido = await db.pedido.findUniqueOrThrow({ where: { id: sul.id } });
     assert.equal(pedido.status, "CANCELADO");
-    const m = await db.mensagemAoFornecedor.findFirstOrThrow({ where: { tipo: "CANCELAMENTO" } });
+    const m = await db.mensagemAoFornecedor.findFirstOrThrow({
+      where: { tipo: "CANCELAMENTO" },
+    });
     assert.match(m.corpo, /cancelado/i);
   });
 });

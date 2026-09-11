@@ -64,9 +64,17 @@ describe("o relógio", () => {
     const chaves = canal.saidas().map((s) => s.chave);
     assert.equal(chaves.length, 6);
     assert.equal(new Set(chaves).size, 6);
-    const estados = await db.mensagemAoFornecedor.groupBy({ by: ["estado"], _count: true });
-    assert.deepEqual(estados.map((e) => e.estado), ["ACEITA_PELO_CANAL"]);
-    assert.ok((await db.mensagemAoFornecedor.findMany()).every((m) => m.simulada));
+    const estados = await db.mensagemAoFornecedor.groupBy({
+      by: ["estado"],
+      _count: true,
+    });
+    assert.deepEqual(
+      estados.map((e) => e.estado),
+      ["ACEITA_PELO_CANAL"],
+    );
+    assert.ok(
+      (await db.mensagemAoFornecedor.findMany()).every((m) => m.simulada),
+    );
   });
 
   test("resposta perdida depois de enviar: não reenvia; o canal confirma na batida seguinte", async () => {
@@ -75,12 +83,22 @@ describe("o relógio", () => {
 
     const primeira = await rodarRelogio(canal, { dono: "r", intervaloMs: 0 });
     assert.equal(primeira.incertas, 1);
-    assert.equal((await db.mensagemAoFornecedor.findFirstOrThrow()).estado, "INCERTA");
+    assert.equal(
+      (await db.mensagemAoFornecedor.findFirstOrThrow()).estado,
+      "INCERTA",
+    );
 
     const segunda = await rodarRelogio(canal, { dono: "r", intervaloMs: 0 });
     assert.equal(segunda.conferidas, 1);
-    assert.equal((await db.mensagemAoFornecedor.findFirstOrThrow()).estado, "ACEITA_PELO_CANAL");
-    assert.equal(canal.chamadas(), 1, "a mensagem não pode ter sido mandada duas vezes");
+    assert.equal(
+      (await db.mensagemAoFornecedor.findFirstOrThrow()).estado,
+      "ACEITA_PELO_CANAL",
+    );
+    assert.equal(
+      canal.chamadas(),
+      1,
+      "a mensagem não pode ter sido mandada duas vezes",
+    );
   });
 
   test("canal fora do ar: espera crescente, e sai na terceira tentativa", async () => {
@@ -88,14 +106,30 @@ describe("o relógio", () => {
     const canal = criarSimulador({ falharVezes: 2 });
     const t0 = Date.now();
 
-    await rodarRelogio(canal, { dono: "r", intervaloMs: 0, agora: new Date(t0) });
+    await rodarRelogio(canal, {
+      dono: "r",
+      intervaloMs: 0,
+      agora: new Date(t0),
+    });
     // Antes do minuto de espera, nada acontece.
-    await rodarRelogio(canal, { dono: "r", intervaloMs: 0, agora: new Date(t0 + 30_000) });
+    await rodarRelogio(canal, {
+      dono: "r",
+      intervaloMs: 0,
+      agora: new Date(t0 + 30_000),
+    });
     assert.equal(canal.chamadas(), 1);
 
-    await rodarRelogio(canal, { dono: "r", intervaloMs: 0, agora: new Date(t0 + 2 * MIN) });
+    await rodarRelogio(canal, {
+      dono: "r",
+      intervaloMs: 0,
+      agora: new Date(t0 + 2 * MIN),
+    });
     assert.equal(canal.chamadas(), 2);
-    await rodarRelogio(canal, { dono: "r", intervaloMs: 0, agora: new Date(t0 + 10 * MIN) });
+    await rodarRelogio(canal, {
+      dono: "r",
+      intervaloMs: 0,
+      agora: new Date(t0 + 10 * MIN),
+    });
     assert.equal(canal.chamadas(), 3);
 
     const m = await db.mensagemAoFornecedor.findFirstOrThrow();
@@ -110,7 +144,10 @@ describe("o relógio", () => {
     await rodarRelogio(canal, { dono: "r", intervaloMs: 0 });
 
     const [saida] = canal.saidas();
-    assert.match(saida.texto, /https?:\/\/\S+\/fornecedor\/cotacao#[A-Za-z0-9_-]{43}/);
+    assert.match(
+      saida.texto,
+      /https?:\/\/\S+\/fornecedor\/cotacao#[A-Za-z0-9_-]{43}/,
+    );
     assert.doesNotMatch(saida.texto, /\{\{LINK\}\}/);
     const guardada = await db.mensagemAoFornecedor.findFirstOrThrow();
     assert.match(guardada.corpo, /\{\{LINK\}\}/);
@@ -125,6 +162,9 @@ describe("o relógio", () => {
     const canal = criarSimulador();
     await rodarRelogio(canal, { dono: "r", intervaloMs: 0 });
     assert.equal(canal.saidas().length, 0);
-    assert.equal((await db.mensagemAoFornecedor.findFirstOrThrow()).estado, "CANCELADA");
+    assert.equal(
+      (await db.mensagemAoFornecedor.findFirstOrThrow()).estado,
+      "CANCELADA",
+    );
   });
 });

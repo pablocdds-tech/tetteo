@@ -47,7 +47,9 @@ export async function listarProdutosDoFornecedor(
   const produtos = await db.fornecedorInsumo.findMany({
     where: { organizacaoId: ctx.organizacao.id, fornecedorId, ativo: true },
     include: {
-      insumo: { select: { nome: true, unidadeMedida: true, unidadeRotulo: true } },
+      insumo: {
+        select: { nome: true, unidadeMedida: true, unidadeRotulo: true },
+      },
     },
     orderBy: { insumo: { nome: "asc" } },
   });
@@ -71,6 +73,16 @@ export async function listarProdutosDoFornecedor(
   }));
 }
 
+/** Os insumos que dá para comprar — para escolher no cadastro de produtos. */
+export async function insumosParaCompra(ctx: ContextoSessao) {
+  exigir(ctx, "compras.ver", "ver compras");
+  return db.insumo.findMany({
+    where: { organizacaoId: ctx.organizacao.id, ativo: true, excluidoEm: null },
+    select: { id: true, nome: true, unidadeMedida: true },
+    orderBy: { nome: "asc" },
+  });
+}
+
 export async function salvarProdutoDoFornecedor(
   ctx: ContextoSessao,
   dados: {
@@ -91,11 +103,19 @@ export async function salvarProdutoDoFornecedor(
 
   const [fornecedor, insumo] = await Promise.all([
     db.fornecedor.findFirst({
-      where: { id: dados.fornecedorId, organizacaoId: ctx.organizacao.id, excluidoEm: null },
+      where: {
+        id: dados.fornecedorId,
+        organizacaoId: ctx.organizacao.id,
+        excluidoEm: null,
+      },
       select: { id: true, nome: true },
     }),
     db.insumo.findFirst({
-      where: { id: dados.insumoId, organizacaoId: ctx.organizacao.id, excluidoEm: null },
+      where: {
+        id: dados.insumoId,
+        organizacaoId: ctx.organizacao.id,
+        excluidoEm: null,
+      },
       select: { id: true, nome: true, unidadeMedida: true },
     }),
   ]);
@@ -120,13 +140,18 @@ export async function salvarProdutoDoFornecedor(
         where: { id: dados.id, organizacaoId: ctx.organizacao.id },
       })
     : null;
-  if (dados.id && !antes) throw new Error("Produto do fornecedor não encontrado.");
+  if (dados.id && !antes)
+    throw new Error("Produto do fornecedor não encontrado.");
 
-  const fatorNovo = fator.ok ? paraDecimal(fator.fator, CASAS.dezMilesimos) : null;
+  const fatorNovo = fator.ok
+    ? paraDecimal(fator.fator, CASAS.dezMilesimos)
+    : null;
   const fatorMudou =
     antes !== null &&
-    (antes.fator === null ? fatorNovo !== null : fatorNovo === null ||
-      fatorDoBanco(antes.fator) !== fatorDoBanco(fatorNovo));
+    (antes.fator === null
+      ? fatorNovo !== null
+      : fatorNovo === null ||
+        fatorDoBanco(antes.fator) !== fatorDoBanco(fatorNovo));
   const precoMudou =
     preco !== null &&
     (antes?.precoReferencia == null ||
@@ -135,7 +160,8 @@ export async function salvarProdutoDoFornecedor(
   const campos = {
     nomeEmbalagem,
     pecas,
-    conteudo: conteudo === null ? null : paraDecimal(conteudo, CASAS.dezMilesimos),
+    conteudo:
+      conteudo === null ? null : paraDecimal(conteudo, CASAS.dezMilesimos),
     unidadeConteudo: conteudo === null ? null : dados.unidadeConteudo,
     fracionavel: dados.fracionavel,
     fator: fatorNovo,
@@ -156,7 +182,10 @@ export async function salvarProdutoDoFornecedor(
     const salvo = antes
       ? await db.fornecedorInsumo.update({
           where: { id: antes.id },
-          data: { ...campos, ...(fatorMudou ? { fatorVersao: { increment: 1 } } : {}) },
+          data: {
+            ...campos,
+            ...(fatorMudou ? { fatorVersao: { increment: 1 } } : {}),
+          },
           select: { id: true },
         })
       : await db.fornecedorInsumo.create({
@@ -179,7 +208,11 @@ export async function salvarProdutoDoFornecedor(
         fixo: antes.fixo,
         precoReferencia: antes.precoReferencia?.toString() ?? null,
       },
-      depois: { fator: fatorNovo, fixo: dados.fixo, precoReferencia: campos.precoReferencia },
+      depois: {
+        fator: fatorNovo,
+        fixo: dados.fixo,
+        precoReferencia: campos.precoReferencia,
+      },
     });
 
     return { id: salvo.id, avisoDoFator: fator.ok ? null : fator.mensagem };
@@ -208,13 +241,17 @@ export async function salvarProdutoDoFornecedor(
   }
 }
 
-export async function removerProdutoDoFornecedor(ctx: ContextoSessao, id: string) {
+export async function removerProdutoDoFornecedor(
+  ctx: ContextoSessao,
+  id: string,
+) {
   exigir(ctx, "compras.fornecedores", "cadastrar produtos do fornecedor");
   const escrita = await db.fornecedorInsumo.updateMany({
     where: { id, organizacaoId: ctx.organizacao.id },
     data: { ativo: false, fixo: false, chaveFixo: null },
   });
-  if (escrita.count !== 1) throw new Error("Produto do fornecedor não encontrado.");
+  if (escrita.count !== 1)
+    throw new Error("Produto do fornecedor não encontrado.");
   await registrar(db, ctx, {
     entidade: "FornecedorInsumo",
     entidadeId: id,
@@ -237,7 +274,11 @@ export async function configurarDestino(
   exigir(ctx, "compras.fornecedores", "configurar o destino das mensagens");
 
   const antes = await db.fornecedor.findFirst({
-    where: { id: fornecedorId, organizacaoId: ctx.organizacao.id, excluidoEm: null },
+    where: {
+      id: fornecedorId,
+      organizacaoId: ctx.organizacao.id,
+      excluidoEm: null,
+    },
     select: { telefonePedidos: true, autorizadoMensagens: true },
   });
   if (!antes) throw new Error("Fornecedor não encontrado.");
@@ -246,7 +287,9 @@ export async function configurarDestino(
     ? normalizarTelefone(dados.telefonePedidos)
     : null;
   if (dados.telefonePedidos.trim() && !telefone) {
-    throw new Error("Telefone inválido. Use DDD e número, como (84) 99999-0000.");
+    throw new Error(
+      "Telefone inválido. Use DDD e número, como (84) 99999-0000.",
+    );
   }
   if (dados.autorizado && !telefone) {
     throw new Error("Para autorizar mensagens, informe o telefone de pedidos.");
@@ -258,8 +301,12 @@ export async function configurarDestino(
     data: {
       telefonePedidos: telefone,
       autorizadoMensagens: dados.autorizado,
-      ...(autorizou ? { autorizadoPorId: ctx.usuario.id, autorizadoEm: new Date() } : {}),
-      ...(!dados.autorizado ? { autorizadoPorId: null, autorizadoEm: null } : {}),
+      ...(autorizou
+        ? { autorizadoPorId: ctx.usuario.id, autorizadoEm: new Date() }
+        : {}),
+      ...(!dados.autorizado
+        ? { autorizadoPorId: null, autorizadoEm: null }
+        : {}),
     },
   });
 
@@ -267,7 +314,10 @@ export async function configurarDestino(
     entidade: "Fornecedor",
     entidadeId: fornecedorId,
     acao: "ALTEROU",
-    antes: { telefonePedidos: antes.telefonePedidos, autorizado: antes.autorizadoMensagens },
+    antes: {
+      telefonePedidos: antes.telefonePedidos,
+      autorizado: antes.autorizadoMensagens,
+    },
     depois: { telefonePedidos: telefone, autorizado: dados.autorizado },
   });
 }

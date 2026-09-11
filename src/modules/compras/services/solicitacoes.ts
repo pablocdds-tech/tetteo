@@ -61,7 +61,11 @@ export async function prepararSolicitacoesNaTransacao(
   });
 
   const porFornecedor = new Map<string, Map<string, boolean>>();
-  const incluir = (fornecedorId: string, itemId: string, direcionado: boolean) => {
+  const incluir = (
+    fornecedorId: string,
+    itemId: string,
+    direcionado: boolean,
+  ) => {
     const lista = porFornecedor.get(fornecedorId) ?? new Map<string, boolean>();
     lista.set(itemId, direcionado);
     porFornecedor.set(fornecedorId, lista);
@@ -126,7 +130,11 @@ export async function reabrirCotacaoNaTransacao(tx: Tx, rodadaId: string) {
     data: { status: "RESPONDIDA" },
   });
   await tx.solicitacaoDeCotacao.updateMany({
-    where: { rodadaId, status: "ENCERRADA_SEM_RESPOSTA", convidadoEm: { not: null } },
+    where: {
+      rodadaId,
+      status: "ENCERRADA_SEM_RESPOSTA",
+      convidadoEm: { not: null },
+    },
     data: { status: "CONVIDADO" },
   });
   await tx.solicitacaoDeCotacao.updateMany({
@@ -137,7 +145,10 @@ export async function reabrirCotacaoNaTransacao(tx: Tx, rodadaId: string) {
 
 // --------------------------------------------------------------------- TELA
 
-export async function listarSolicitacoes(ctx: ContextoSessao, rodadaId: string) {
+export async function listarSolicitacoes(
+  ctx: ContextoSessao,
+  rodadaId: string,
+) {
   exigir(ctx, "compras.ver", "ver compras");
 
   const rodada = await db.rodadaDeCompra.findFirst({
@@ -225,14 +236,23 @@ async function emitirConvite(
   ctx: ContextoSessao,
   solicitacaoId: string,
   reemitir: boolean,
-): Promise<{ mensagemId: string; estado: string; motivoBloqueio: string | null }> {
+): Promise<{
+  mensagemId: string;
+  estado: string;
+  motivoBloqueio: string | null;
+}> {
   exigir(ctx, "compras.cotar", "convidar fornecedores");
 
   const s = await db.solicitacaoDeCotacao.findFirst({
     where: { id: solicitacaoId, organizacaoId: ctx.organizacao.id },
     include: {
       rodada: {
-        select: { estado: true, descricao: true, numero: true, prazoCotacao: true },
+        select: {
+          estado: true,
+          descricao: true,
+          numero: true,
+          prazoCotacao: true,
+        },
       },
       fornecedor: { select: { nome: true, contato: true } },
       itens: {
@@ -240,7 +260,13 @@ async function emitirConvite(
           itemDaRodada: {
             select: {
               quantidadeTotal: true,
-              insumo: { select: { nome: true, unidadeMedida: true, unidadeRotulo: true } },
+              insumo: {
+                select: {
+                  nome: true,
+                  unidadeMedida: true,
+                  unidadeRotulo: true,
+                },
+              },
             },
           },
         },
@@ -249,7 +275,9 @@ async function emitirConvite(
   });
   if (!s) throw new Error("Solicitação não encontrada.");
   if (s.rodada.estado !== "COTANDO") {
-    throw new Error("A rodada não está em cotação — não há o que convidar agora.");
+    throw new Error(
+      "A rodada não está em cotação — não há o que convidar agora.",
+    );
   }
   if (s.itens.length === 0) throw new Error("Esta solicitação não tem itens.");
   if (!reemitir && s.status !== "RASCUNHO") {
@@ -279,7 +307,8 @@ async function emitirConvite(
       nome: i.itemDaRodada.insumo.nome,
       quantidade: quantidadeBr(
         milesimosDoBanco(i.itemDaRodada.quantidadeTotal),
-        i.itemDaRodada.insumo.unidadeRotulo ?? i.itemDaRodada.insumo.unidadeMedida,
+        i.itemDaRodada.insumo.unidadeRotulo ??
+          i.itemDaRodada.insumo.unidadeMedida,
       ),
     })),
   });
@@ -313,7 +342,11 @@ async function emitirConvite(
         referenciaId: s.id,
         estado: { in: ["BLOQUEADA", "NA_FILA", "FALHOU"] },
       },
-      data: { estado: "CANCELADA", canceladaEm: new Date(), resolucao: "Substituído por convite novo." },
+      data: {
+        estado: "CANCELADA",
+        canceladaEm: new Date(),
+        resolucao: "Substituído por convite novo.",
+      },
     });
 
     const mensagem = await enfileirar(tx, {
@@ -375,7 +408,10 @@ export async function revogarLink(
     if (!s?.tokenHash) throw new Error("Esta solicitação não tem link ativo.");
     await tx.solicitacaoDeCotacao.update({
       where: { id: s.id },
-      data: { tokenRevogadoEm: new Date(), motivoRevogacao: texto.slice(0, 200) },
+      data: {
+        tokenRevogadoEm: new Date(),
+        motivoRevogacao: texto.slice(0, 200),
+      },
     });
     await tx.mensagemAoFornecedor.updateMany({
       where: {
@@ -383,7 +419,11 @@ export async function revogarLink(
         referenciaId: s.id,
         estado: { in: ["BLOQUEADA", "NA_FILA", "FALHOU"] },
       },
-      data: { estado: "CANCELADA", canceladaEm: new Date(), resolucao: "Link revogado." },
+      data: {
+        estado: "CANCELADA",
+        canceladaEm: new Date(),
+        resolucao: "Link revogado.",
+      },
     });
     await registrar(tx, ctx, {
       entidade: "SolicitacaoDeCotacao",
@@ -423,21 +463,34 @@ export async function incluirFornecedor(
   itemDaRodadaIds: string[],
 ): Promise<string> {
   exigir(ctx, "compras.cotar", "incluir fornecedores na cotação");
-  if (itemDaRodadaIds.length === 0) throw new Error("Escolha os itens que ele vai cotar.");
+  if (itemDaRodadaIds.length === 0)
+    throw new Error("Escolha os itens que ele vai cotar.");
 
   return db.$transaction(async (tx) => {
     const rodada = await tx.rodadaDeCompra.findFirst({
       where: { id: rodadaId, organizacaoId: ctx.organizacao.id },
-      select: { id: true, estado: true, organizacaoId: true, prazoCotacao: true },
+      select: {
+        id: true,
+        estado: true,
+        organizacaoId: true,
+        prazoCotacao: true,
+      },
     });
     if (!rodada) throw new Error("Rodada não encontrada.");
-    if (rodada.estado !== "COTANDO") throw new Error("A rodada não está em cotação.");
+    if (rodada.estado !== "COTANDO")
+      throw new Error("A rodada não está em cotação.");
 
     const fornecedor = await tx.fornecedor.findFirst({
-      where: { id: fornecedorId, organizacaoId: ctx.organizacao.id, ativo: true, excluidoEm: null },
+      where: {
+        id: fornecedorId,
+        organizacaoId: ctx.organizacao.id,
+        ativo: true,
+        excluidoEm: null,
+      },
       select: { id: true },
     });
-    if (!fornecedor) throw new Error("Fornecedor não encontrado ou desativado.");
+    if (!fornecedor)
+      throw new Error("Fornecedor não encontrado ou desativado.");
 
     const itens = await tx.itemDaRodada.findMany({
       where: { id: { in: itemDaRodadaIds }, rodadaId, modo: "COTAVEL" },
@@ -490,7 +543,8 @@ export async function marcarRecusa(
     },
     data: { status: "RECUSOU" },
   });
-  if (r.count !== 1) throw new Error("Esta solicitação não está aguardando resposta.");
+  if (r.count !== 1)
+    throw new Error("Esta solicitação não está aguardando resposta.");
   await registrar(db, ctx, {
     entidade: "SolicitacaoDeCotacao",
     entidadeId: solicitacaoId,

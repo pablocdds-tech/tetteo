@@ -23,7 +23,10 @@ const item = (
   nome: id,
   unidade: "KG",
   modo: "COTAVEL",
-  porLoja: porLoja.map(([unidadeId, quantidade]) => ({ unidadeId, quantidade })),
+  porLoja: porLoja.map(([unidadeId, quantidade]) => ({
+    unidadeId,
+    quantidade,
+  })),
   ...resto,
 });
 
@@ -63,25 +66,37 @@ const proposta = (
   ...resto,
 });
 
-const celula = (grade: ReturnType<typeof montarGrade>, itemId: string, fornecedorId: string) =>
-  grade.linhas.find((l) => l.item.id === itemId)!.celulas.find(
-    (c) => c.fornecedorId === fornecedorId,
-  )!;
+const celula = (
+  grade: ReturnType<typeof montarGrade>,
+  itemId: string,
+  fornecedorId: string,
+) =>
+  grade.linhas
+    .find((l) => l.item.id === itemId)!
+    .celulas.find((c) => c.fornecedorId === fornecedorId)!;
 
 describe("a grade", () => {
   test("item de fornecedor fixo não entra na disputa", () => {
     const grade = montarGrade(
-      [item("molho", [[CENTRO, 10_000n]]), item("mussarela", [[CENTRO, 10_000n]], { modo: "DIRECIONADO" })],
+      [
+        item("molho", [[CENTRO, 10_000n]]),
+        item("mussarela", [[CENTRO, 10_000n]], { modo: "DIRECIONADO" }),
+      ],
       [proposta("A", 0n, [oferta("molho", 3000n), oferta("mussarela", 1n)])],
     );
-    assert.deepEqual(grade.linhas.map((l) => l.item.id), ["molho"]);
+    assert.deepEqual(
+      grade.linhas.map((l) => l.item.id),
+      ["molho"],
+    );
   });
 
   test("sem resposta, indisponível e zero são três estados — e nenhum vence", () => {
     const itens = [item("molho", [[CENTRO, 10_000n]])];
     const grade = montarGrade(itens, [
       proposta("A", 0n, [], { itensSolicitados: ["molho"] }),
-      proposta("B", 0n, [oferta("molho", null, null, { situacao: "INDISPONIVEL" })]),
+      proposta("B", 0n, [
+        oferta("molho", null, null, { situacao: "INDISPONIVEL" }),
+      ]),
       proposta("C", 0n, [oferta("molho", 0n)]),
       proposta("D", 0n, [oferta("molho", 3100n)]),
     ]);
@@ -95,7 +110,11 @@ describe("a grade", () => {
   test("zero autorizado entra na disputa", () => {
     const grade = montarGrade(
       [item("molho", [[CENTRO, 10_000n]])],
-      [proposta("A", 0n, [oferta("molho", 0n, 10_000n, { precoZeroAutorizado: true })])],
+      [
+        proposta("A", 0n, [
+          oferta("molho", 0n, 10_000n, { precoZeroAutorizado: true }),
+        ]),
+      ],
     );
     assert.equal(celula(grade, "molho", "A").comparavel, true);
   });
@@ -104,7 +123,9 @@ describe("a grade", () => {
     const grade = montarGrade(
       [item("molho", [[CENTRO, 10_000n]])],
       [
-        proposta("A", 0n, [oferta("molho", 3000n, null, { fatorMotivo: "litro não vira quilo" })]),
+        proposta("A", 0n, [
+          oferta("molho", 3000n, null, { fatorMotivo: "litro não vira quilo" }),
+        ]),
         proposta("B", 0n, [oferta("molho", 3300n)]),
       ],
     );
@@ -133,7 +154,12 @@ describe("a grade", () => {
     // 6 kg no Centro e 6 kg no Sul, caixa de 10 kg: uma caixa para cada, não
     // uma caixa e pouco para as duas.
     const grade = montarGrade(
-      [item("molho", [[CENTRO, 6_000n], [SUL, 6_000n]])],
+      [
+        item("molho", [
+          [CENTRO, 6_000n],
+          [SUL, 6_000n],
+        ]),
+      ],
       [proposta("A", 0n, [oferta("molho", 30000n, 100_000n)])],
     );
     const c = celula(grade, "molho", "A");
@@ -144,9 +170,16 @@ describe("a grade", () => {
   test("disponibilidade menor que a necessidade não disputa sozinha", () => {
     const grade = montarGrade(
       [item("molho", [[CENTRO, 20_000n]])],
-      [proposta("A", 0n, [oferta("molho", 3000n, 10_000n, { disponivel: 5_000n })])],
+      [
+        proposta("A", 0n, [
+          oferta("molho", 3000n, 10_000n, { disponivel: 5_000n }),
+        ]),
+      ],
     );
-    assert.equal(celula(grade, "molho", "A").estado, "disponibilidade-insuficiente");
+    assert.equal(
+      celula(grade, "molho", "A").estado,
+      "disponibilidade-insuficiente",
+    );
   });
 
   test("granel: cada linha arredondada uma vez, e o total bate ao centavo", () => {
@@ -194,7 +227,10 @@ describe("a sugestão de menor custo total", () => {
   });
 
   test("concentrar num fornecedor pode vencer o 'mais barato de cada item'", () => {
-    const itens = [item("molho", [[CENTRO, 10_000n]]), item("farinha", [[CENTRO, 10_000n]])];
+    const itens = [
+      item("molho", [[CENTRO, 10_000n]]),
+      item("farinha", [[CENTRO, 10_000n]]),
+    ];
     const propostas = [
       // A: molho mais barato; B: farinha mais barata; C: os dois, um pouco
       // mais caros, mas um frete só.
@@ -222,7 +258,9 @@ describe("a sugestão de menor custo total", () => {
 
   test("ninguém atinge o mínimo: a sugestão diz, em vez de sugerir o impossível", () => {
     const itens = [item("molho", [[CENTRO, 10_000n]])];
-    const propostas = [proposta("A", 0n, [oferta("molho", 2900n)], { minimo: 50_000n })];
+    const propostas = [
+      proposta("A", 0n, [oferta("molho", 2900n)], { minimo: 50_000n }),
+    ];
     const r = sugerirMenorCusto(montarGrade(itens, propostas), propostas);
     assert.equal(r.ok, false);
     assert.match(!r.ok ? r.motivo : "", /mínimos/);
@@ -237,12 +275,22 @@ describe("a sugestão de menor custo total", () => {
     const r = sugerirMenorCusto(montarGrade(itens, propostas), propostas);
     assert.ok(r.ok);
     assert.deepEqual(r.sugestao.fornecedores, ["B"]);
-    assert.deepEqual(r.sugestao.fora.map((f) => f.fornecedorId), ["A"]);
+    assert.deepEqual(
+      r.sugestao.fora.map((f) => f.fornecedorId),
+      ["A"],
+    );
   });
 
   test("duas lojas: o frete é cobrado por entrega", () => {
-    const itens = [item("molho", [[CENTRO, 10_000n], [SUL, 10_000n]])];
-    const propostas = [proposta("A", 3000n, [oferta("molho", 30000n, 100_000n)])];
+    const itens = [
+      item("molho", [
+        [CENTRO, 10_000n],
+        [SUL, 10_000n],
+      ]),
+    ];
+    const propostas = [
+      proposta("A", 3000n, [oferta("molho", 30000n, 100_000n)]),
+    ];
     const grade = montarGrade(itens, propostas);
     assert.equal(grade.fornecedores[0].lojasAtendidas, 2);
     assert.equal(grade.fornecedores[0].freteTotal, 6000n);
@@ -251,8 +299,13 @@ describe("a sugestão de menor custo total", () => {
   });
 
   test("item sem oferta comparável aparece como 'sem opção'", () => {
-    const itens = [item("molho", [[CENTRO, 10_000n]]), item("oleo", [[CENTRO, 6_000n]])];
-    const propostas = [proposta("A", 0n, [oferta("molho", 3000n), oferta("oleo", 900n, null)])];
+    const itens = [
+      item("molho", [[CENTRO, 10_000n]]),
+      item("oleo", [[CENTRO, 6_000n]]),
+    ];
+    const propostas = [
+      proposta("A", 0n, [oferta("molho", 3000n), oferta("oleo", 900n, null)]),
+    ];
     const r = sugerirMenorCusto(montarGrade(itens, propostas), propostas);
     assert.ok(r.ok);
     assert.deepEqual(r.sugestao.semOpcao, ["oleo"]);

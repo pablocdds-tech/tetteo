@@ -57,7 +57,9 @@ export function situacaoDoLink(
 }
 
 export function podeVer(situacao: SituacaoDoLink): boolean {
-  return situacao === "valido" || situacao === "limite" || situacao === "aguarde";
+  return (
+    situacao === "valido" || situacao === "limite" || situacao === "aguarde"
+  );
 }
 
 /** O que o FORNECEDOR lê. Nada aqui revela dado interno. */
@@ -67,10 +69,12 @@ export const MENSAGEM_DO_LINK: Record<SituacaoDoLink, string> = {
     "Este link foi desativado por quem pediu a cotação. Peça um novo a quem enviou.",
   bloqueado:
     "Este link foi bloqueado depois de várias tentativas com erro. Peça um novo a quem enviou.",
-  vencido: "O prazo desta cotação terminou. Se ainda quiser propor, fale com quem enviou.",
+  vencido:
+    "O prazo desta cotação terminou. Se ainda quiser propor, fale com quem enviou.",
   encerrado:
     "Esta cotação já foi encerrada. Se o preço mudou, fale com quem enviou — a mudança fica registrada.",
   limite:
     "Esta proposta já recebeu o número máximo de versões pelo link. Fale com quem enviou.",
-  aguarde: "Recebemos um envio agora há pouco. Aguarde alguns segundos antes de enviar de novo.",
+  aguarde:
+    "Recebemos um envio agora há pouco. Aguarde alguns segundos antes de enviar de novo.",
 };

@@ -13,7 +13,11 @@ import {
   ConferenciaInvalida,
   encerrarSaldo,
 } from "@/modules/compras/services/recebimentos";
-import { adicionarItem, criarNota, lancarNota } from "@/modules/estoque/services/notas";
+import {
+  adicionarItem,
+  criarNota,
+  lancarNota,
+} from "@/modules/estoque/services/notas";
 import { db } from "@/server/db";
 
 import { conferirRecebimento, devolverMercadoria } from "./conferir";
@@ -81,7 +85,9 @@ async function entrega() {
 const posicao = async (insumoId: string) =>
   (
     await db.posicaoEstoque.findUnique({
-      where: { localId_insumoId: { localId: c.locais.depositoCentro.id, insumoId } },
+      where: {
+        localId_insumoId: { localId: c.locais.depositoCentro.id, insumoId },
+      },
     })
   )?.quantidade.toString() ?? null;
 
@@ -98,7 +104,9 @@ describe("receber", () => {
     // a tela diz por quê.
     assert.equal(r.contaAPagar, "sem-permissao");
 
-    const nota = await db.notaEntrada.findUniqueOrThrow({ where: { id: r.notaEntradaId! } });
+    const nota = await db.notaEntrada.findUniqueOrThrow({
+      where: { id: r.notaEntradaId! },
+    });
     assert.equal(nota.status, "LANCADA");
     assert.equal(nota.recebimentoId, r.recebimentoId);
     assert.equal(nota.valorTotal.toString(), "287.4"); // 95,40 + 6 × 32
@@ -106,18 +114,28 @@ describe("receber", () => {
     assert.equal(await posicao(c.insumos.molho.id), "10.8");
     assert.equal(await posicao(c.insumos.mussarela.id), "6");
 
-    const pedido = await db.pedido.findUniqueOrThrow({ where: { id: e.centro.id } });
+    const pedido = await db.pedido.findUniqueOrThrow({
+      where: { id: e.centro.id },
+    });
     assert.equal(pedido.situacaoRecebimento, "PARCIAL");
     assert.equal(pedido.status, "APROVADO");
   });
 
   test("a segunda entrega completa e conclui o pedido", async () => {
     const e = await entrega();
-    await e.conferirAgora([informado(e.molho.id, 1000n), informado(e.mussarela.id, 6000n)]);
-    const r = await e.conferirAgora([informado(e.molho.id, 1000n), informado(e.mussarela.id, 4000n)]);
+    await e.conferirAgora([
+      informado(e.molho.id, 1000n),
+      informado(e.mussarela.id, 6000n),
+    ]);
+    const r = await e.conferirAgora([
+      informado(e.molho.id, 1000n),
+      informado(e.mussarela.id, 4000n),
+    ]);
     assert.equal(r.numero, 2);
     assert.equal(r.completo, true);
-    const pedido = await db.pedido.findUniqueOrThrow({ where: { id: e.centro.id } });
+    const pedido = await db.pedido.findUniqueOrThrow({
+      where: { id: e.centro.id },
+    });
     assert.equal(pedido.status, "CONCLUIDO");
     assert.equal(pedido.situacaoRecebimento, "COMPLETO");
     assert.equal(await posicao(c.insumos.molho.id), "21.6");
@@ -152,9 +170,13 @@ describe("receber", () => {
 
   test("excedente aceito entra e vira divergência", async () => {
     const e = await entrega();
-    await e.conferirAgora([informado(e.molho.id, 3000n, { decisaoExcedente: "ACEITAR" })]);
+    await e.conferirAgora([
+      informado(e.molho.id, 3000n, { decisaoExcedente: "ACEITAR" }),
+    ]);
     assert.equal(await posicao(c.insumos.molho.id), "32.4");
-    const d = await db.divergenciaDeCompra.findFirstOrThrow({ where: { tipo: "EXCEDENTE" } });
+    const d = await db.divergenciaDeCompra.findFirstOrThrow({
+      where: { tipo: "EXCEDENTE" },
+    });
     assert.equal(d.impacto?.toString(), "95.4");
   });
 
@@ -162,14 +184,21 @@ describe("receber", () => {
     const e = await entrega();
     await e.conferirAgora([informado(e.molho.id, 1000n, { avariadas: 1000n })]);
     assert.equal(await posicao(c.insumos.molho.id), "10.8");
-    assert.equal(await db.divergenciaDeCompra.count({ where: { tipo: "AVARIA" } }), 1);
-    const pedido = await db.pedido.findUniqueOrThrow({ where: { id: e.centro.id } });
+    assert.equal(
+      await db.divergenciaDeCompra.count({ where: { tipo: "AVARIA" } }),
+      1,
+    );
+    const pedido = await db.pedido.findUniqueOrThrow({
+      where: { id: e.centro.id },
+    });
     assert.equal(pedido.situacaoRecebimento, "PARCIAL");
   });
 
   test("falha no meio da transação: nada fica gravado", async () => {
     const e = await entrega();
-    const antes = await db.pedido.findUniqueOrThrow({ where: { id: e.centro.id } });
+    const antes = await db.pedido.findUniqueOrThrow({
+      where: { id: e.centro.id },
+    });
     // O depósito do SUL não é lugar desta loja: o Estoque recusa DEPOIS de o
     // recebimento já ter sido gravado na transação.
     await assert.rejects(
@@ -183,7 +212,9 @@ describe("receber", () => {
     assert.equal(await db.itemDeRecebimento.count(), 0);
     assert.equal(await db.notaEntrada.count(), 0);
     assert.equal(await posicao(c.insumos.molho.id), null);
-    const depois = await db.pedido.findUniqueOrThrow({ where: { id: e.centro.id } });
+    const depois = await db.pedido.findUniqueOrThrow({
+      where: { id: e.centro.id },
+    });
     assert.equal(depois.versao, antes.versao);
     assert.equal(depois.situacaoRecebimento, "NADA");
   });
@@ -212,11 +243,19 @@ describe("receber", () => {
   test("encerrar o saldo conclui com o que faltou em divergência", async () => {
     const e = await entrega();
     await e.conferirAgora([informado(e.molho.id, 1000n)]);
-    await encerrarSaldo(e.gerente, e.centro.id, "Fornecedor sem estoque até o mês que vem");
-    const pedido = await db.pedido.findUniqueOrThrow({ where: { id: e.centro.id } });
+    await encerrarSaldo(
+      e.gerente,
+      e.centro.id,
+      "Fornecedor sem estoque até o mês que vem",
+    );
+    const pedido = await db.pedido.findUniqueOrThrow({
+      where: { id: e.centro.id },
+    });
     assert.equal(pedido.status, "CONCLUIDO");
     assert.equal(
-      await db.divergenciaDeCompra.count({ where: { tipo: "SALDO_ENCERRADO" } }),
+      await db.divergenciaDeCompra.count({
+        where: { tipo: "SALDO_ENCERRADO" },
+      }),
       2,
     );
   });
@@ -244,35 +283,50 @@ describe("a nota e o dinheiro", () => {
     await lancarNota(e.gerente, nota.id);
     assert.equal(await posicao(c.insumos.molho.id), "20");
 
-    const r = await e.conferirAgora([informado(e.molho.id, 2000n)], { notaExistenteId: nota.id });
+    const r = await e.conferirAgora([informado(e.molho.id, 2000n)], {
+      notaExistenteId: nota.id,
+    });
     assert.equal(r.notaEntradaId, nota.id);
     assert.equal(await db.notaEntrada.count(), 1);
     assert.equal(await posicao(c.insumos.molho.id), "20"); // o estoque ficou com o papel
-    const ligada = await db.notaEntrada.findUniqueOrThrow({ where: { id: nota.id } });
+    const ligada = await db.notaEntrada.findUniqueOrThrow({
+      where: { id: nota.id },
+    });
     assert.equal(ligada.recebimentoId, r.recebimentoId);
 
-    const tipos = (await db.divergenciaDeCompra.findMany()).map((d) => d.tipo).sort();
+    const tipos = (await db.divergenciaDeCompra.findMany())
+      .map((d) => d.tipo)
+      .sort();
     assert.deepEqual(tipos, ["NOTA_QUANTIDADE", "NOTA_VALOR"]);
 
     // A mesma nota não se liga a uma segunda conferência.
     await assert.rejects(
-      () => e.conferirAgora([informado(e.mussarela.id, 1000n)], { notaExistenteId: nota.id }),
+      () =>
+        e.conferirAgora([informado(e.mussarela.id, 1000n)], {
+          notaExistenteId: nota.id,
+        }),
       /já foi conferida/,
     );
   });
 
   test("a conta a pagar da nota não duplica, nem com dois cliques ao mesmo tempo", async () => {
     const e = await entrega();
-    const r = await e.conferirAgora([informado(e.molho.id, 2000n), informado(e.mussarela.id, 10_000n)]);
+    const r = await e.conferirAgora([
+      informado(e.molho.id, 2000n),
+      informado(e.mussarela.id, 10_000n),
+    ]);
     const financeiro = await c.ctx(c.financeiro, c.centro);
-    const { importarNotas } = await import("@/modules/financeiro/services/cadastros");
+    const { importarNotas } =
+      await import("@/modules/financeiro/services/cadastros");
 
     await Promise.allSettled([
       importarNotas(financeiro, [r.notaEntradaId!], null),
       importarNotas(financeiro, [r.notaEntradaId!], null),
     ]);
     assert.equal(await importarNotas(financeiro, [r.notaEntradaId!], null), 0);
-    const contas = await db.lancamento.findMany({ where: { notaEntradaId: r.notaEntradaId } });
+    const contas = await db.lancamento.findMany({
+      where: { notaEntradaId: r.notaEntradaId },
+    });
     assert.equal(contas.length, 1);
     assert.equal(contas[0].valor.toString(), "510.8"); // 2 × 95,40 + 10 × 32
   });
@@ -291,12 +345,19 @@ describe("a nota e o dinheiro", () => {
       linhas: [{ itemDeRecebimentoId: linha.id, quantidade: "5" }],
     });
     assert.equal(await posicao(c.insumos.molho.id), "16.6");
-    const mov = await db.movimentoEstoque.findFirstOrThrow({ where: { tipo: "DEVOLUCAO" } });
+    const mov = await db.movimentoEstoque.findFirstOrThrow({
+      where: { tipo: "DEVOLUCAO" },
+    });
     assert.equal(mov.quantidade.toString(), "5");
-    assert.equal(await db.divergenciaDeCompra.count({ where: { tipo: "DEVOLUCAO" } }), 1);
+    assert.equal(
+      await db.divergenciaDeCompra.count({ where: { tipo: "DEVOLUCAO" } }),
+      1,
+    );
 
     // A nota original continua lá, intacta.
-    const nota = await db.notaEntrada.findUniqueOrThrow({ where: { id: r.notaEntradaId! } });
+    const nota = await db.notaEntrada.findUniqueOrThrow({
+      where: { id: r.notaEntradaId! },
+    });
     assert.equal(nota.status, "LANCADA");
 
     await assert.rejects(
