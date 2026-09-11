@@ -13,7 +13,7 @@ const formatador = new Intl.NumberFormat("pt-BR", {
 
 /** 482305 → "R$ 4.823,05" (o espaço não separável do Intl vira espaço comum). */
 export function reais(centavos) {
-  return formatador.format(centavos / 100).replace(/ /g, " ");
+  return formatador.format(centavos / 100).replace(/\u00a0/g, " ");
 }
 
 /**
