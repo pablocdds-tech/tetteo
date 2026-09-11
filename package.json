@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "tsx --test \"src/**/*.test.ts\" \"assistente-privado/**/*.test.mjs\"",
     "test:integracao": "tsx --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 \"src/**/*.integracao.ts\"",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
     "seed": "tsx prisma/seed.ts",
