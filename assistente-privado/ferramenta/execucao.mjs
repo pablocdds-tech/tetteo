@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   open,
@@ -20,8 +20,10 @@ import path from "node:path";
  * Os números ficam em `<chave>.dados.json` desde o cálculo. Se o modelo cair
  * antes de redigir, nada se perde: o texto pode ser pedido depois.
  *
- * A TRAVA vale por chave. Uma trava de processo morto vence pelo horário do
- * arquivo (não pelo conteúdo, que pode ter ficado pela metade) e é trocada.
+ * A TRAVA vale por chave, marcada com dono único para evitar que quem a julgou
+ * abandonada delete a trava de outro que ainda está rodando. Uma trava de
+ * processo morto vence pelo horário do arquivo (não pelo conteúdo, que pode ter
+ * ficado pela metade) e é trocada.
  */
 
 export const VENCIMENTO_DA_TRAVA_MS = 10 * 60_000;
@@ -138,33 +140,54 @@ export async function comTrava(
 ) {
   const { trava } = caminhos(pastaTrabalho, chave);
   await mkdir(path.dirname(trava), { recursive: true });
+  // Cada execução marca a trava com um dono único: só quem a pôs pode tirá-la.
+  const dono = `${process.pid}-${randomUUID()}`;
 
   const tentar = async () => {
     const arquivo = await open(trava, "wx");
-    await arquivo.writeFile(
-      JSON.stringify({ pid: process.pid, em: new Date().toISOString() }),
-    );
-    await arquivo.close();
+    try {
+      await arquivo.writeFile(
+        JSON.stringify({ dono, em: new Date().toISOString() }),
+      );
+    } finally {
+      await arquivo.close();
+    }
   };
 
-  try {
-    await tentar();
-  } catch (erro) {
-    if (erro.code !== "EEXIST") throw erro;
-    const { mtimeMs } = await stat(trava);
-    if (Date.now() - mtimeMs <= vencimentoMs) throw new EmAndamento(chave);
-    await unlink(trava).catch(() => {});
+  const adquirir = async () => {
     try {
       await tentar();
-    } catch (deNovo) {
-      if (deNovo.code === "EEXIST") throw new EmAndamento(chave);
-      throw deNovo;
+      return;
+    } catch (erro) {
+      if (erro.code !== "EEXIST") throw erro;
     }
-  }
+    let mtimeMs = null;
+    try {
+      ({ mtimeMs } = await stat(trava));
+    } catch (erro) {
+      // A trava sumiu entre a tentativa e a leitura: o dono terminou agora.
+      if (erro.code !== "ENOENT") throw erro;
+    }
+    if (mtimeMs !== null && Date.now() - mtimeMs <= vencimentoMs)
+      throw new EmAndamento(chave);
+    if (mtimeMs !== null) await unlink(trava).catch(() => {});
+    try {
+      await tentar();
+    } catch (erro) {
+      if (erro.code === "EEXIST") throw new EmAndamento(chave);
+      throw erro;
+    }
+  };
 
+  await adquirir();
   try {
     return await fn();
   } finally {
-    await unlink(trava).catch(() => {});
+    // Só apaga se a trava ainda for NOSSA: se alguém a julgou abandonada e pôs
+    // a dele no lugar, apagar agora liberaria uma terceira execução.
+    const atual = await readFile(trava, "utf8")
+      .then((texto) => JSON.parse(texto))
+      .catch(() => null);
+    if (atual?.dono === dono) await unlink(trava).catch(() => {});
   }
 }

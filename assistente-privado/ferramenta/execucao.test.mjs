@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -79,4 +79,34 @@ test("trava: a segunda simultânea recusa; depois libera; trava vencida é troca
   const velho = new Date(Date.now() - VENCIMENTO_DA_TRAVA_MS - 5_000);
   await utimes(trava, velho, velho);
   assert.equal(await comTrava(p, "k3", async () => "trocou"), "trocou");
+});
+
+test("liberar não apaga a trava que já é de outro dono", async () => {
+  const p = await pasta();
+  const { trava } = caminhos(p, "k4");
+  await comTrava(p, "k4", async () => {
+    // Outro processo julgou esta trava abandonada e pôs a dele no lugar.
+    await writeFile(
+      trava,
+      JSON.stringify({ dono: "outro", em: new Date().toISOString() }),
+    );
+  });
+  assert.equal(JSON.parse(await readFile(trava, "utf8")).dono, "outro");
+});
+
+test("vinte ao mesmo tempo: cada uma roda ou recebe EmAndamento, nenhum outro erro", async () => {
+  const p = await pasta();
+  const resultados = await Promise.allSettled(
+    Array.from({ length: 20 }, () =>
+      comTrava(p, "k5", async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return "rodou";
+      }),
+    ),
+  );
+  for (const r of resultados) {
+    if (r.status === "rejected")
+      assert.ok(r.reason instanceof EmAndamento, String(r.reason));
+  }
+  assert.ok(resultados.some((r) => r.status === "fulfilled"));
 });
