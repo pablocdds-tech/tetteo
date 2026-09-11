@@ -6101,6 +6101,9 @@ npm run dev                   # servidor em http://127.0.0.1:8787
 npm run ensaio:demonstrar -- http://127.0.0.1:8787 2026-09-10
 ```
 
+Os testes de integração redefinem a senha do papel `tetteo_mcp` no Postgres de ensaio. Depois
+de rodá-los, repita `npm run ensaio:subir` antes de subir o servidor local.
+
 ## Testes
 
 ```powershell
