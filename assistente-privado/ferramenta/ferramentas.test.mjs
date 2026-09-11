@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
+import { dataBr, somarDias } from "./datas.mjs";
 import {
   DEFINICOES,
   criarFerramentas,
@@ -28,6 +29,7 @@ async function montar(arquivos = {}) {
     await writeFile(path.join(pastaDados, nome), conteudo);
   }
   const enviados = [];
+  let relogio = new Date("2026-09-11T15:00:00Z");
   const ferramentas = criarFerramentas(
     {
       pastaDados,
@@ -41,14 +43,17 @@ async function montar(arquivos = {}) {
       },
     },
     {
-      agora: () => new Date("2026-09-11T15:00:00Z"),
+      agora: () => relogio,
       enviar: async ({ corpo }) => {
         enviados.push(corpo);
         return { enviado: true };
       },
     },
   );
-  return { raiz, pastaTrabalho, ferramentas, enviados };
+  const avancarDias = (dias) => {
+    relogio = new Date(relogio.getTime() + dias * 24 * 60 * 60 * 1000);
+  };
+  return { raiz, pastaTrabalho, ferramentas, enviados, avancarDias };
 }
 
 test("as cinco ferramentas, e só elas", () => {
@@ -71,6 +76,27 @@ test("lista só os CSVs da pasta", async () => {
     r.arquivos.map((a) => a.nome),
     ["vendas.csv"],
   );
+});
+
+test("pasta de dados inacessível: listar_arquivos avisa, não finge que está vazia", async () => {
+  const raiz = await mkdtemp(path.join(os.tmpdir(), "ferramentas-"));
+  const pastaDados = path.join(raiz, "nao-existe");
+  const pastaTrabalho = path.join(raiz, "trabalho");
+  await mkdir(pastaTrabalho, { recursive: true });
+  const ferramentas = criarFerramentas(
+    {
+      pastaDados,
+      pastaTrabalho,
+      lojaPermitida: "Loja Centro",
+      diasParaDesatualizado: 2,
+      demonstracao: true,
+      registro: { url: "", segredo: "" },
+    },
+    { agora: () => new Date("2026-09-11T15:00:00Z") },
+  );
+  const r = await ferramentas.chamar("listar_arquivos", {});
+  assert.deepEqual(r.arquivos, []);
+  assert.match(r.aviso, /não está acessível/);
 });
 
 test("calcula, grava os números e registra 'calculado' sem vazar a instrução", async () => {
@@ -119,6 +145,27 @@ test("a mesma pergunta de novo devolve o mesmo resultado, sem registrar de novo"
   assert.equal(b.chave, a.chave);
   assert.equal(b.reaproveitado, true);
   assert.equal(enviados.length, 1);
+});
+
+test("frescor recalculado ao reaproveitar: o mesmo arquivo fica desatualizado com o tempo", async () => {
+  const { ferramentas, enviados, avancarDias } = await montar({
+    "vendas.csv": CSV,
+  });
+  const a = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+  });
+  assert.equal(a.desatualizado, false);
+  avancarDias(10);
+  const b = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+  });
+  assert.equal(b.reaproveitado, true);
+  assert.equal(b.desatualizado, true);
+  assert.match(b.avisos[0], /^Arquivo desatualizado:/);
+  assert.equal(enviados.length, 2);
+  assert.deepEqual(enviados[1].pendencias, [
+    "Arquivo desatualizado: vendas.csv",
+  ]);
 });
 
 test("duas ao mesmo tempo: uma calcula, a outra espera ou reaproveita", async () => {
@@ -178,6 +225,40 @@ test("período ao contrário é erro de parâmetro", async () => {
   assert.equal(r.estado, "erro_de_parametro");
 });
 
+test("período EFETIVO maior que 366 dias (sem de/ate) é erro de parâmetro, e nada é gravado nem registrado", async () => {
+  const csv = [
+    "data;loja;pedidos;valor_total",
+    "01/01/2020;Loja Centro;5;50,00",
+    "10/09/2026;Loja Centro;5;50,00",
+  ].join("\n");
+  const { ferramentas, enviados, pastaTrabalho } = await montar({
+    "vendas-longas.csv": csv,
+  });
+  const r = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas-longas.csv",
+  });
+  assert.equal(r.estado, "erro_de_parametro");
+  assert.match(r.motivo, /366/);
+  const existentes = await readdir(
+    path.join(pastaTrabalho, "relatorios"),
+  ).catch(() => []);
+  assert.deepEqual(
+    existentes.filter((n) => n.endsWith(".dados.json")),
+    [],
+  );
+  assert.equal(enviados.length, 0);
+});
+
+test("só o 'de' pedido depois da última data do arquivo também é erro de parâmetro", async () => {
+  const { ferramentas } = await montar({ "vendas.csv": CSV });
+  const r = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+    de: "01/12/2026",
+  });
+  assert.equal(r.estado, "erro_de_parametro");
+  assert.match(r.motivo, /última data/);
+});
+
 test("o relatório usa os números da chave, não os do texto; salvar de novo não duplica", async () => {
   const { ferramentas, enviados, pastaTrabalho } = await montar({
     "vendas.csv": CSV,
@@ -208,6 +289,46 @@ test("o relatório usa os números da chave, não os do texto; salvar de novo n�
     enviados.map((c) => c.estado),
     ["calculado", "concluido"],
   );
+});
+
+test("anomalias em excesso: o resultado e o relatório mostram até 30, e avisam quantas ficaram de fora", async () => {
+  const de = "2026-01-01";
+  const ate = somarDias(de, 59); // 60 dias no período
+  const linhas = ["data;loja;pedidos;valor_total"];
+  for (let i = 0; i < 60; i += 3) {
+    linhas.push(`${dataBr(somarDias(de, i))};Loja Centro;10;100,00`);
+  }
+  const { ferramentas, pastaTrabalho } = await montar({
+    "periodo.csv": linhas.join("\n"),
+  });
+  const r = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "periodo.csv",
+    de,
+    ate,
+  });
+  assert.equal(r.estado, "calculado");
+  assert.equal(r.anomalias.length, 30);
+  assert.equal(r.anomaliasOmitidas, 10);
+
+  const salvo = await ferramentas.chamar("salvar_relatorio", {
+    chave: r.chave,
+    texto: "x",
+  });
+  assert.equal(salvo.estado, "concluido");
+  const md = await readFile(
+    path.join(pastaTrabalho, "relatorios", `${r.chave}.md`),
+    "utf8",
+  );
+  const inicioAnomalias = md.indexOf(
+    "Anomalias (dado, calculado pela ferramenta)",
+  );
+  const inicioAvisos = md.indexOf("Avisos", inicioAnomalias);
+  const blocoAnomalias = md
+    .slice(inicioAnomalias, inicioAvisos)
+    .split("\n")
+    .filter((l) => l.startsWith("- "));
+  assert.equal(blocoAnomalias.length, 31);
+  assert.equal(blocoAnomalias.at(-1), "- e mais 10 anomalias");
 });
 
 test("rascunho diz que é rascunho, vira pendência e não duplica", async () => {

@@ -41,6 +41,7 @@ import { limparTexto } from "./sanitizar.mjs";
 
 export const LIMITE_DO_ARQUIVO = 5 * 1024 * 1024;
 export const MAXIMO_DE_DIAS = 366;
+export const MAXIMO_DE_ANOMALIAS = 30;
 const RE_NOME = /^[\w.-]{1,80}\.csv$/i;
 const RE_CHAVE = /^[a-f0-9]{16}$/;
 
@@ -179,6 +180,21 @@ function indicadoresDe(d) {
   };
 }
 
+/**
+ * Um período longo pode gerar milhares de anomalias (um dia sem linha, para
+ * cada dia sem linha). Sem limite, isso vira um resultado gigante, um
+ * relatório de milhares de linhas e um registro pesado demais para o Tetteo.
+ * A lista é cortada; o corte é contado, nunca escondido.
+ */
+function comAnomaliasLimitadas(calculo) {
+  const excedente = Math.max(0, calculo.anomalias.length - MAXIMO_DE_ANOMALIAS);
+  return {
+    ...calculo,
+    anomalias: calculo.anomalias.slice(0, MAXIMO_DE_ANOMALIAS),
+    anomaliasOmitidas: excedente,
+  };
+}
+
 function slug(texto) {
   return texto
     .normalize("NFD")
@@ -239,8 +255,14 @@ export function criarFerramentas(
     let info;
     try {
       info = await lstat(alvo);
-    } catch {
-      return { ausente: true };
+    } catch (erro) {
+      // Só a AUSÊNCIA do arquivo é "ausente"; permissão, link quebrado ou
+      // qualquer outro erro do sistema de arquivos não pode se disfarçar de
+      // "não existe" — isso esconderia um volume mal montado.
+      if (erro.code === "ENOENT") return { ausente: true };
+      return {
+        invalido: `não foi possível ler o arquivo (${erro.code ?? "erro"})`,
+      };
     }
     if (!info.isFile())
       return { negado: "Isso não é um arquivo comum da pasta autorizada." };
@@ -274,6 +296,9 @@ export function criarFerramentas(
       ...(d.anomalias.length
         ? d.anomalias.map((a) => `- ${a.texto}`)
         : ["- nenhuma"]),
+      ...(d.anomaliasOmitidas > 0
+        ? [`- e mais ${d.anomaliasOmitidas} anomalias`]
+        : []),
       "",
       "Avisos",
       ...(d.avisos.length ? d.avisos.map((a) => `- ${a}`) : ["- nenhum"]),
@@ -289,11 +314,28 @@ export function criarFerramentas(
 
   const tratadores = {
     async listar_arquivos() {
-      const nomes = await readdir(config.pastaDados).catch(() => []);
+      let nomes;
+      try {
+        nomes = await readdir(config.pastaDados);
+      } catch (erro) {
+        return {
+          pasta: "dados-exemplo",
+          arquivos: [],
+          aviso: `A pasta de dados não está acessível (${erro.code ?? "erro"}) — o volume pode não estar montado.`,
+        };
+      }
       const arquivos = [];
       for (const nome of nomes.sort()) {
         if (!RE_NOME.test(nome)) continue;
-        const info = await lstat(path.join(config.pastaDados, nome));
+        let info;
+        try {
+          info = await lstat(path.join(config.pastaDados, nome));
+        } catch (erro) {
+          // O arquivo pode ter sumido entre o readdir e o lstat; qualquer
+          // outro erro (permissão, link quebrado) não deve virar silêncio.
+          if (erro.code === "ENOENT") continue;
+          throw erro;
+        }
         if (!info.isFile()) continue;
         arquivos.push({
           nome,
@@ -355,17 +397,6 @@ export function criarFerramentas(
           motivo: "Use datas AAAA-MM-DD ou DD/MM/AAAA.",
         };
       }
-      if (
-        inicio &&
-        fim &&
-        (fim < inicio || diasEntre(inicio, fim) + 1 > MAXIMO_DE_DIAS)
-      ) {
-        return {
-          estado: "erro_de_parametro",
-          motivo:
-            "Período inválido: o fim vem antes do início, ou passa de 366 dias.",
-        };
-      }
 
       const conteudo = await readFile(alvo.caminho);
       const leitura = lerCsv(conteudo.toString("utf8"));
@@ -395,42 +426,102 @@ export function criarFerramentas(
         hoje: hojeEmSaoPaulo(agora()),
         diasParaDesatualizado: config.diasParaDesatualizado,
       });
+
+      // O período EFETIVO — já com os limites que faltam quando de/ate vêm
+      // do próprio arquivo, não do pedido — segue a mesma régua do período
+      // explícito: início não pode vir depois do fim, e o total não passa de
+      // 366 dias. Nada é gravado nem registrado aqui: é erro de parâmetro,
+      // não um fechamento.
+      if (calculo.periodo) {
+        const { de: efetivoDe, ate: efetivoAte } = calculo.periodo;
+        if (efetivoAte < efetivoDe) {
+          return {
+            estado: "erro_de_parametro",
+            motivo: `O início pedido vem depois da última data do arquivo (${dataBr(calculo.ultimaData ?? efetivoAte)}).`,
+          };
+        }
+        const diasCobertos = diasEntre(efetivoDe, efetivoAte) + 1;
+        if (diasCobertos > MAXIMO_DE_DIAS) {
+          return {
+            estado: "erro_de_parametro",
+            motivo: `O arquivo cobre ${diasCobertos} dias; peça um período de até 366 dias (de/até).`,
+          };
+        }
+      }
+
+      const calculoLimitado = comAnomaliasLimitadas(calculo);
       const chave = chaveDaExecucao({
         conteudo,
         loja: config.lojaPermitida,
-        de: calculo.periodo?.de ?? "",
-        ate: calculo.periodo?.ate ?? "",
+        de: calculoLimitado.periodo?.de ?? "",
+        ate: calculoLimitado.periodo?.ate ?? "",
       });
 
       try {
         return await comTrava(config.pastaTrabalho, chave, async () => {
           const existente = await lerExecucao(config.pastaTrabalho, chave);
           if (existente.dados) {
-            return {
+            // O CONTEÚDO não muda, mas o RELÓGIO sim: o frescor é
+            // recalculado a cada reaproveitamento, nunca fica congelado no
+            // instante do primeiro cálculo.
+            const hoje = hojeEmSaoPaulo(agora());
+            const ultimaData = existente.dados.ultimaData;
+            const diasSemAtualizacao = ultimaData
+              ? diasEntre(ultimaData, hoje)
+              : null;
+            const desatualizado =
+              diasSemAtualizacao !== null &&
+              diasSemAtualizacao > config.diasParaDesatualizado;
+            let avisos = existente.dados.avisos.filter(
+              (a) => !a.startsWith("Arquivo desatualizado:"),
+            );
+            if (desatualizado) {
+              avisos = [
+                `Arquivo desatualizado: a última informação é de ${dataBr(ultimaData)}, há ${diasSemAtualizacao} dias.`,
+                ...avisos,
+              ];
+            }
+            const dadosAtualizados = {
               ...existente.dados,
-              estado: estadoAtual(existente, agora()),
-              reaproveitado: true,
+              desatualizado,
+              diasSemAtualizacao,
+              avisos,
             };
+            const estado = estadoAtual(existente, agora());
+            if (desatualizado !== existente.dados.desatualizado) {
+              await gravarDados(config.pastaTrabalho, chave, dadosAtualizados);
+              await registrar({
+                tipo: "execucao",
+                chave,
+                estado: estado === "interrompido" ? "calculado" : estado,
+                fonte: dadosAtualizados.arquivo,
+                periodo: dadosAtualizados.periodo,
+                indicadores: indicadoresDe(dadosAtualizados),
+                avisos: avisos.slice(0, 10),
+                pendencias: pendenciasDe(dadosAtualizados),
+              });
+            }
+            return { ...dadosAtualizados, estado, reaproveitado: true };
           }
           const dados = {
-            ...calculo,
+            ...calculoLimitado,
             arquivo,
             chave,
             calculadoEm: agora().toISOString(),
           };
           await gravarDados(config.pastaTrabalho, chave, dados);
-          const suspeitas = calculo.observacoes
+          const suspeitas = calculoLimitado.observacoes
             .filter((o) => o.suspeita)
             .map((o) => o.linha);
           if (suspeitas.length) await anotarTentativa(arquivo, suspeitas);
           await registrar({
             tipo: "execucao",
             chave,
-            estado: calculo.estado,
+            estado: calculoLimitado.estado,
             fonte: arquivo,
-            periodo: calculo.periodo,
-            indicadores: indicadoresDe(calculo),
-            avisos: calculo.avisos.slice(0, 10),
+            periodo: calculoLimitado.periodo,
+            indicadores: indicadoresDe(calculoLimitado),
+            avisos: calculoLimitado.avisos.slice(0, 10),
             pendencias: pendenciasDe(dados),
           });
           return { ...dados, reaproveitado: false };
