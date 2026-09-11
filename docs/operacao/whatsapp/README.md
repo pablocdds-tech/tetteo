@@ -60,10 +60,13 @@ com o nome do que falta — e nada é enviado.
    contêiner da aplicação:
 
    ```
-   wget -q -O - --post-data '' --header "x-severina-segredo: $SEVERINA_TICK_SEGREDO" http://localhost:3000/api/severina/tick
+   wget -q -O - --post-data '' --header "x-severina-segredo: $SEVERINA_TICK_SEGREDO" http://127.0.0.1:3000/api/severina/tick
    ```
 
-   (o contêiner é Alpine: tem `wget`, não tem `curl`; a variável já está no
+   Shell `sh`. Use `127.0.0.1`, **não** `localhost`: no Alpine, `localhost`
+   aponta primeiro para o IPv6 (`::1`), e o Tetteo escuta só em IPv4
+   (`0.0.0.0`) — o resultado é `Connection refused`. (O contêiner é Alpine:
+   tem `wget`, não tem `curl`; a variável já está no
    ambiente dele, então o segredo não é digitado em lugar nenhum). Se o
    Dokploy não oferecer Schedules, o mesmo comando vai no `cron` da VPS, com
    `curl` e o endereço público — aí o segredo entra no crontab, que precisa
