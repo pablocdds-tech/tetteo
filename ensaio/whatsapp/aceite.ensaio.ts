@@ -30,7 +30,10 @@ import {
   reenviarAviso,
   registrarResultado,
 } from "@/modules/assistente/services/avisos";
-import { alternarEnvio } from "@/modules/assistente/services/conexao";
+import {
+  adotarNomeConfigurado,
+  alternarEnvio,
+} from "@/modules/assistente/services/conexao";
 import {
   processarEvento,
   registrarEvento,
@@ -989,5 +992,53 @@ describe("o que a revisão apontou", () => {
     const bruno = await contextoDe(cenario.bruno, cenario.sulId);
     await assert.rejects(alternarEnvio(bruno, cenario.conexaoId), SemPermissao);
     assert.equal((await conexao()).ativa, true);
+  });
+});
+
+describe("o cadastro que nasceu com nome provisório", () => {
+  test("quem pode conectar na loja adota o nome configurado; os outros, não", async () => {
+    const provisoria = await db.instanciaWhatsapp.create({
+      data: {
+        organizacaoId: cenario.organizacaoId,
+        nome: "severina",
+        provedor: "EVOLUTION_BAILEYS",
+        unidadeId: cenario.centroId,
+      },
+    });
+    try {
+      // Sem a variável, o erro é claro — e nada muda.
+      const ana = await contextoDe(cenario.ana, cenario.centroId);
+      await assert.rejects(
+        adotarNomeConfigurado(ana, provisoria.id, ""),
+        /EVOLUTION_INSTANCIA/,
+      );
+      // Responsável de OUTRA loja não mexe.
+      const bruno = await contextoDe(cenario.bruno, cenario.sulId);
+      await assert.rejects(
+        adotarNomeConfigurado(bruno, provisoria.id, "loja-verdadeira"),
+        SemPermissao,
+      );
+      // Nome já usado por outro cadastro é recusado.
+      await assert.rejects(
+        adotarNomeConfigurado(ana, provisoria.id, "loja-ensaio"),
+        /Já existe/,
+      );
+      // O caso certo: o cadastro passa a ter o nome que o servidor configurou.
+      await adotarNomeConfigurado(ana, provisoria.id, "loja-verdadeira");
+      const depois = await db.instanciaWhatsapp.findUniqueOrThrow({
+        where: { id: provisoria.id },
+      });
+      assert.equal(depois.nome, "loja-verdadeira");
+      const rastro = await db.auditoria.findFirst({
+        where: { entidade: "InstanciaWhatsapp", entidadeId: provisoria.id },
+        orderBy: { quando: "desc" },
+      });
+      assert.deepEqual(rastro?.valoresDepois, { nome: "loja-verdadeira" });
+    } finally {
+      await db.instanciaWhatsapp.update({
+        where: { id: provisoria.id },
+        data: { excluidoEm: new Date() },
+      });
+    }
   });
 });

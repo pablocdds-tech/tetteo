@@ -15,6 +15,7 @@ import { Cartao, TituloDeSecao } from "@/design-system/cartao";
 import { Etiqueta } from "@/design-system/etiqueta";
 
 import {
+  adotarNomeConfiguradoAcao,
   alternarAgendamentosAcao,
   alternarEnvioAcao,
   definirLojaAcao,
@@ -60,6 +61,7 @@ export type ConexaoParaPainel = {
   eventosConfiguradosEm: Date | null;
   webhookPendente: string[];
   avisoDoWebhook: string | null;
+  nomeConfigurado: string | null;
   podeConectar: boolean;
 };
 
@@ -162,6 +164,45 @@ function ComConfirmacao({
         Voltar
       </Botao>
     </div>
+  );
+}
+
+/**
+ * O cadastro se chama de um jeito e o servidor aponta para outra instância.
+ * Acontece com o cadastro provisório que a Severina cria antes de a variável
+ * existir. Um toque adota o nome configurado — só para quem pode conectar.
+ */
+function NomeQueNaoBate({ conexao }: { conexao: ConexaoParaPainel }) {
+  const [estado, adotar, adotando] = useActionState(
+    adotarNomeConfiguradoAcao,
+    {},
+  );
+  return (
+    <form
+      action={adotar}
+      className="bg-warn-sub border-warn/25 flex flex-col gap-2 rounded-md border px-3 py-2"
+    >
+      <input type="hidden" name="id" value={conexao.id} />
+      <p className="text-sm leading-5">
+        O servidor está configurado para a instância{" "}
+        <strong>&quot;{conexao.nomeConfigurado}&quot;</strong>, mas este
+        cadastro se chama <strong>&quot;{conexao.nome}&quot;</strong>. Enquanto
+        não baterem, nada é enviado nem recebido.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Botao type="submit" tamanho="pequeno" carregando={adotando}>
+          Usar &quot;{conexao.nomeConfigurado}&quot; neste cadastro
+        </Botao>
+        <span className="text-ink-3 text-sm">
+          ou corrija EVOLUTION_INSTANCIA no servidor.
+        </span>
+      </div>
+      {estado.erro && (
+        <p role="alert" className="text-bad text-sm">
+          {estado.erro}
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -440,6 +481,12 @@ export function PainelWhatsapp({
               {estado.motivo}
             </p>
           )}
+
+          {conexao.podeConectar &&
+            conexao.nomeConfigurado &&
+            conexao.nomeConfigurado !== conexao.nome && (
+              <NomeQueNaoBate conexao={conexao} />
+            )}
 
           {aviso && (
             <p

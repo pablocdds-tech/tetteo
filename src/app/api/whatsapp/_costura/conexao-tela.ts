@@ -56,6 +56,8 @@ export type TelaDaConexao = {
   webhookPendente: string[];
   /** O endereço configurado aponta para o domínio público: a Evolution seria barrada. */
   avisoDoWebhook: string | null;
+  /** O nome de instância que o servidor configurou — pode não bater com o cadastro. */
+  nomeConfigurado: string | null;
   podeConectar: boolean;
 };
 
@@ -193,6 +195,10 @@ export async function lerConexaoParaTela(
     webhookPendente:
       configWebhook.tipo === "pendente" ? configWebhook.faltando : [],
     avisoDoWebhook,
+    nomeConfigurado:
+      atual.provedor === "EVOLUTION_BAILEYS"
+        ? env.EVOLUTION_INSTANCIA?.trim() || null
+        : null,
     podeConectar,
   };
 }

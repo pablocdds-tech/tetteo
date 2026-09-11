@@ -334,6 +334,58 @@ export async function definirLoja(
 }
 
 /**
+ * O CADASTRO QUE NASCEU COM NOME PROVISÓRIO.
+ *
+ * A Severina cria a linha do número junto com o primeiro agente, com o nome
+ * da variável — ou "severina", quando ela ainda não existia. Quando o
+ * servidor passa a apontar para a instância de verdade, o cadastro precisa
+ * acompanhar: a chave é daquela instância, e o webhook procura o cadastro
+ * pelo nome que a Evolution manda. Só quem pode conectar na loja do número
+ * muda o nome, e fica registrado.
+ */
+export async function adotarNomeConfigurado(
+  contexto: ContextoSessao,
+  id: string,
+  nomeConfigurado: string | null | undefined,
+): Promise<void> {
+  const conexao = await exigirNaLojaDaConexao(
+    contexto,
+    id,
+    "assistente.conectar",
+    "mudar o nome do cadastro do número",
+  );
+  const nome = (nomeConfigurado ?? "").trim();
+  if (!nome) {
+    throw new Error("O servidor não tem EVOLUTION_INSTANCIA configurada.");
+  }
+  if (nome === conexao.nome) return;
+
+  // A chave única do banco vale também para cadastro excluído: o nome só se
+  // adota se nenhuma outra linha o tiver.
+  const emUso = await db.instanciaWhatsapp.findFirst({
+    where: { nome, NOT: { id } },
+    select: { id: true, excluidoEm: true },
+  });
+  if (emUso) {
+    throw new Error(
+      emUso.excluidoEm
+        ? `Um cadastro excluído ainda guarda o nome "${nome}". Reaproveite-o em vez de renomear este.`
+        : `Já existe um cadastro com o nome "${nome}".`,
+    );
+  }
+
+  await db.instanciaWhatsapp.update({ where: { id }, data: { nome } });
+  await registrarAuditoria(contexto, {
+    entidade: "InstanciaWhatsapp",
+    entidadeId: id,
+    acao: "ALTEROU",
+    unidadeId: conexao.unidadeId,
+    antes: { nome: conexao.nome },
+    depois: { nome },
+  });
+}
+
+/**
  * Cadastra no Tetteo uma instância que JÁ EXISTE na Evolution.
  *
  * Não cria nada lá: o número já conectado continua conectado. Se o Tetteo já

@@ -39,10 +39,13 @@ export function provedorPara(
       config.faltando,
     );
   }
+  // Não é "falta configurar": é um nome que não bate. A frase diz os dois e a
+  // tela WhatsApp oferece adotar o configurado — o cadastro nasce com nome
+  // provisório quando a variável ainda não existia.
   if (config.instancia !== conexao.nome) {
     return indisponivel(
-      `A chave configurada é da instância "${config.instancia}", não de "${conexao.nome}".`,
-      ["EVOLUTION_INSTANCIA"],
+      `O servidor está configurado para a instância "${config.instancia}", mas este cadastro se chama "${conexao.nome}". Confira EVOLUTION_INSTANCIA no servidor, ou adote o nome configurado neste cadastro.`,
+      [],
     );
   }
   return criarProvedorEvolution(config);

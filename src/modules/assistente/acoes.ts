@@ -20,6 +20,7 @@ import {
   type AvisoNoDetalhe,
 } from "./services/avisos";
 import {
+  adotarNomeConfigurado,
   alternarAgendamentos,
   alternarEnvio,
   cadastrarConexao,
@@ -241,6 +242,25 @@ export async function definirLojaAcao(
   const unidadeId = String(dados.get("unidadeId") ?? "");
   try {
     await definirLoja(contexto, id, unidadeId || null);
+  } catch (erro) {
+    return paraMensagem(erro);
+  }
+  revalidarWhatsapp();
+  return { ok: true };
+}
+
+/**
+ * O cadastro passa a usar o nome de instância configurado no servidor. O
+ * valor vem do ambiente, nunca do formulário: a tela não escolhe nome.
+ */
+export async function adotarNomeConfiguradoAcao(
+  _anterior: EstadoFormulario,
+  dados: FormData,
+): Promise<EstadoFormulario> {
+  const contexto = await contextoOuLogin();
+  const id = String(dados.get("id") ?? "");
+  try {
+    await adotarNomeConfigurado(contexto, id, process.env.EVOLUTION_INSTANCIA);
   } catch (erro) {
     return paraMensagem(erro);
   }
