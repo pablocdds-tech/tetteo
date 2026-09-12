@@ -69,15 +69,18 @@ export default async function PaginaConfiguracoes() {
 
       <section className="mt-10">
         <h2 className="font-semibold">Integrações</h2>
-        <div className="border-line-2 bg-surface-2 mt-3 rounded-xl border border-dashed px-5 py-6">
-          <p className="font-semibold">Nenhuma integração ligada</p>
+        <Link
+          href="/configuracoes/integracoes"
+          className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"
+        >
+          <p className="font-semibold">Conexões de IA</p>
           <p className="text-ink-3 mt-1 max-w-lg text-sm">
-            A ligação com o seu PDV é o que traz o faturamento para o CMV
-            sozinho e baixa as vendas do estoque. Ela ainda não existe — e um
-            campo de token que não conecta em lugar nenhum seria só enfeite,
-            então ele não está aqui.
+            Quem autorizou uma IA a consultar o Tetteo, de qual loja, e o botão
+            de revogar. A ligação com o seu PDV ainda não existe — e um campo de
+            token que não conecta em lugar nenhum seria só enfeite, então ele
+            não está aqui.
           </p>
-        </div>
+        </Link>
       </section>
     </div>
   );
