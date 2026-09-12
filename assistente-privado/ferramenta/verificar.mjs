@@ -123,6 +123,23 @@ function perfilOAuthVencido(perfil) {
 }
 
 /**
+ * O oposto de vencido não é "não vencido" — é uma prova POSITIVA de saúde
+ * (Fix round 3). Um status desconhecido, sem `remainingMs`/`expiresAt` que
+ * confirmem tempo de sobra, não passa aqui: ele fica na dúvida, e dúvida não
+ * é prova. `STATUS_OAUTH_RUIM` é checado primeiro para as duas funções nunca
+ * discordarem sobre o mesmo perfil.
+ */
+function perfilOAuthSaudavel(perfil) {
+  const status = String(perfil?.status ?? "").toLowerCase();
+  if (STATUS_OAUTH_RUIM.has(status)) return false;
+  if (status === "ok") return true;
+  if (typeof perfil?.remainingMs === "number") return perfil.remainingMs > 0;
+  if (typeof perfil?.expiresAt === "number")
+    return perfil.expiresAt > Date.now();
+  return false;
+}
+
+/**
  * A rota da assinatura para a OpenAI, quando o próprio OpenClaw confirma que
  * ela funciona (Fix round 2). Não é obrigatória: um CLI mais antigo pode não
  * mandar `auth.runtimeAuthRoutes` nenhuma, e isso sozinho não é motivo para
@@ -153,11 +170,18 @@ export function estadoDaVerificacao(
   }
   const auth = status?.auth ?? {};
 
+  // Um motivo de bloqueio RECONHECIDO decide na hora — nem uma rota usável
+  // muda isso, porque é um fato explícito, não uma dúvida. Um motivo
+  // DESCONHECIDO fica guardado: sozinho ele não prova que está quebrado
+  // (pode ser um rótulo novo e inofensivo), mas também não é prova de saúde
+  // — só uma rota usável destrava o "conectado" com ele no ar (Fix round 3).
   const bloqueado = lista(auth.unusableProfiles).find(ehOpenai);
+  let motivoBloqueio = null;
   if (bloqueado) {
-    const motivo = String(
-      bloqueado.reason ?? bloqueado.disabledReason ?? "",
-    ).toLowerCase();
+    const motivoOriginal = String(
+      bloqueado.reason ?? bloqueado.disabledReason ?? "motivo não informado",
+    );
+    const motivo = motivoOriginal.toLowerCase();
     if (/rate|limit|usage|quota/.test(motivo)) {
       return {
         estado: "limite",
@@ -166,6 +190,7 @@ export function estadoDaVerificacao(
     }
     if (/auth|expired|revoked|invalid/.test(motivo))
       return { estado: "login_expirado" };
+    motivoBloqueio = motivoOriginal;
   }
 
   // Fix round 2: `auth.oauth` é um objeto (`{ warnAfterMs, profiles }`), não
@@ -189,10 +214,41 @@ export function estadoDaVerificacao(
     };
   }
 
+  // Nada RECONHECIDO deu problema até aqui — mas isso é só ausência de prova
+  // de problema, não prova de saúde (Fix round 3: era exatamente essa
+  // lacuna que deixava um status novo, ou um motivo de bloqueio novo, virar
+  // "conectado" por omissão). "Conectado" agora exige uma prova POSITIVA: a
+  // rota da assinatura confirmando que funciona (o que vale mais que
+  // qualquer rótulo de perfil não reconhecido — um sistema são de verdade
+  // tem essa rota usável), ou pelo menos um perfil com status
+  // reconhecidamente bom, sem um motivo de bloqueio pendente de explicação.
   const rotaUsavel = rotaOpenaiUsavel(auth);
+  if (rotaUsavel) {
+    return {
+      estado: "conectado",
+      runtime: rotaUsavel.runtime != null ? String(rotaUsavel.runtime) : null,
+    };
+  }
+  if (perfisOAuth.some(perfilOAuthSaudavel) && !motivoBloqueio) {
+    return { estado: "conectado", runtime: null };
+  }
+
+  const statusNaoReconhecido = perfisOAuth.find(
+    (p) => !perfilOAuthSaudavel(p),
+  )?.status;
+  const causas = [];
+  if (motivoBloqueio)
+    causas.push(`o motivo de bloqueio do perfil ("${motivoBloqueio}")`);
+  if (statusNaoReconhecido)
+    causas.push(`o status do perfil OpenAI ("${statusNaoReconhecido}")`);
+  const oQueNaoBateu = causas.length
+    ? `${causas.join(" e ")} não é reconhecido`
+    : "o estado do perfil não é reconhecido";
   return {
-    estado: "conectado",
-    runtime: rotaUsavel?.runtime != null ? String(rotaUsavel.runtime) : null,
+    estado: "login_expirado",
+    detalhe: textoSeguro(
+      `Não deu para confirmar o login: ${oQueNaoBateu}, e não há confirmação de que a rota da assinatura funciona. Pode ser preciso refazer o login, ou aguardar e verificar de novo.`,
+    ),
   };
 }
 

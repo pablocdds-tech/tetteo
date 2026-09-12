@@ -319,3 +319,89 @@ test("Fix round 2 — o e-mail de profileId, label e providers[].profiles.labels
   assert.ok(!impresso.includes(EMAIL_FALSO));
   assert.ok(!impresso.includes("@"));
 });
+
+// Fix round 3: a checagem falhava ABERTA — um status de perfil desconhecido,
+// ou um motivo de bloqueio desconhecido, sem nada de RECONHECIDAMENTE bom
+// para confirmar, ainda assim virava "conectado". A partir daqui, conectado
+// exige uma prova positiva: a rota da assinatura confirmando que funciona,
+// ou um perfil com status reconhecidamente bom.
+
+test("Fix round 3 — status de perfil desconhecido, sem rota usável, não é conectado (falha fechada)", () => {
+  const desconhecido = {
+    auth: {
+      oauth: {
+        profiles: [
+          {
+            profileId: "openai:conta",
+            provider: "openai",
+            status: "something_new",
+          },
+        ],
+      },
+      unusableProfiles: [],
+      modelRouteIssues: [],
+    },
+  };
+  const r = estadoDaVerificacao(desconhecido, { gatewayDePe: true });
+  assert.notEqual(r.estado, "conectado");
+  assert.match(r.detalhe, /não.{0,15}reconhecid/i);
+  assert.match(r.detalhe, /something_new/);
+});
+
+test("Fix round 3 — o mesmo status desconhecido, com rota usável, é conectado (a rota vale mais que um rótulo novo)", () => {
+  const desconhecidoComRota = {
+    auth: {
+      oauth: {
+        profiles: [
+          {
+            profileId: "openai:conta",
+            provider: "openai",
+            status: "something_new",
+          },
+        ],
+      },
+      unusableProfiles: [],
+      modelRouteIssues: [],
+      runtimeAuthRoutes: [
+        { provider: "openai", runtime: "codex", status: "usable" },
+      ],
+    },
+  };
+  const r = estadoDaVerificacao(desconhecidoComRota, { gatewayDePe: true });
+  assert.equal(r.estado, "conectado");
+  assert.equal(r.runtime, "codex");
+});
+
+test("Fix round 3 — unusableProfiles com motivo não reconhecido, sem rota usável, não é conectado", () => {
+  const motivoDesconhecido = {
+    auth: {
+      oauth: {
+        profiles: [
+          {
+            profileId: "openai:conta",
+            provider: "openai",
+            status: "ok",
+            remainingMs: 999_999_999,
+          },
+        ],
+      },
+      unusableProfiles: [
+        {
+          profileId: "openai:conta",
+          provider: "openai",
+          reason: "something_else_unknown",
+        },
+      ],
+      modelRouteIssues: [],
+    },
+  };
+  const r = estadoDaVerificacao(motivoDesconhecido, { gatewayDePe: true });
+  assert.notEqual(r.estado, "conectado");
+  assert.match(r.detalhe, /something_else_unknown/);
+});
+
+test("Fix round 3 — a captura real ainda é conectado com runtime codex (não regride o fix round 2)", () => {
+  const r = estadoDaVerificacao(statusReal, { gatewayDePe: true });
+  assert.equal(r.estado, "conectado");
+  assert.equal(r.runtime, "codex");
+});
