@@ -181,8 +181,19 @@ banco da Evolution — fora deste trabalho.
   configuração do contêiner, no Redis ou no volume `evolution_instances`. Esse
   backup **contém segredo por natureza**: pasta do root, `chmod 600`, fora do
   Git, 14 dias. Script: `backup-evolution.sh`. Restauração: `restaurar.md`.
-- Instalar o backup na VPS exige acesso ao servidor: é passo da fase real, com
-  autorização do dono.
+- Instalar o backup da sessão na VPS, uma vez, como root. O repositório é
+  privado, mas o Dokploy já baixou o código na máquina, então o script sai de
+  lá:
+
+  ```
+  F=$(find /etc/dokploy -path "*docs/operacao/whatsapp/backup-evolution.sh" -print -quit) \
+    && cp "$F" /root/backup-evolution.sh && chmod 700 /root/backup-evolution.sh \
+    && /root/backup-evolution.sh
+  ```
+
+  O script descobre sozinho os nomes dos contêineres, recusa um dump vazio,
+  guarda 14 dias e se agenda para as 03:40. Rodar de novo não duplica o
+  agendamento.
 
 ## Limites conhecidos
 
@@ -192,9 +203,11 @@ banco da Evolution — fora deste trabalho.
   Cloud API é trocar o conector.
 - A 2.3.7 não assina o corpo do webhook (só o passe JWT) e não tem idempotência
   no envio. O Tetteo compensa; está escrito no desenho, §11.
-- A consulta "a mensagem saiu?" depende de a Evolution guardar mensagens
-  enviadas (`DATABASE_SAVE_DATA_NEW_MESSAGE=true`). Sem isso, a tela diz "não
-  encontrada" — e que pode ser configuração; nunca conclui que não saiu.
+- A consulta "a mensagem saiu?" depende de a Evolution guardar as mensagens
+  enviadas. Confirmado com o dono em 11/09/2026: a instalação guarda as
+  enviadas, que é justamente o que essa consulta procura (`key.fromMe: true`).
+  Se um dia isso mudar, a tela passa a dizer "não consegui confirmar" e o
+  reenvio vira decisão de uma pessoa, nunca automática.
 - "Entregue" e "Lido" dependem do evento `MESSAGES_UPDATE`. Sem ele, o aviso
   fica em "Aceito pelo provedor", que é a verdade que se tem.
 - O número conectado hoje é uma conta pessoal. Conversas **não** entram no
