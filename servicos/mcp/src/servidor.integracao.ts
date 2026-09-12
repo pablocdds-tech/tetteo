@@ -300,11 +300,13 @@ describe("servidor completo, de ponta a ponta", { skip: pular }, () => {
     const corpo = (await resposta.json()) as Record<string, unknown>;
     assert.deepEqual(Object.keys(corpo).sort(), [
       "banco",
+      "fonte",
       "servico",
       "status",
       "versao",
     ]);
     assert.equal(corpo.banco, "ok");
+    assert.equal(corpo.fonte, "ficticia");
     assert.ok(!JSON.stringify(corpo).includes("postgres"));
   });
 

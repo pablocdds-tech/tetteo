@@ -204,6 +204,9 @@ export function criarAplicacao(deps: DependenciasDoServidor): {
       servico: "tetteo-mcp",
       versao: VERSAO,
       banco: situacaoDoBanco,
+      // A tela do Tetteo mostra isto: enquanto for "ficticia", ninguém deve
+      // tomar decisão com esse número.
+      fonte: deps.fonte.nome,
     });
   });
 
