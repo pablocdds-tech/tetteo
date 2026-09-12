@@ -13,6 +13,19 @@ Nesta fase, tudo o que ele tocou foi **dado fictício**, feito de propósito
 para teste. Usar com dados reais da Vitaliano Pizzaria é um passo futuro,
 que só começa depois de o Pablo decidir e autorizar.
 
+## Isto não é a tela "Conexões de IA"
+
+Em **Configurações › Conexões de IA** existe outra lista, parecida no nome
+mas diferente na função: ali aparecem as pessoas da equipe que ligaram um
+assistente como o Claude à própria conta do Tetteo (entrando com a própria
+senha), com um botão para revogar esse acesso. O assistente privado desta
+pasta é outra coisa — roda sozinho na VPS, não usa a senha de ninguém, e
+por isso nunca aparece nessa lista. Para saber se ele respondeu hoje, olhe
+o cartão "Assistente privado" no Painel; para ver ou revogar o acesso de
+alguém da equipe a uma IA, use Configurações › Conexões de IA; para
+desligar ou revogar o assistente privado em si, o caminho é outro,
+descrito em `operacao.md`.
+
 ## Onde cada coisa mora
 
 **Neste repositório (o código):**
