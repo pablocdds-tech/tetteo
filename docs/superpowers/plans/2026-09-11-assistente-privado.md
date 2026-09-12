@@ -15,6 +15,7 @@
 - Trabalhar **só** no worktree `C:\Users\Lenovo\tetteo-oc`, branch `assistente-privado`. Nunca tocar `C:\Users\Lenovo\Desktop\erpnovo` (outras sessões têm arquivos pela metade lá).
 - Imagem `ghcr.io/openclaw/openclaw:2026.9.4`, fixa. Porta do gateway `18789`, publicada **só** em `127.0.0.1` da VPS. Autenticação por token (`${OPENCLAW_GATEWAY_TOKEN}`).
 - Provedor `openai` por OAuth, fluxo `--device-code`. **Nenhuma chave de API** em arquivo, config ou ambiente. `fallbacks: []`. Runtime `agentRuntime.id: "openclaw"` para `openai/*`.
+  > **Correção (11/09/2026, Task 11 fix round 1):** o override de runtime da frase acima está errado — na VPS real ele quebra o roteamento OAuth (`models list --provider openai` respondia `Auth: no`; o gateway recusava com "No route-compatible authentication source is configured for openai"). Vale agora: **nenhum override de runtime** para `openai/*`; `plugins.entries.codex.enabled: true`; o OpenClaw escolhe sozinho a rota compatível com a assinatura (a rota "Codex"). Ver a mesma correção no desenho, §2.
 - A ferramenta usa só módulos nativos do Node 24. Nada de `npm install` dentro do container.
 - Loja permitida: `Loja Centro`. A outra loja dos dados fictícios: `Loja Norte`.
 - Fuso `America/Sao_Paulo`. Datas internas em texto `AAAA-MM-DD`. Dinheiro em **centavos inteiros**; exibido como `R$ 1.234,56`.
@@ -3209,6 +3210,17 @@ test("o compose fixa a versão e publica só em 127.0.0.1", () => {
 });
 ```
 
+> **Correção (11/09/2026, Task 11 fix round 1):** o teste `"runtime
+embutido para qualquer modelo openai"` acima cobra um valor que hoje se
+> sabe errado — `agentRuntime.id: "openclaw"` forçado para `openai/*`
+> quebra o roteamento OAuth (`models list --provider openai` → `Auth:
+no`; gateway: "No route-compatible authentication source is configured
+> for openai"). Vale agora: **sem** `agentRuntime` em
+> `agents.defaults.models["openai/*"]`, e `plugins.entries.codex.enabled:
+true`. Quem for reexecutar esta Task 9 do zero não deve recriar esse
+> teste como está escrito acima — é registro histórico do que foi
+> decidido, não do que passa hoje.
+
 Run: `npx tsx --test assistente-privado/configuracao.test.mjs` → FAIL (`ENOENT`).
 
 - [ ] **Step 2: `assistente-privado/compose.yml`**
@@ -3342,6 +3354,16 @@ Sem `model.primary`: ele é escolhido depois do login, da lista que a conta ofer
   }
 }
 ```
+
+> **Correção (11/09/2026, Task 11 fix round 1):** a linha `"models": {
+"openai/*": { "agentRuntime": { "id": "openclaw" } } }` acima está
+> errada — esse override de runtime quebra o roteamento OAuth (evidência:
+> `models list --provider openai` respondia `Auth: no`; o gateway
+> recusava com "No route-compatible authentication source is configured
+> for openai"). O que vale agora: tirar essa chave `agentRuntime` de
+> `agents.defaults.models["openai/*"]`, e acrescentar
+> `plugins.entries.codex.enabled: true` — o OpenClaw escolhe sozinho a
+> rota compatível com a assinatura.
 
 - [ ] **Step 4: `assistente-privado/openclaw.env.exemplo` e `assistente-privado/LEIA-ME.md`**
 
@@ -4016,6 +4038,17 @@ rm -f /tmp/teste-ok.json
 ```
 
 Expected: o texto `ok`, o runtime do OpenClaw (não o Codex) e o modelo escolhido. Se o runtime vier como Codex, parar: a regra `agents.defaults.models["openai/*"].agentRuntime` não pegou — investigar antes de seguir (desenho §4.3).
+
+> **Correção (11/09/2026, Task 11 fix round 1) — ESTE "Expected" ESTÁ AO
+> CONTRÁRIO, não seguir como está escrito acima:** o `agentRuntime` forçado
+> para `openai/*` é o que quebrava o login (evidência: `models list
+--provider openai` respondia `Auth: no`; gateway: "No route-compatible
+> authentication source is configured for openai"). Com o override
+> **removido** e `plugins.entries.codex.enabled: true`, o runtime que
+> aparece na checagem real É o do Codex — e isso agora é o resultado
+> **correto**, não um sinal para parar. Se alguém reexecutar este Step 8:
+> o runtime esperado é o Codex; só investigar se a resposta falhar por
+> outro motivo (erro de auth, texto errado, modelo errado).
 
 - [ ] **Step 9: Formato e commit**
 

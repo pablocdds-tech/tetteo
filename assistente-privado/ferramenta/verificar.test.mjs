@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { estadoDaVerificacao, mascararEmail } from "./verificar.mjs";
+import {
+  codigoDeSaida,
+  estadoDaVerificacao,
+  mascararEmail,
+  obterStatus,
+} from "./verificar.mjs";
 
 const oauthOk = {
   auth: {
@@ -82,6 +87,20 @@ test("mascararEmail troca o e-mail por um marcador, nunca o mostra", () => {
   assert.match(mascarada, /\[e-mail oculto\]/);
 });
 
+test("falha ao RODAR a verificação não pode virar login_expirado (é desligado)", () => {
+  const r = estadoDaVerificacao(
+    {},
+    {
+      gatewayDePe: true,
+      erroDeExecucao:
+        "O comando de verificação (models status --json) não rodou: o executável não foi encontrado.",
+    },
+  );
+  assert.equal(r.estado, "desligado");
+  assert.notEqual(r.estado, "login_expirado");
+  assert.match(r.detalhe, /comando de verifica/i);
+});
+
 test("mensagem de rota com e-mail embutido não vaza no detalhe", () => {
   const rota = {
     auth: {
@@ -98,4 +117,75 @@ test("mensagem de rota com e-mail embutido não vaza no detalhe", () => {
   assert.equal(r.estado, "modelo_indisponivel");
   assert.ok(!r.detalhe.includes("pablocdds@gmail.com"));
   assert.ok(!r.detalhe.includes("@"));
+});
+
+test("obterStatus: comando que lança (CLI ausente, corrompido etc.) vira desligado, nunca login_expirado", async () => {
+  const erroDeExecucao = new Error("spawn node ENOENT");
+  erroDeExecucao.code = "ENOENT";
+  const { status, erroDeExecucao: motivo } = await obterStatus(async () => {
+    throw erroDeExecucao;
+  });
+  assert.equal(status, null);
+  assert.match(motivo, /comando de verifica/i);
+  assert.doesNotMatch(motivo, /login/i);
+
+  const r = estadoDaVerificacao(status ?? {}, {
+    gatewayDePe: true,
+    erroDeExecucao: motivo,
+  });
+  assert.equal(r.estado, "desligado");
+  assert.notEqual(r.estado, "login_expirado");
+  assert.match(r.detalhe, /comando de verifica/i);
+});
+
+test("obterStatus: saída que não é JSON válido também vira desligado, nunca login_expirado", async () => {
+  const { status, erroDeExecucao: motivo } = await obterStatus(async () => ({
+    stdout: "isto não é JSON {",
+  }));
+  assert.equal(status, null);
+  assert.match(motivo, /comando de verifica/i);
+  assert.doesNotMatch(motivo, /login/i);
+
+  const r = estadoDaVerificacao(status ?? {}, {
+    gatewayDePe: true,
+    erroDeExecucao: motivo,
+  });
+  assert.equal(r.estado, "desligado");
+  assert.notEqual(r.estado, "login_expirado");
+  assert.match(r.detalhe, /comando de verifica/i);
+});
+
+test("obterStatus: e-mail que vazasse na mensagem de erro do comando não sobrevive ao detalhe", async () => {
+  const erroComEmail = new Error(
+    "Command failed: falha para o perfil pablocdds@gmail.com",
+  );
+  const { erroDeExecucao: motivo } = await obterStatus(async () => {
+    throw erroComEmail;
+  });
+  const r = estadoDaVerificacao(
+    {},
+    { gatewayDePe: true, erroDeExecucao: motivo },
+  );
+  assert.ok(!r.detalhe.includes("pablocdds@gmail.com"));
+  assert.ok(!r.detalhe.includes("@"));
+});
+
+test("obterStatus: status válido passa direto, sem erroDeExecucao", async () => {
+  const { status, erroDeExecucao } = await obterStatus(async () => ({
+    stdout: JSON.stringify(oauthOk),
+  }));
+  assert.deepEqual(status, oauthOk);
+  assert.equal(erroDeExecucao, null);
+});
+
+test("codigoDeSaida: 0 só para conectado, 1 para qualquer outro estado", () => {
+  assert.equal(codigoDeSaida("conectado"), 0);
+  for (const estado of [
+    "login_expirado",
+    "limite",
+    "modelo_indisponivel",
+    "desligado",
+  ]) {
+    assert.equal(codigoDeSaida(estado), 1, estado);
+  }
 });

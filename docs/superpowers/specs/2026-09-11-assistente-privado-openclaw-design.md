@@ -53,6 +53,17 @@ Tomadas na conversa de 11/09. Estão aqui para que ninguém as reabra por engano
 | **Tetteo**                          | Um cartão compacto no Painel + uma tabela de registros + uma rota de entrada com segredo próprio            | Pedido: resumo compacto no painel que já existe, sem construir outra interface                                                                                                 |
 | **Produção do Tetteo**              | Só com autorização explícita do Pablo                                                                       | Publicar na `main` é deploy automático; a senha precisa entrar no Dokploy                                                                                                      |
 
+> **Correção (11/09/2026, Task 11 fix round 1):** a linha **Runtime** acima
+> está errada. Forçar `agentRuntime.id: "openclaw"` para `openai/*` quebra o
+> roteamento da autenticação OAuth na prática: `models list --provider
+openai` respondia `Auth: no`, e o gateway recusava com "No
+> route-compatible authentication source is configured for openai". O que
+> vale agora: **nenhum override de runtime** para `openai/*`;
+> `plugins.entries.codex.enabled: true`; o OpenClaw escolhe sozinho a rota
+> compatível com a assinatura (a rota "Codex"). A linha da tabela fica como
+> registro do que foi decidido e por que parecia certo na hora, não como o
+> que está de pé.
+
 ---
 
 ## 3 · Como as peças se ligam

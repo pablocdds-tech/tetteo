@@ -36,12 +36,84 @@ export function mascararEmail(texto) {
   return String(texto ?? "").replace(RE_EMAIL, "[e-mail oculto]");
 }
 
-export function estadoDaVerificacao(status, { gatewayDePe }) {
+const LIMITE_DETALHE = 300;
+
+/** Qualquer texto livre do CLI (mensagem de erro, motivo de rota) passa por
+ * aqui antes de virar `detalhe`: mascara e-mail e corta o tamanho. */
+function textoSeguro(texto) {
+  return mascararEmail(String(texto ?? "").trim()).slice(0, LIMITE_DETALHE);
+}
+
+function executarModelsStatus() {
+  return executar(process.execPath, [CLI, "models", "status", "--json"], {
+    cwd: "/app",
+    timeout: 60_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+}
+
+function motivoDoErro(erro) {
+  if (erro?.code === "ENOENT")
+    return "o executável do Node ou do OpenClaw não foi encontrado";
+  if (erro?.killed || erro?.signal)
+    return "o comando demorou demais e foi encerrado";
+  if (typeof erro?.code === "number")
+    return `o comando terminou com código ${erro.code}`;
+  return "o comando falhou";
+}
+
+/**
+ * Roda `models status --json` e devolve o status já interpretado — ou, se
+ * não deu para rodar o comando ou entender a saída, o motivo em português.
+ *
+ * NUNCA lança: uma falha aqui é dado para o estado "desligado" (Fix round
+ * 1 — antes, isso virava `status = null` e `estadoDaVerificacao` lia
+ * `auth.oauth` vazio, confundindo "não consegui perguntar" com "perguntei e
+ * não tem login". São coisas diferentes: a segunda manda o Pablo refazer o
+ * login; a primeira manda olhar o container, e refazer o login não ajudaria
+ * em nada.
+ */
+export async function obterStatus(executarFn = executarModelsStatus) {
+  let stdout;
+  try {
+    ({ stdout } = await executarFn());
+  } catch (erro) {
+    return {
+      status: null,
+      erroDeExecucao:
+        `O comando de verificação (models status --json) não rodou: ` +
+        `${motivoDoErro(erro)}. Confira se o OpenClaw está instalado no ` +
+        `container e se o comando funciona rodado à mão.`,
+    };
+  }
+  try {
+    return { status: JSON.parse(stdout), erroDeExecucao: null };
+  } catch {
+    return {
+      status: null,
+      erroDeExecucao:
+        "O comando de verificação (models status --json) respondeu, mas a " +
+        "saída não é um JSON válido. Rode o comando à mão dentro do " +
+        "container para ver o que ele mostra.",
+    };
+  }
+}
+
+export function estadoDaVerificacao(
+  status,
+  { gatewayDePe, erroDeExecucao = null } = {},
+) {
   if (!gatewayDePe) {
     return {
       estado: "desligado",
       detalhe: "O gateway não respondeu em 127.0.0.1:18789.",
     };
+  }
+  // A verificação em si não rodou, ou a resposta não deu para entender: isto
+  // é "não consegui perguntar", não "perguntei e não tem login" — o Pablo
+  // não resolve isso refazendo o login.
+  if (erroDeExecucao) {
+    return { estado: "desligado", detalhe: textoSeguro(erroDeExecucao) };
   }
   const auth = status?.auth ?? {};
 
@@ -73,14 +145,18 @@ export function estadoDaVerificacao(status, { gatewayDePe }) {
   if (rota) {
     return {
       estado: "modelo_indisponivel",
-      detalhe: mascararEmail(
-        String(
-          rota.message ?? rota.reason ?? "rota do modelo com problema",
-        ).slice(0, 300),
+      detalhe: textoSeguro(
+        rota.message ?? rota.reason ?? "rota do modelo com problema",
       ),
     };
   }
   return { estado: "conectado" };
+}
+
+/** 0 só quando está tudo bem; qualquer outro estado é falha para quem só
+ * olha o código de saída (`$?`) — o corpo JSON continua sendo o contrato. */
+export function codigoDeSaida(estado) {
+  return estado === "conectado" ? 0 : 1;
 }
 
 async function principal() {
@@ -94,21 +170,7 @@ async function principal() {
     .then((r) => r.ok)
     .catch(() => false);
 
-  let status = null;
-  try {
-    const { stdout } = await executar(
-      process.execPath,
-      [CLI, "models", "status", "--json"],
-      {
-        cwd: "/app",
-        timeout: 60_000,
-        maxBuffer: 4 * 1024 * 1024,
-      },
-    );
-    status = JSON.parse(stdout);
-  } catch {
-    status = null;
-  }
+  const { status, erroDeExecucao } = await obterStatus();
   const versao = await executar(process.execPath, [CLI, "--version"], {
     cwd: "/app",
     timeout: 30_000,
@@ -116,7 +178,10 @@ async function principal() {
     .then(({ stdout }) => stdout.trim().split(/\s+/).at(-1))
     .catch(() => null);
 
-  const resultado = estadoDaVerificacao(status ?? {}, { gatewayDePe });
+  const resultado = estadoDaVerificacao(status ?? {}, {
+    gatewayDePe,
+    erroDeExecucao,
+  });
   const modelo =
     status?.defaultModel ??
     status?.model?.primary ??
@@ -141,6 +206,7 @@ async function principal() {
       limiteAte: resultado.limiteAte ?? null,
     },
   });
+  process.exitCode = codigoDeSaida(resultado.estado);
   // Última barreira antes da tela do Pablo: mascara a string inteira, não só
   // os campos que hoje parecem arriscados.
   console.log(
