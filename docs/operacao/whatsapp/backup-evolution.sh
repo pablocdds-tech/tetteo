@@ -12,8 +12,12 @@
 # COMO INSTALAR — uma vez, na VPS, como root. O repositório é privado, mas o
 # Dokploy já baixou o código na máquina, então o script sai de lá:
 #
-#   F=$(find /etc/dokploy -path "*docs/operacao/whatsapp/backup-evolution.sh" -print -quit) #     && cp "$F" /root/backup-evolution.sh && chmod 700 /root/backup-evolution.sh #     && /root/backup-evolution.sh
+#   cp /etc/dokploy/applications/*/code/docs/operacao/whatsapp/backup-evolution.sh /root/backup-evolution.sh
+#   sh /root/backup-evolution.sh
 #
+# Se esse caminho não existir, procure o arquivo primeiro:
+#
+#   F=$(find /etc/dokploy -path "*docs/operacao/whatsapp/backup-evolution.sh" -print -quit) \n#
 # Ele descobre sozinho os nomes dos contêineres, faz o primeiro backup e se
 # agenda para as 03:40 de todo dia. Rodar de novo não duplica o agendamento.
 #
@@ -88,7 +92,10 @@ fi
 find "$DESTINO" -type f -mtime +"$RETENCAO_DIAS" -delete
 
 if [ ! -f "$CRON" ]; then
-  printf '40 3 * * * root %s >> /var/log/backup-evolution.log 2>&1\n' "$EU" > "$CRON"
+  # O agendamento chama o interpretador na mão: continua funcionando mesmo
+  # que o arquivo perca a permissão de execução numa cópia às pressas.
+  printf '40 3 * * * root /bin/sh %s >> /var/log/backup-evolution.log 2>&1
+' "$EU" > "$CRON"
   chmod 644 "$CRON"
   echo "[$CARIMBO] agendado: todo dia às 03:40 ($CRON)"
 else

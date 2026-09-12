@@ -186,9 +186,8 @@ banco da Evolution — fora deste trabalho.
   lá:
 
   ```
-  F=$(find /etc/dokploy -path "*docs/operacao/whatsapp/backup-evolution.sh" -print -quit) \
-    && cp "$F" /root/backup-evolution.sh && chmod 700 /root/backup-evolution.sh \
-    && /root/backup-evolution.sh
+  cp /etc/dokploy/applications/*/code/docs/operacao/whatsapp/backup-evolution.sh /root/backup-evolution.sh
+  sh /root/backup-evolution.sh
   ```
 
   O script descobre sozinho os nomes dos contêineres, recusa um dump vazio,
