@@ -25,6 +25,10 @@ export const PERMISSOES_CONFIGURACOES = [
     chave: "configuracoes.auditoria",
     descricao: "Ver o histórico de quem mudou o quê",
   },
+  {
+    chave: "configuracoes.integracoes",
+    descricao: "Ver e revogar as conexões de IA",
+  },
 ] as const;
 
 export type GrupoDePermissoes = {

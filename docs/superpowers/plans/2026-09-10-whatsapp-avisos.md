@@ -2,6 +2,20 @@
 
 > **Para quem executa:** SUB-SKILL OBRIGATÓRIA — `superpowers:executing-plans` (ou `superpowers:subagent-driven-development`). Os passos usam caixas (`- [ ]`).
 >
+> ## ✅ EXECUTADO em 10 e 11/09/2026 · no ar em 11/09/2026
+>
+> **Este documento é histórico. A verdade está no código.** O que o primeiro dia em produção ensinou:
+>
+> | O plano dizia                                    | O que era, de verdade                                                                                                                                                                                      |
+> | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | A tela cadastra a conexão                        | A produção já tinha um cadastro provisório, `severina`, criado junto com o primeiro agente. O nome não batia com a instância real e a tela dizia "falta configurar". Virou o botão "Usar … neste cadastro" |
+> | Conferir se o relógio já existe                  | Nunca tinha existido. A tela ganhou dois sinais de vida: a última batida do relógio e o último evento do webhook                                                                                           |
+> | Relógio com `curl`                               | A imagem é Alpine: `wget`, e `127.0.0.1` no lugar de `localhost`, que resolve para `::1`                                                                                                                   |
+> | "Pausar agendamentos" segura o disparo           | Segurava só o disparo novo. A fila também passou a respeitar a pausa                                                                                                                                       |
+> | `send.message` chega depois da resposta do envio | Chega antes. Achado da revisão, corrigido antes da publicação                                                                                                                                              |
+>
+> Provado em produção em 11/09: conexão, relógio e webhook. Falta a prova de ponta a ponta do aviso de fechamento.
+>
 > Executado nesta mesma conversa, na worktree `C:\Users\Lenovo\tetteo-whats` (branch `whatsapp-avisos`, a partir de `48acc3f`). O desenho está em [`docs/superpowers/specs/2026-09-10-whatsapp-avisos-design.md`](../specs/2026-09-10-whatsapp-avisos-design.md) — este plano não repete o porquê, só o como.
 
 **Objetivo:** o Tetteo recebe eventos da Evolution 2.3.7 (Baileys) e envia um aviso interno — nascido do checklist de Fechamento — a um contato autorizado, só depois de um responsável confirmar.

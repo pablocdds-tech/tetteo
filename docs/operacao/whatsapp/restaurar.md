@@ -18,7 +18,13 @@ senhas). Nunca de um documento.
 
 ## 2. A sessão do número (Evolution)
 
-Gerada por `backup-evolution.sh`. Restaurar, na VPS, como root:
+Gerada por `backup-evolution.sh`. Os nomes desta instalação, vistos em
+11/09/2026: banco `evolution_postgres`, cache `evolution_redis`, volume
+`severinawpp-7u0cjk_evolution_instances`. O volume está vazio, então o que
+importa é o banco, e o Redis ajuda. Confira com `docker ps` antes: nome de
+contêiner muda quando a pilha é recriada.
+
+Restaurar, na VPS, como root:
 
 1. Pare a Evolution: `docker stop <contêiner da evolution>` (só ela — não o
    banco dela).

@@ -45,9 +45,4 @@ export const manifestoSeverina: ManifestoDoApp = {
   permissaoParaVer: "assistente.ver",
   permissoes: [...PERMISSOES_ASSISTENTE],
   comportamentoNaRede: "consolida",
-
-  /// Sai daqui quando o primeiro aviso tiver saído sozinho, no horário, sem
-  /// ninguém apertar nada. Até lá a equipe não vê um módulo que promete
-  /// cobrar e não cobra.
-  emConstrucao: true,
 };

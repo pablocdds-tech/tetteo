@@ -2,7 +2,7 @@
 
 **Data:** 04/08/2026
 **Módulo:** `assistente` (Severina)
-**Estado:** desenho aprovado, pronto para virar plano de implementação
+**Estado:** fase 1 no ar desde 11/09/2026, quando o primeiro aviso saiu sozinho (§3, "A fase 1 no ar"). As fases 1.5 a 4 não começaram.
 
 ---
 
@@ -95,6 +95,17 @@ Consequências, ambas incorporadas ao desenho:
 - Publicar portas no host é desnecessário e inseguro: o domínio via Traefik já expõe o que precisa
 - O Tetteo fala com a Evolution **por dentro** (`http://evolution_api:8080`), sem sair da máquina. A URL pública serve só ao navegador
 - A Evolution responde `manager` com `http://` mesmo com `SERVER_URL` em `https://` — é o Traefik terminando TLS. Cosmético. **A confirmar quando chegar a primeira mídia:** se a URL da imagem vier em `http://`, o download interno resolve sem tocar em `SERVER_URL`
+
+### A fase 1 no ar — 11/09/2026
+
+O plano foi marcado como executado em 05/08, mas a última tarefa dele, "O relógio no ar", só aconteceu em 11/09. Nesse dia não existia tarefa agendada chamando `/api/severina/tick`: a tela nova mostrou "nunca bateu" por quase três horas, até a tarefa ser criada. Tudo indica que nenhum agente tinha disparado em produção antes disso, e nada no sistema mostrava a falta.
+
+- **O primeiro aviso que saiu sozinho:** 11/09/2026, por volta das 15h48, de um agente de rotina (`ROTINA_VENCIDA`): "A contagem "contagem freezer" é para hoje." Chegou ao WhatsApp do Pablo sem ninguém apertar nada. Era o critério escrito no manifesto para a Severina sair de "em construção", e ela saiu no mesmo dia.
+- **O relógio** é uma tarefa do Dokploy (aplicação do Tetteo, aba Schedules), a cada minuto, rodando dentro do contêiner: `wget` em `http://127.0.0.1:3000/api/severina/tick`. O plano previa `curl` em `http://tetteo:3000`; a imagem é Alpine, sem `curl`, e `localhost` resolve para `::1` enquanto o Next escuta só em `0.0.0.0`. O comando exato está em `docs/operacao/whatsapp/README.md`.
+- **A tela mostra o relógio.** Desde 11/09 a tela WhatsApp exibe a última batida e o último evento do webhook. "Nunca bateu" quer dizer que a tarefa não existe.
+- **A redação por IA não está ativa.** O texto saiu igual ao que o Estoque escreve, que é o que o redator devolve sem `GEMINI_API_KEYS` e `GEMINI_MODELO` no servidor, ou quando a chamada falha. As instruções de cada agente só passam a valer com a IA ligada.
+- **Agendamentos pausados.** Desde 10/09 a conexão tem a chave "Agendamentos da Severina", que nasce pausada. Em produção ela estava liberada, e por isso o lembrete saiu. Pausada, nada automático sai, nem o que já estava na fila.
+- Não conferido por quem registrou: a conversa desse aviso na aba Conversas.
 
 ---
 

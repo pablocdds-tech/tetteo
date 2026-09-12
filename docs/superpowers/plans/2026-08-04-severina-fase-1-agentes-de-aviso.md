@@ -2,6 +2,8 @@
 
 > ## ✅ EXECUTADO em 05/08/2026 — branch `severina/fase-1`
 >
+> **No ar em 11/09/2026.** A última tarefa, o relógio no ar, só aconteceu nesse dia: até lá nenhum agente tinha disparado em produção. O registro está no desenho, §3, "A fase 1 no ar".
+>
 > **Este documento é histórico. A verdade está no código.** Onde os dois divergirem, o código venceu — e a divergência costuma ser o próprio aprendizado:
 >
 > | O plano dizia                                               | O que era, de verdade                                                                               |
@@ -1562,7 +1564,7 @@ git commit -m "Severina: as telas de agente, número e conversa"
 
 - Modificar: `docs/superpowers/specs/2026-08-04-severina-whatsapp-design.md` — §3, notas de instalação
 
-- [ ] **Passo 1: Publicar com as variáveis novas**
+- [x] **Passo 1: Publicar com as variáveis novas** — 11/09/2026. Menos a IA: `GEMINI_API_KEYS` e `GEMINI_MODELO` não estão no servidor.
 
 No Dokploy, aba Environment do serviço Tetteo, acrescentar:
 
@@ -1575,7 +1577,7 @@ GEMINI_API_KEY=<do AI Studio>
 GEMINI_MODELO=<confirmado na doc do Google>
 ```
 
-- [ ] **Passo 2: Agendar o relógio**
+- [x] **Passo 2: Agendar o relógio** — 11/09/2026, no Schedules do Dokploy, com `wget` em `127.0.0.1` dentro do contêiner. O `curl` abaixo não existe na imagem.
 
 Tarefa agendada no Dokploy, a cada minuto:
 
@@ -1586,14 +1588,14 @@ curl -fsS -X POST http://tetteo:3000/api/severina/tick \
 
 Se o agendador do Dokploy não servir, um contêiner de cron na mesma rede resolve.
 
-- [ ] **Passo 3: A prova de fogo**
+- [x] **Passo 3: A prova de fogo** — 11/09/2026. Quem provou foi um agente de rotina, não o de horário do roteiro: "A contagem "contagem freezer" é para hoje."
 
 1. Criar um vínculo ligando o seu usuário ao seu número
 2. Criar um agente de AVISO, gatilho HORARIO, para dali a dois minutos, com instruções curtas
 3. Esperar
 4. A mensagem tem que chegar no WhatsApp, e a conversa tem que aparecer em `/assistente`
 
-- [ ] **Passo 4: Registrar o resultado no spec e commitar**
+- [x] **Passo 4: Registrar o resultado no spec e commitar** — 11/09/2026.
 
 ```bash
 git add docs/

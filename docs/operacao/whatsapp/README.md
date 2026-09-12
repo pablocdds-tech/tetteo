@@ -12,12 +12,12 @@ sai sozinho.
 
 ## Os degraus — e em qual estamos
 
-| Degrau          | O que é                                                                                 | Estado em 11/09/2026 |
-| --------------- | --------------------------------------------------------------------------------------- | -------------------- |
-| **Simulação**   | Testes automáticos com o provedor simulado, sem rede (`npm test` + os 12 cenários)      | feito, 20/20         |
-| **Teste local** | O Tetteo rodando na máquina com banco descartável e provedor simulado; prints das telas | feito                |
-| **Sandbox**     | **Não existe para Baileys.** Está declarado, não fingido                                | —                    |
-| **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem                     | aguarda autorização  |
+| Degrau          | O que é                                                                                 | Estado em 11/09/2026                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Simulação**   | Testes automáticos com o provedor simulado, sem rede (`npm test` + o ensaio de aceite)  | feito, 23/23                                                                                             |
+| **Teste local** | O Tetteo rodando na máquina com banco descartável e provedor simulado; prints das telas | feito                                                                                                    |
+| **Sandbox**     | **Não existe para Baileys.** Está declarado, não fingido                                | —                                                                                                        |
+| **Uso real**    | Número real, **um** destinatário autorizado pelo dono, uma mensagem                     | em andamento: conexão, relógio e webhook provados em 11/09; falta o aviso de fechamento de ponta a ponta |
 
 Um build verde não prova a integração. O que prova é o degrau "uso real".
 
@@ -72,8 +72,8 @@ com o nome do que falta — e nada é enviado.
    `curl` e o endereço público — aí o segredo entra no crontab, que precisa
    ser `600` do root.
 
-3. **Entre no Tetteo como Diretor** (a Severina ainda está "em construção": só
-   o Diretor a vê). Menu Severina → **WhatsApp**. O bloco Conexão mostra dois
+3. **Entre no Tetteo como Diretor** (desde 11/09 a Severina não está mais "em construção", mas só o Diretor tem
+   as permissões dela; para outros papéis, Configurações). Menu Severina → **WhatsApp**. O bloco Conexão mostra dois
    **sinais de vida**: a última batida do relógio e o último evento que a
    Evolution entregou pelo webhook. Os dois precisam ter hora recente antes do
    primeiro envio real.
@@ -181,8 +181,25 @@ banco da Evolution — fora deste trabalho.
   configuração do contêiner, no Redis ou no volume `evolution_instances`. Esse
   backup **contém segredo por natureza**: pasta do root, `chmod 600`, fora do
   Git, 14 dias. Script: `backup-evolution.sh`. Restauração: `restaurar.md`.
-- Instalar o backup na VPS exige acesso ao servidor: é passo da fase real, com
-  autorização do dono.
+- Instalar o backup da sessão na VPS, uma vez, como root. O repositório é
+  privado, mas o Dokploy já baixou o código na máquina, então o script sai de
+  lá:
+
+  ```
+  sh $(find /etc/dokploy -name backup-evolution.sh)
+  ```
+
+  **Instalado em 11/09/2026.** O script achou o banco `evolution_postgres`, o
+  `evolution_redis` e o volume `severinawpp-7u0cjk_evolution_instances`. O
+  volume veio vazio, com 133 bytes: nesta instalação a sessão mora no banco e
+  no Redis, que são justamente os dois que saem cheios. O agendamento fica em
+  `/etc/cron.d/evolution-backup`, às 03:40 no fuso do servidor, que é UTC.
+  Para atualizar o script depois de uma mudança aqui no repositório, rode o
+  mesmo comando de novo: ele sobrescreve a cópia do `/root`.
+
+  O script descobre sozinho os nomes dos contêineres, recusa um dump vazio,
+  guarda 14 dias e se agenda para as 03:40. Rodar de novo não duplica o
+  agendamento.
 
 ## Limites conhecidos
 
@@ -192,9 +209,11 @@ banco da Evolution — fora deste trabalho.
   Cloud API é trocar o conector.
 - A 2.3.7 não assina o corpo do webhook (só o passe JWT) e não tem idempotência
   no envio. O Tetteo compensa; está escrito no desenho, §11.
-- A consulta "a mensagem saiu?" depende de a Evolution guardar mensagens
-  enviadas (`DATABASE_SAVE_DATA_NEW_MESSAGE=true`). Sem isso, a tela diz "não
-  encontrada" — e que pode ser configuração; nunca conclui que não saiu.
+- A consulta "a mensagem saiu?" depende de a Evolution guardar as mensagens
+  enviadas. Confirmado com o dono em 11/09/2026: a instalação guarda as
+  enviadas, que é justamente o que essa consulta procura (`key.fromMe: true`).
+  Se um dia isso mudar, a tela passa a dizer "não consegui confirmar" e o
+  reenvio vira decisão de uma pessoa, nunca automática.
 - "Entregue" e "Lido" dependem do evento `MESSAGES_UPDATE`. Sem ele, o aviso
   fica em "Aceito pelo provedor", que é a verdade que se tem.
 - O número conectado hoje é uma conta pessoal. Conversas **não** entram no

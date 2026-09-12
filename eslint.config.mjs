@@ -217,6 +217,8 @@ const eslintConfig = defineConfig([
     ".claude/**",
     ".codex/**",
     ".impeccable/**",
+    // Serviços com package.json, lint e testes próprios (ex.: servicos/mcp).
+    "servicos/**",
   ]),
 ]);
 

@@ -32,3 +32,6 @@ CLAUDE.md
 
 npm-debug.log*
 *.tsbuildinfo
+
+# serviços publicados como aplicações próprias no Dokploy
+servicos

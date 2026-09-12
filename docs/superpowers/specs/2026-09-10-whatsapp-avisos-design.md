@@ -2,7 +2,7 @@
 
 **Data:** 10/09/2026
 **Módulo:** `assistente` (Severina)
-**Estado:** desenho aprovado pelo Pablo em 10/09/2026, em implementação na branch `whatsapp-avisos`
+**Estado:** no ar desde 11/09/2026. Provados em produção: a conexão com a instância, o relógio e o webhook da Evolution. Falta a prova de ponta a ponta do aviso de fechamento, com um contato autorizado pelo Pablo.
 
 ---
 

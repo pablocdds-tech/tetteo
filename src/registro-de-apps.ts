@@ -234,6 +234,11 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
         nome: "Histórico",
         permissao: "configuracoes.auditoria",
       },
+      {
+        rota: "/configuracoes/integracoes",
+        nome: "Conexões de IA",
+        permissao: "configuracoes.integracoes",
+      },
     ],
     permissaoParaVer: "configuracoes.ver",
     permissoes: [...PERMISSOES_CONFIGURACOES],
