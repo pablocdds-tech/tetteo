@@ -42,12 +42,16 @@ export default auth;
  *                      tem conta no Tetteo; quem autentica é o código do link,
  *                      conferido a cada leitura e a cada envio. A página não
  *                      mostra nada sem um código válido.
- * `api/assistente-privado` — o OpenClaw da VPS contando o que fez. Máquina,
- *                      com segredo próprio (`x-assistente-segredo`); sem ele
- *                      configurado, a rota recusa tudo com 401.
+ * `api/assistente-privado/registros` — o OpenClaw da VPS contando o que fez.
+ *                      Máquina, com segredo próprio (`x-assistente-segredo`);
+ *                      sem ele configurado, a rota recusa tudo com 401. A
+ *                      exceção é exatamente ESTA rota, não o prefixo: uma
+ *                      rota nova sob `api/assistente-privado/` no futuro (uma
+ *                      listagem, por exemplo) NÃO herda a exceção — precisa
+ *                      da sua própria entrada aqui, ou fica atrás do login.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
   ],
 };

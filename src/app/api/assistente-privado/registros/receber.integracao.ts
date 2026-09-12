@@ -64,6 +64,11 @@ describe("a porta dos recados", () => {
     assert.equal((await pedir(valido)).status, 503);
   });
 
+  test("unidade configurada mas que não existe: 503", async () => {
+    process.env.ASSISTENTE_PRIVADO_UNIDADE_ID = "unidade-que-nao-existe";
+    assert.equal((await pedir(valido)).status, 503);
+  });
+
   test("não é JSON, campo a mais, grande demais: recusado, e nada gravado", async () => {
     assert.equal((await pedir("{")).status, 400);
     assert.equal(
@@ -83,5 +88,25 @@ describe("a porta dos recados", () => {
     assert.equal((await primeiro.json()).ok, true);
     assert.equal((await pedir(valido)).status, 200);
     assert.equal(await db.registroDoAssistente.count(), 1);
+  });
+
+  test("recado mais antigo com a mesma chave: 200, mas gravado:false, sem sobrescrever", async () => {
+    const primeiro = await pedir(valido);
+    assert.equal(primeiro.status, 200);
+
+    const maisAntigo = {
+      ...valido,
+      estado: "sem_dados",
+      ocorridoEm: "2026-09-10T15:00:00.000Z",
+    };
+    const resposta = await pedir(maisAntigo);
+    assert.equal(resposta.status, 200);
+    assert.equal((await resposta.json()).gravado, false);
+
+    const linha = await db.registroDoAssistente.findFirstOrThrow({
+      where: { unidadeId: c.centro.id, chave: valido.chave },
+    });
+    assert.equal(linha.estado, "calculado");
+    assert.equal(linha.ocorridoEm.toISOString(), valido.ocorridoEm);
   });
 });
