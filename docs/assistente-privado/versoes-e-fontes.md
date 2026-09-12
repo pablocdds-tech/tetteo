@@ -5,18 +5,19 @@ no servidor, na conta do próprio Pablo.
 
 ## Versões
 
-Sete fatos, cada um com o comando que provou o valor — não uma suposição, uma
+Cada valor abaixo tem o comando que o provou — não uma suposição, uma
 leitura direta do sistema rodando.
 
-| #   | O quê                  | Valor                                                                                                                                                        | Como foi conferido                                                                                                                                                                     |
-| --- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Imagem do OpenClaw     | `ghcr.io/openclaw/openclaw:2026.9.4`                                                                                                                         | `docker image inspect` na VPS                                                                                                                                                          |
-| 2   | Digest da imagem       | `sha256:cc596b846506a5f4cfcee111394a2725f375f01cca2ebb492a161fd1b747f101`                                                                                    | `docker image inspect` na VPS                                                                                                                                                          |
-| 3   | Node dentro da imagem  | v24.19.0                                                                                                                                                     | `docker exec central-openclaw node --version`                                                                                                                                          |
-| 4   | Docker da VPS          | 29.5.3                                                                                                                                                       | `docker --version` na VPS                                                                                                                                                              |
-| 5   | Docker Compose da VPS  | v5.1.4                                                                                                                                                       | `docker compose version` na VPS                                                                                                                                                        |
-| 6   | Modelo escolhido       | `openai/gpt-5.6-sol`, pelo mecanismo (runtime) `codex`, com a assinatura ChatGPT do Pablo por OAuth — sem chave de API, sem modelo reserva (`fallbacks: []`) | Página de configurações do agente no painel (Modelo Principal / Ambiente de Execução) e o rastro de cada resposta ao vivo (`winnerModel`, `runner: "embedded"`, `fallbackUsed: false`) |
-| 7   | Data desta conferência | 12/09/2026                                                                                                                                                   | Todos os itens acima foram checados neste mesmo dia, ao vivo                                                                                                                           |
+| #   | O quê                      | Valor                                                                                                                                                        | Como foi conferido                                                                                                                                                                       |
+| --- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Imagem do OpenClaw         | `ghcr.io/openclaw/openclaw:2026.9.4`                                                                                                                         | `docker image inspect` na VPS                                                                                                                                                            |
+| 2   | Digest da imagem           | `sha256:cc596b846506a5f4cfcee111394a2725f375f01cca2ebb492a161fd1b747f101`                                                                                    | `docker image inspect` na VPS                                                                                                                                                            |
+| 3   | Node dentro da imagem      | v24.19.0                                                                                                                                                     | `docker exec central-openclaw node --version`                                                                                                                                            |
+| 4   | Docker da VPS              | versão 29.5.3, build `d1c06ef`                                                                                                                               | `docker --version` na VPS                                                                                                                                                                |
+| 5   | Docker Compose da VPS      | v5.1.4                                                                                                                                                       | `docker compose version` na VPS                                                                                                                                                          |
+| 6   | Sistema operacional da VPS | Ubuntu 24.04.4 LTS, kernel 6.8.0-136-generic                                                                                                                 | `cat /etc/os-release` e `uname -r` na VPS                                                                                                                                                |
+| 7   | Modelo escolhido           | `openai/gpt-5.6-sol`, pelo mecanismo (runtime) `codex`, com a assinatura ChatGPT do Pablo por OAuth — sem chave de API, sem modelo reserva (`fallbacks: []`) | Página de configurações do agente no painel (Modelo Principal / Ambiente de Execução) e o registro interno de cada resposta, confirmando o modelo certo e que nenhuma via paga foi usada |
+| 8   | Data desta conferência     | 12/09/2026                                                                                                                                                   | Todos os itens acima foram checados neste mesmo dia, ao vivo                                                                                                                             |
 
 O login por assinatura estava válido até **22/09/2026**, com aviso automático
 24 horas antes do vencimento.
@@ -71,9 +72,20 @@ approve`, que vale só para esse servidor específico (código escrito e
 - `cli/mcp` — como configurar, aprovar e sondar servidores MCP
 - `automation/cron-jobs` — como funcionam as rotinas agendadas
 - `gateway/logging` — o que fica registrado e como consultar
-- `tools/exec.md` e `tools/permission-modes` — os quatro modos de
+- `tools/exec` e `tools/permission-modes` — os quatro modos de
   execução (`deny`, `allowlist`, `ask`/`auto`, `full`) e por que os dois
   primeiros bloqueiam o mecanismo da assinatura por completo
+- `tools/exec-approvals` — como funciona a aprovação de comandos quando o
+  modo não é totalmente automático
+- `gateway/permission-modes` — os níveis de permissão do próprio gateway
+  (o painel), separados dos modos de execução de ferramentas acima
+- `cli/mcp/registry` — como o OpenClaw guarda e lista os servidores MCP
+  configurados
+- `automation/hooks` e `cli/hooks` — os gatilhos automáticos do sistema e
+  como consultá-los pela linha de comando; foi aqui que se confirmou que
+  os gatilhos de aviso e a função técnica interna de suporte citados na
+  auditoria de segurança (Task 17, item 17) seguem desligados por nunca
+  terem sido ligados, não por falha
 
 ## Limites conhecidos
 

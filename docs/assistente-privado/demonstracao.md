@@ -39,6 +39,12 @@ modelo — o modelo só lê o resultado e escreve a resposta. Repare que
 mesmo aqui, fictício, ele já aponta os dias sem venda no arquivo e um dia
 fora da curva, e termina dizendo que nada foi executado — só preparado."
 
+Repare também que o campo de nova mensagem, no rodapé, mostra "Nenhum
+modelo disponível" — isso é só uma falha de exibição do catálogo do
+mecanismo da assinatura (ver `versoes-e-fontes.md`, seção "Limites
+conhecidos"); a conversa acima já mostra o modelo certo respondendo
+normalmente.
+
 **Print:** `../telas/assistente-privado/2-fluxo-principal.png` — dados
 fictícios; a conversa e os valores (Total R$ 47.085,81, 1.075 pedidos,
 ticket médio R$ 43,80) vêm do arquivo de demonstração gerado para o
