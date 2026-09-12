@@ -65,6 +65,48 @@ test("gateway com token por variável e freio de força bruta", () => {
   });
 });
 
+test("gateway: liga em 'lan', mas o painel só aceita a própria origem", () => {
+  // "lan" é o bind DENTRO do container; quem fecha o acesso de fato é o
+  // compose, publicando a porta só em 127.0.0.1 (ver o teste do compose,
+  // abaixo). allowedOrigins trava o CSRF do painel embutido — sem isto,
+  // qualquer página poderia tentar falar com o gateway pelo navegador de
+  // quem tem o túnel aberto.
+  assert.equal(config.gateway.bind, "lan");
+  assert.deepEqual(config.gateway.controlUi.allowedOrigins, [
+    "http://localhost:18789",
+    "http://127.0.0.1:18789",
+  ]);
+});
+
+test("execução (tools.exec.mode) é 'auto' — nunca 'full', nunca o par legado 'security'/'ask'", () => {
+  // Decisão de 12/09/2026, ao vivo e autorizada pelo Pablo (ver
+  // docs/assistente-privado/versoes-e-fontes.md, item 3, e operacao.md,
+  // "O que NÃO fazer"). `tools.exec.mode` é a superfície normalizada da
+  // permissão de execução (docs.openclaw.ai/tools/permission-modes.md);
+  // com `deny` ou `allowlist` o mecanismo da assinatura (Codex app-server)
+  // fica bloqueado por completo e o assistente não responde nada — provado
+  // ao vivo. `full` libera um terminal irrestrito, o oposto do que este
+  // projeto foi desenhado para evitar. `auto` deixa o Codex Guardian
+  // revisar cada comando automaticamente, com o sandbox confinado à pasta
+  // de trabalho, escalando para aprovação humana o que for arriscado.
+  //
+  // O par legado `security`/`ask` precisa ficar AUSENTE, não só errado: a
+  // mesma documentação explica que o par legado e `mode` interagem, e o
+  // resultado mais restrito dos dois vence — reintroduzir
+  // `security: "deny"` ao lado de `mode: "auto"` voltaria a bloquear o
+  // Codex por completo, calado, sem que `mode` sozinho denunciasse o
+  // defeito.
+  assert.equal(config.tools.exec.mode, "auto");
+  assert.ok(
+    !("security" in config.tools.exec),
+    "o par legado 'security' voltou ao tools.exec — ele pode vencer 'mode' por ser mais restrito",
+  );
+  assert.ok(
+    !("ask" in config.tools.exec),
+    "o par legado 'ask' voltou ao tools.exec",
+  );
+});
+
 test("ferramentas: só o MCP; o resto negado; sem agendamento", () => {
   assert.equal(config.tools.profile, "messaging");
   for (const grupo of [
@@ -83,7 +125,7 @@ test("ferramentas: só o MCP; o resto negado; sem agendamento", () => {
     assert.ok(config.tools.deny.includes(grupo), grupo);
   }
   assert.equal(config.tools.elevated.enabled, false);
-  assert.equal(config.tools.exec.security, "deny");
+  assert.equal(config.tools.fs.workspaceOnly, true);
   assert.equal(config.cron.enabled, false);
   assert.deepEqual(Object.keys(config.mcp.servers), ["fechamento"]);
   assert.equal(config.mcp.servers.fechamento.env.LOJA_PERMITIDA, "Loja Centro");
@@ -124,6 +166,15 @@ test("o compose fixa a versão e publica uma porta só, em 127.0.0.1", () => {
   assert.ok(!/0\.0\.0\.0/.test(compose));
   assert.match(compose, /image: ghcr\.io\/openclaw\/openclaw:2026\.9\.4\n/);
   assert.match(compose, /\/opt\/ferramenta:ro/);
+});
+
+test("o compose derruba capacidades de rede, barra novos privilégios e lê segredo por env_file", () => {
+  assert.match(compose, /\n\s*cap_drop:\n\s*-\s*NET_RAW\n\s*-\s*NET_ADMIN\n/);
+  assert.match(compose, /\n\s*security_opt:\n\s*-\s*no-new-privileges:true\n/);
+  assert.match(
+    compose,
+    /\n\s*env_file:\n\s*-\s*\/opt\/central-de-comando\/segredos\/openclaw\.env\n/,
+  );
 });
 
 test("o instalador fecha a configuração para leitura só do dono", () => {

@@ -45,7 +45,7 @@
       "gateway"
     ],
     "fs": { "workspaceOnly": true },
-    "exec": { "security": "deny", "ask": "always" },
+    "exec": { "mode": "auto" },
     "elevated": { "enabled": false },
     "sessions": { "visibility": "self" },
     "agentToAgent": { "enabled": false }

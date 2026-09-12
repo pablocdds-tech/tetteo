@@ -193,20 +193,39 @@ export async function cartaoDoAssistente(
   )
     return null;
   const unidadeId = contexto.unidadeAtiva.id;
-  const [verificacao, execucoes] = await Promise.all([
+  // Duas consultas, de propósito: rascunho é "chave" que começa com
+  // "rascunho:" (nunca um pedido), e uma leva de 20+ rascunhos mais novos
+  // que o último fechamento de verdade não pode empurrá-lo para fora da
+  // janela e fazer o cartão mentir "Nenhuma execução ainda".
+  const [verificacao, ultimaExecucao, rascunhos] = await Promise.all([
     db.registroDoAssistente.findFirst({
       where: { unidadeId, tipo: "VERIFICACAO" },
       orderBy: { ocorridoEm: "desc" },
     }),
+    db.registroDoAssistente.findFirst({
+      where: {
+        unidadeId,
+        tipo: "EXECUCAO",
+        NOT: { chave: { startsWith: "rascunho:" } },
+      },
+      orderBy: { ocorridoEm: "desc" },
+    }),
     db.registroDoAssistente.findMany({
-      where: { unidadeId, tipo: "EXECUCAO" },
+      where: {
+        unidadeId,
+        tipo: "EXECUCAO",
+        chave: { startsWith: "rascunho:" },
+      },
       orderBy: { ocorridoEm: "desc" },
       take: 20,
     }),
   ]);
   return montarCartao({
     verificacao: verificacao ? paraCartao(verificacao) : null,
-    execucoes: execucoes.map(paraCartao),
+    execucoes: [
+      ...(ultimaExecucao ? [paraCartao(ultimaExecucao)] : []),
+      ...rascunhos.map(paraCartao),
+    ],
     agora,
   });
 }

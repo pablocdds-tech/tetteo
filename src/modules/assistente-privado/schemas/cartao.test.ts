@@ -95,6 +95,36 @@ test("limite da assinatura, com o horário de volta", () => {
   assert.equal(c.conexao.texto, "Limite da assinatura até 18:00");
 });
 
+test("modelo indisponível traz o detalhe da verificação", () => {
+  const c = cartao(
+    registro({
+      chave: "verificacao",
+      estado: "modelo_indisponivel",
+      ocorridoEm: antes(1),
+      detalhe: "openai/gpt-5.6-sol sem resposta",
+    }),
+  );
+  assert.deepEqual(
+    [c.conexao.texto, c.conexao.apoio, c.conexao.tom],
+    ["Modelo indisponível", "openai/gpt-5.6-sol sem resposta", "ruim"],
+  );
+});
+
+test("assistente desligado traz o detalhe da verificação", () => {
+  const c = cartao(
+    registro({
+      chave: "verificacao",
+      estado: "desligado",
+      ocorridoEm: antes(1),
+      detalhe: "cron.enabled: false",
+    }),
+  );
+  assert.deepEqual(
+    [c.conexao.texto, c.conexao.apoio, c.conexao.tom],
+    ["Assistente desligado", "cron.enabled: false", "ruim"],
+  );
+});
+
 test("calculado há pouco é 'em andamento'; há muito, 'interrompido'", () => {
   const recente = cartao(null, [
     registro({ estado: "calculado", ocorridoEm: antes(2) }),
@@ -153,6 +183,21 @@ test("arquivo inválido e acesso negado trazem o motivo", () => {
     [negado.ultimaExecucao.texto, negado.ultimaExecucao.tom],
     ["Acesso negado", "ruim"],
   );
+});
+
+test("cancelado é um estado final, sem motivo anexado", () => {
+  const c = cartao(null, [
+    registro({
+      estado: "cancelado",
+      fonte: "vendas-30-dias.csv",
+      ocorridoEm: antes(5),
+    }),
+  ]);
+  assert.deepEqual(
+    [c.ultimaExecucao.texto, c.ultimaExecucao.tom],
+    ["Cancelado", "neutro"],
+  );
+  assert.equal(c.ultimaExecucao.apoio, "vendas-30-dias.csv · há 5 min");
 });
 
 test("rascunho não conta como execução, mas vira pendência por 7 dias", () => {
