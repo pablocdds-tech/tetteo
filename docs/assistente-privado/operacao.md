@@ -5,7 +5,8 @@ não para quem programa. Cada bloco tem uma explicação curta e o comando
 exato, para copiar e colar no PowerShell.
 
 Em todos os comandos abaixo, troque `$HOME\.ssh\tetteo_vps` pelo caminho
-real da sua chave, se for diferente.
+real da sua chave, se for diferente, e troque `<ip-da-vps>` pelo endereço
+de verdade do seu servidor, sempre que ele aparecer.
 
 ## Abrir o painel
 
@@ -18,7 +19,7 @@ computador, é preciso abrir um túnel SSH primeiro.
    controle — é para ficar aberto enquanto você usa o painel):
 
    ```
-   ssh -N -L 18789:127.0.0.1:18789 -i $HOME\.ssh\tetteo_vps root@187.77.35.238
+   ssh -N -L 18789:127.0.0.1:18789 -i $HOME\.ssh\tetteo_vps root@<ip-da-vps>
    ```
 
 2. Em outro PowerShell, ou no navegador, abra:
@@ -27,14 +28,20 @@ computador, é preciso abrir um túnel SSH primeiro.
    http://localhost:18789
    ```
 
-3. O painel vai pedir um token. Leia-o **no seu próprio terminal**, sem
-   nunca colar ou digitar o valor em outro lugar além do campo do painel:
+3. O painel vai pedir um token. Rode o comando abaixo **no seu próprio
+   PowerShell, fora desta conversa com o assistente de IA — nunca pedindo
+   para ele rodar por você.** O motivo: esse token é o que protege o
+   painel, e o painel tem um terminal dentro do contêiner do assistente
+   (ponto de segurança logo abaixo); se o valor aparecer na tela de uma
+   conversa com IA, ele fica gravado no histórico dela. Por isso o comando
+   manda o valor direto para a área de transferência, sem nunca passar
+   pela tela:
 
    ```
-   ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "sed -n s/^OPENCLAW_GATEWAY_TOKEN=//p /opt/central-de-comando/segredos/openclaw.env"
+   ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "sed -n s/^OPENCLAW_GATEWAY_TOKEN=//p /opt/central-de-comando/segredos/openclaw.env" | clip
    ```
 
-   Cole o valor que aparecer no campo "Segredo do Gateway" do painel.
+   Depois é só colar (Ctrl+V) no campo "Segredo do Gateway" do painel.
 
 **Ponto de segurança que precisa ficar claro: o painel tem um terminal
 embutido.** Quem abre o painel com o token em mãos tem acesso a um
@@ -54,13 +61,13 @@ de publicação do Tetteo.
 Iniciar (ou religar depois de uma parada):
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "cd /opt/central-de-comando/openclaw && docker compose up -d"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "cd /opt/central-de-comando/openclaw && docker compose up -d"
 ```
 
 Parar:
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "cd /opt/central-de-comando/openclaw && docker compose stop"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "cd /opt/central-de-comando/openclaw && docker compose stop"
 ```
 
 ## Refazer o login
@@ -70,7 +77,7 @@ autenticação, refaça o login da assinatura ChatGPT (o código aparece na
 tela do seu próprio terminal — é a mesma tela que abre o comando, `-t`):
 
 ```
-ssh -t -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec -it central-openclaw node dist/index.js models auth login --provider openai --device-code"
+ssh -t -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec -it central-openclaw node dist/index.js models auth login --provider openai --device-code"
 ```
 
 Vai aparecer um código e um link. Abra o link no navegador, com a conta
@@ -91,7 +98,7 @@ Duas fontes, sempre concordantes:
 Checagem rápida, sem precisar entrar no painel:
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec central-openclaw node /opt/ferramenta/verificar.mjs"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec central-openclaw node /opt/ferramenta/verificar.mjs"
 ```
 
 Saudável, o retorno é uma linha parecida com esta, e o comando termina sem
@@ -111,13 +118,13 @@ vazamento do token ou do segredo), faça os três passos, nesta ordem:
    documento nenhum):
 
    ```
-   ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec central-openclaw node dist/index.js models auth list"
+   ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec central-openclaw node dist/index.js models auth list"
    ```
 
    Depois, tirar o login da assinatura, dentro do contêiner:
 
    ```
-   ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec -it central-openclaw node dist/index.js models auth logout <profileId>"
+   ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec -it central-openclaw node dist/index.js models auth logout <profileId>"
    ```
 
 2. Revogar o acesso também do lado da OpenAI, na sua conta ChatGPT
@@ -134,21 +141,21 @@ A configuração do assistente pode ser copiada e restaurada sem mexer nos
 dados nem nas conversas:
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec -it central-openclaw node dist/index.js backup create --only-config"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec -it central-openclaw node dist/index.js backup create --only-config"
 ```
 
 Conferir se um backup está íntegro antes de confiar nele (troque
 `<arquivo>` pelo caminho do `.tar.gz` gerado no passo anterior):
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec -it central-openclaw node dist/index.js backup verify <arquivo>"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec -it central-openclaw node dist/index.js backup verify <arquivo>"
 ```
 
 Restaurar (use com cuidado — isso extrai o backup verificado numa pasta
 nova; `--target` é a pasta de destino, que precisa estar vazia):
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec -it central-openclaw node dist/index.js backup restore <arquivo> --target <pasta-nova>"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec -it central-openclaw node dist/index.js backup restore <arquivo> --target <pasta-nova>"
 ```
 
 Uma cópia dos backups também fica guardada fora do contêiner, em
@@ -163,7 +170,7 @@ Uma cópia dos backups também fica guardada fora do contêiner, em
 2. Baixar e religar:
 
    ```
-   ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "cd /opt/central-de-comando/openclaw && docker compose pull && docker compose up -d"
+   ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "cd /opt/central-de-comando/openclaw && docker compose pull && docker compose up -d"
    ```
 
 3. Repetir a conferência de sempre: rodar o "verificar a conexão" acima e
@@ -174,7 +181,7 @@ Uma cópia dos backups também fica guardada fora do contêiner, em
 ## Gerar dados de novo (arquivos fictícios para teste)
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec central-openclaw node /opt/ferramenta/gerar-dados-exemplo.mjs /home/node/.openclaw/workspace/dados-exemplo"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec central-openclaw node /opt/ferramenta/gerar-dados-exemplo.mjs /home/node/.openclaw/workspace/dados-exemplo"
 ```
 
 Isso recria os cinco CSVs de demonstração — nenhum dado real do
@@ -186,7 +193,7 @@ O roteiro completo de perguntas (o que cada uma deveria responder) está em
 `verificacao.md`. Para repetir uma pergunta específica:
 
 ```
-ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec central-openclaw node dist/index.js agent --session-key teste-NN --message '<a pergunta aqui>' --json"
+ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec central-openclaw node dist/index.js agent --session-key teste-NN --message '<a pergunta aqui>' --json"
 ```
 
 Troque `teste-NN` por um nome de sessão novo (para não misturar com um

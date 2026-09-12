@@ -112,6 +112,26 @@ liberação geral para qualquer ferramenta.
   registro interno mostra o modelo certo em uso). Fica registrado aqui sem
   fingir que esse passo específico da documentação passou.
 
+### Re-verificação depois das correções finais (12/09/2026)
+
+As últimas correções (o parâmetro `dias`, o descarte de linhas com data no
+futuro, a ordem de severidade das anomalias, e o recálculo do frescor do
+relatório na hora de salvar) foram aplicadas e publicadas nesta mesma data.
+Depois disso, os fechamentos foram rodados de novo, ao vivo, e conferidos
+por fora com uma segunda conta — outra ferramenta, outra matemática —, a
+mesma prova independente do item 4 da tabela acima, repetida depois do
+conserto. Dados fictícios, como em todo o resto deste documento.
+
+| #   | O que foi verificado                                                                                                                                            | O assistente relatou                                    | A contagem independente deu             | Data       |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------- | ---------- |
+| R1  | 30 dias, reaproveitando a chave já salva `71410f483218ef5d`                                                                                                     | R$ 47.085,81 · 1.075 pedidos · R$ 43,80 · 27 de 30 dias | 47085.81 / 1075 / 43.80 / 27 — idêntico | 12/09/2026 |
+| R2  | 7 dias, com uma chave **nova** — de propósito, para obrigar o código corrigido do parâmetro `dias` a rodar de verdade, e não reaproveitar um resultado já salvo | R$ 7.466,39 · 184 pedidos · R$ 40,58 · 5 de 7 dias      | 7466.39 / 184 / 40.58 / 5 — idêntico    | 12/09/2026 |
+
+Os números batidos, nos dois casos, confirmam que as correções desta data
+não mudaram o resultado dos fechamentos que já estavam certos (R1) e que o
+caminho de código corrigido responde igual à conta feita por fora quando é
+de fato exercitado (R2).
+
 ## 4. Uso real
 
 **Nada, nesta fase.** O assistente ainda não tocou em nenhum dado

@@ -3662,7 +3662,7 @@ git commit -m "Assistente privado: o container, a configuração travada por tes
 ### Task 10: A instalação na VPS
 
 Executada pelo coordenador (não por subagente): é SSH na VPS de produção.
-Comandos a partir do worktree, no Bash; `SSH="ssh -i ~/.ssh/tetteo_vps -o BatchMode=yes root@187.77.35.238"`.
+Comandos a partir do worktree, no Bash; `SSH="ssh -i ~/.ssh/tetteo_vps -o BatchMode=yes root@<ip-da-vps>"`.
 
 **Files:** nenhum arquivo novo no repositório, salvo correções da Task 9 que a validação exigir.
 
@@ -3700,7 +3700,7 @@ Se o `config validate` recusar alguma chave: ler a mensagem, corrigir `assistent
 - [ ] **Step 4: Provar que a porta não está na internet**
 
 ```bash
-curl -sS --max-time 8 http://187.77.35.238:18789/healthz; echo "saída: $?"
+curl -sS --max-time 8 http://<ip-da-vps>:18789/healthz; echo "saída: $?"
 $SSH 'ss -tlnH | awk "{print \$4}" | grep 18789'
 ```
 
@@ -3752,7 +3752,7 @@ Executada pelo coordenador. O Step 1 é do Pablo; o resto espera o "pronto" dele
 >
 > 1. Nas **configurações de segurança** da sua conta ChatGPT, ative o **login por código de dispositivo** (se já estiver ativo, pule).
 > 2. Abra o **PowerShell** e cole este comando inteiro:
->    `ssh -t -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "docker exec -it central-openclaw node dist/index.js models auth login --provider openai --device-code"`
+>    `ssh -t -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "docker exec -it central-openclaw node dist/index.js models auth login --provider openai --device-code"`
 > 3. O terminal vai mostrar um **endereço da OpenAI** e um **código**. Abra o endereço, confira que é a sua conta e digite o código **lá, na página** — não aqui na conversa.
 > 4. Quando o terminal disser que deu certo, me escreva "pronto".
 >
@@ -6128,7 +6128,7 @@ git commit -m "Assistente privado: o que foi testado, onde, e o que deu"
 
 - [ ] **Step 1: `operacao.md` — português simples, um bloco por tarefa, cada um com o comando exato**
 
-Blocos obrigatórios: abrir o painel (túnel `ssh -N -L 18789:127.0.0.1:18789 -i $HOME\.ssh\tetteo_vps root@187.77.35.238` + `http://localhost:18789` + como ler o token no **próprio** terminal: `ssh -i $HOME\.ssh\tetteo_vps root@187.77.35.238 "sed -n s/^OPENCLAW_GATEWAY_TOKEN=//p /opt/central-de-comando/segredos/openclaw.env"`); iniciar e parar (`docker compose up -d` / `stop` em `/opt/central-de-comando/openclaw`); refazer o login (o comando da Task 11); onde ver a franquia (página de uso do Codex na conta ChatGPT e `/status` no painel); verificar a conexão (`docker exec central-openclaw node /opt/ferramenta/verificar.mjs`); revogar (`models auth logout <perfil>`, revogar na conta ChatGPT, trocar o segredo do Tetteo nos dois lados); backup e restauração (`openclaw backup create --only-config`, `backup verify`, `backup restore --target`, e a cópia em `/opt/central-de-comando/backups`); atualizar (trocar a tag, `docker compose pull && docker compose up -d`, repetir a conferência da Task 11); gerar dados de novo; repetir o teste (o roteiro da Task 17); o que **não** fazer (pôr chave de API, abrir a porta, ligar navegador/terminal no agente).
+Blocos obrigatórios: abrir o painel (túnel `ssh -N -L 18789:127.0.0.1:18789 -i $HOME\.ssh\tetteo_vps root@<ip-da-vps>` + `http://localhost:18789` + como ler o token no **próprio** terminal: `ssh -i $HOME\.ssh\tetteo_vps root@<ip-da-vps> "sed -n s/^OPENCLAW_GATEWAY_TOKEN=//p /opt/central-de-comando/segredos/openclaw.env"`); iniciar e parar (`docker compose up -d` / `stop` em `/opt/central-de-comando/openclaw`); refazer o login (o comando da Task 11); onde ver a franquia (página de uso do Codex na conta ChatGPT e `/status` no painel); verificar a conexão (`docker exec central-openclaw node /opt/ferramenta/verificar.mjs`); revogar (`models auth logout <perfil>`, revogar na conta ChatGPT, trocar o segredo do Tetteo nos dois lados); backup e restauração (`openclaw backup create --only-config`, `backup verify`, `backup restore --target`, e a cópia em `/opt/central-de-comando/backups`); atualizar (trocar a tag, `docker compose pull && docker compose up -d`, repetir a conferência da Task 11); gerar dados de novo; repetir o teste (o roteiro da Task 17); o que **não** fazer (pôr chave de API, abrir a porta, ligar navegador/terminal no agente).
 
 - [ ] **Step 2: `versoes-e-fontes.md`**
 
@@ -6136,7 +6136,7 @@ Versões: OpenClaw 2026.9.4 (imagem e digest do `docker image inspect`), Node da
 
 - [ ] **Step 3: Os prints 1 e 2 (reais, 2560 × 1600, dados de demonstração)**
 
-Túnel em segundo plano (Bash `run_in_background: true`): `ssh -N -L 18789:127.0.0.1:18789 -i ~/.ssh/tetteo_vps -o ExitOnForwardFailure=yes root@187.77.35.238`.
+Túnel em segundo plano (Bash `run_in_background: true`): `ssh -N -L 18789:127.0.0.1:18789 -i ~/.ssh/tetteo_vps -o ExitOnForwardFailure=yes root@<ip-da-vps>`.
 O token entra no Playwright por variável, lido na mesma linha de comando, **sem eco**:
 `OC_TOKEN="$($SSH 'sed -n s/^OPENCLAW_GATEWAY_TOKEN=//p /opt/central-de-comando/segredos/openclaw.env')" node "$PG/print-openclaw.mjs"`.
 O script (em `$PG`, fora do repo) abre `http://localhost:18789/`, entra com `process.env.OC_TOKEN` pelo campo que o painel oferecer (descobrir com um print exploratório descartado), e salva: **1-configuracao.png** — a tela de configurações do agente/modelo ou de MCP mostrando o servidor "fechamento" e as ferramentas; **2-fluxo-principal.png** — a conversa do item 3 da Task 17, com o fechamento na tela. Conferir cada PNG aberto: legível, sem token visível na barra de endereço ou em campo, sem e-mail.

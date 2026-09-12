@@ -54,6 +54,16 @@ a explicação.
 approve`, que vale só para esse servidor específico (código escrito e
    revisado neste projeto, que só lê os CSVs autorizados e não executa
    nada) — não é uma liberação geral para qualquer ferramenta MCP.
+5. **Corrigido, ainda em 12/09/2026: o arquivo de exemplo do repositório
+   (`openclaw.exemplo.json`) continuava com o par antigo `security: deny` /
+   `ask: always` — o mesmo valor de antes da correção do item 3 —, porque é
+   esse arquivo que uma reinstalação (`scripts/instalar.sh`) copia como
+   configuração inicial. Uma reinstalação de desastre, ou um segundo
+   servidor, teria reproduzido o travamento já corrigido no servidor ao
+   vivo. Corrigido para `tools.exec.mode: "auto"`, sem o par legado, e
+   `configuracao.test.mjs` agora falha se `security` ou `ask` reaparecerem
+   em `tools.exec` — travar só `mode` não bastaria, porque o par legado,
+   se voltasse, venceria por ser mais restrito.
 
 ## Documentação oficial consultada (docs.openclaw.ai)
 
