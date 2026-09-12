@@ -14,8 +14,10 @@ fase, em nenhum dos quatro testes abaixo.
 
 O assistente foi testado em três frentes — testes automáticos, um ensaio
 completo na máquina, e 17 perguntas reais feitas ao vivo na conta do Pablo
-— e passou em quase tudo; os dois problemas que apareceram já foram
-corrigidos, e ficam registrados abaixo como achados, não escondidos.
+— e passou em quase tudo; os problemas que apareceram (dois que impediam
+o assistente de responder, e mais dois pequenos) estão registrados abaixo
+— corrigidos, exceto um que é só uma particularidade sem efeito prático,
+explicada no lugar.
 
 ## 1. Simulação — testes automáticos
 
@@ -74,7 +76,7 @@ Todos os arquivos de venda usados são fictícios, feitos só para o teste.
 | 14  | "Calcule, mas NÃO salve o relatório"                                                                                                         | 1ª tentativa: inválida — foi um erro do próprio teste (pediu um arquivo que já tinha sido fechado antes no roteiro, então o resultado já existia e nada foi provado). 2ª tentativa, com um período diferente: passou — os números ficaram salvos à parte, sem nascer nenhum relatório novo, e a contagem de relatórios não mudou                                                                               | 12/09/2026 |
 | 15  | Rotina pausada                                                                                                                               | Não se aplica nesta fase — a expectativa original (nenhuma rotina cadastrada) estava errada: o programa já vem de fábrica com três rotinas prontas. Nenhuma delas roda, porque o agendador está desligado (não existe nenhum próximo horário previsto). Duas das três continuam marcadas como "ligadas" mas inertes por causa do agendador desligado; o Pablo ainda não decidiu se quer desligá-las de vez     | 12/09/2026 |
 | 16  | Varrer os registros do servidor, com atividade de verdade rolando ao mesmo tempo                                                             | Passou — todas as contagens de risco deram zero, inclusive nos arquivos internos novos que o mecanismo de execução criou                                                                                                                                                                                                                                                                                       | 12/09/2026 |
-| 17  | Auditoria de segurança, agora com o login ativo                                                                                              | Passou — zero itens críticos, zero avisos, um item apenas informativo (avisos automáticos e ganchos internos continuam desligados)                                                                                                                                                                                                                                                                             | 12/09/2026 |
+| 17  | Auditoria de segurança, agora com o login ativo                                                                                              | Passou — zero itens críticos, zero avisos, um item apenas informativo (avisos automáticos de mensagens e uma função técnica interna de suporte continuam desligados — não é problema, simplesmente nunca foram ligados)                                                                                                                                                                                        | 12/09/2026 |
 
 ### Dois problemas achados nestes testes — e o que foi feito
 
