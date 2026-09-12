@@ -14,6 +14,9 @@ import { Icone } from "@/design-system/icones";
 import { Indicador, IndicadorCarregando } from "@/design-system/indicador";
 import { Vazio } from "@/design-system/vazio";
 import { formatarMoeda } from "@/lib/numero";
+import { CartaoDoAssistente } from "@/modules/assistente-privado/components/cartao-do-assistente";
+import { PERMISSAO_VER_ASSISTENTE_PRIVADO } from "@/modules/assistente-privado/permissoes";
+import { cartaoDoAssistente } from "@/modules/assistente-privado/services/registros";
 import { listarPendencias } from "@/modules/checklists/services/pendencias";
 import {
   listarLancamentos,
@@ -55,6 +58,10 @@ import { Prioridades } from "./painel/prioridades";
  * NÃO HÁ VENDAS AQUI, e a ausência é honesta: o Tetteo ainda não tem módulo de
  * pedidos de cliente — Delivery e Analytics estão em construção. Um painel com
  * "ticket médio" inventado seria mais bonito e valeria menos que nada.
+ *
+ * O cartão do ASSISTENTE PRIVADO passa nos dois testes sem trazer número de
+ * venda: diz se o assistente da VPS está ligado, o que fez por último e o que
+ * espera decisão. Os números do fechamento moram no relatório, não aqui.
  */
 
 const dataPorExtenso = new Intl.DateTimeFormat("pt-BR", {
@@ -112,6 +119,7 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
 
   const podeFinanceiro = pode(contexto, "financeiro.ver");
   const podeChecklists = pode(contexto, "checklists.ver");
+  const podeVerAssistente = pode(contexto, PERMISSAO_VER_ASSISTENTE_PRIVADO);
 
   // Caixa e checklists são de uma LOJA. Farinha na câmara fria de uma unidade
   // não vira pizza na outra, e o boleto vence num CNPJ só. Consolidar a rede
@@ -127,10 +135,11 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
   fimDoPeriodo.setDate(fimDoPeriodo.getDate() + periodo - 1);
   fimDoPeriodo.setHours(23, 59, 59, 999);
 
-  const [caixa, contas, pendencias] = await Promise.all([
+  const [caixa, contas, pendencias, assistente] = await Promise.all([
     podeFinanceiro ? visaoDoCaixa(contexto, periodo) : null,
     podeFinanceiro ? listarLancamentos(contexto, { ate: fimDoPeriodo }) : [],
     podeChecklists ? listarPendencias(contexto) : [],
+    podeVerAssistente ? cartaoDoAssistente(contexto) : null,
   ]);
 
   const numeros = numerosDoPainel(contas);
@@ -227,6 +236,8 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
           </div>
         )}
       </div>
+
+      {assistente && <CartaoDoAssistente cartao={assistente} />}
 
       {podeFinanceiro && (
         <ContasDoPeriodo
