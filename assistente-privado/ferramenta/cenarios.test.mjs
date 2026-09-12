@@ -45,9 +45,11 @@ test("caso normal: a soma bate com uma conta independente", () => {
   assert.equal(r.linhasLidas, 59);
   assert.equal(r.linhasDeOutraLoja, 30);
   assert.equal(r.desatualizado, false);
+  // Severidade antes de data (Item 3): fora_do_comum é mais grave que
+  // dia_sem_linha, mesmo tendo acontecido depois.
   assert.deepEqual(
     r.anomalias.map((a) => `${a.tipo}:${a.data}`),
-    ["dia_sem_linha:2026-08-24", "fora_do_comum:2026-09-03"],
+    ["fora_do_comum:2026-09-03", "dia_sem_linha:2026-08-24"],
   );
 });
 

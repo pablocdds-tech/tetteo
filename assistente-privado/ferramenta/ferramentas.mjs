@@ -11,7 +11,13 @@ import {
 import path from "node:path";
 
 import { lerCsv } from "./csv.mjs";
-import { dataBr, diasEntre, hojeEmSaoPaulo, lerData } from "./datas.mjs";
+import {
+  dataBr,
+  diasEntre,
+  hojeEmSaoPaulo,
+  lerData,
+  somarDias,
+} from "./datas.mjs";
 import { reais } from "./dinheiro.mjs";
 import {
   EmAndamento,
@@ -103,11 +109,19 @@ export const DEFINICOES = [
         },
         de: {
           type: "string",
-          description: "Início do período, AAAA-MM-DD ou DD/MM/AAAA. Opcional.",
+          description:
+            "Início do período, AAAA-MM-DD ou DD/MM/AAAA. Opcional. Não use junto com 'dias'.",
         },
         ate: {
           type: "string",
-          description: "Fim do período, AAAA-MM-DD ou DD/MM/AAAA. Opcional.",
+          description:
+            "Fim do período, AAAA-MM-DD ou DD/MM/AAAA. Opcional. Não use junto com 'dias'.",
+        },
+        dias: {
+          type: "integer",
+          minimum: 1,
+          description:
+            "Quantos dias contar, terminando hoje (hoje incluído). Use para 'últimos N dias' — a ferramenta calcula as datas; nunca calcule você mesmo. Não use junto com de/ate.",
         },
         loja: {
           type: "string",
@@ -166,6 +180,30 @@ function resumo(...partes) {
     .update(partes.join("\n"))
     .digest("hex")
     .slice(0, 16);
+}
+
+/**
+ * O frescor ("há N dias") é um DERIVADO de `ultimaData` + "agora", não um
+ * dado congelado — recalculado toda vez que importa (aqui e no reaproveita-
+ * mento de calcular_fechamento), nunca só lido do disco. Sem isso, um
+ * relatório salvo dias depois do cálculo original imprime o número de dias
+ * de quando foi CALCULADO, não de quando foi SALVO.
+ */
+function comFrescorAtual(dados, hoje, diasParaDesatualizado) {
+  const ultimaData = dados.ultimaData;
+  const diasSemAtualizacao = ultimaData ? diasEntre(ultimaData, hoje) : null;
+  const desatualizado =
+    diasSemAtualizacao !== null && diasSemAtualizacao > diasParaDesatualizado;
+  let avisos = dados.avisos.filter(
+    (a) => !a.startsWith("Arquivo desatualizado:"),
+  );
+  if (desatualizado) {
+    avisos = [
+      `Arquivo desatualizado: a última informação é de ${dataBr(ultimaData)}, há ${diasSemAtualizacao} dias.`,
+      ...avisos,
+    ];
+  }
+  return { ...dados, desatualizado, diasSemAtualizacao, avisos };
 }
 
 function indicadoresDe(d) {
@@ -346,9 +384,26 @@ export function criarFerramentas(
       return { pasta: "dados-exemplo", arquivos };
     },
 
-    async calcular_fechamento({ arquivo, de, ate, loja } = {}) {
+    async calcular_fechamento({ arquivo, de, ate, dias, loja } = {}) {
       const fonte =
         typeof arquivo === "string" && RE_NOME.test(arquivo) ? arquivo : null;
+
+      // "dias" é quem calcula a janela — nunca o modelo, que não tem
+      // relógio confiável e erraria a subtração (Item 5). Por isso não
+      // convive com de/ate: ou a ferramenta calcula a data, ou o
+      // responsável informa a data, nunca os dois ao mesmo tempo.
+      if (dias !== undefined && (de !== undefined || ate !== undefined)) {
+        return {
+          estado: "erro_de_parametro",
+          motivo: "Use 'dias' OU 'de'/'ate' — nunca os dois juntos.",
+        };
+      }
+      if (dias !== undefined && (!Number.isInteger(dias) || dias < 1)) {
+        return {
+          estado: "erro_de_parametro",
+          motivo: "'dias' precisa ser um número inteiro de 1 ou mais.",
+        };
+      }
 
       if (loja !== undefined && !mesmaLoja(loja, config.lojaPermitida)) {
         await registrar({
@@ -389,17 +444,26 @@ export function criarFerramentas(
         return { estado: "arquivo_invalido", arquivo, motivo, linha: null };
       }
 
-      const inicio = de === undefined ? null : lerData(de);
-      const fim = ate === undefined ? null : lerData(ate);
-      if ((de !== undefined && !inicio) || (ate !== undefined && !fim)) {
-        return {
-          estado: "erro_de_parametro",
-          motivo: "Use datas AAAA-MM-DD ou DD/MM/AAAA.",
-        };
+      const hoje = hojeEmSaoPaulo(agora());
+      let inicio, fim;
+      if (dias !== undefined) {
+        // A janela dos "últimos N dias" é sempre até HOJE, N dias inclusive
+        // — nunca até a última linha do arquivo, que pode estar atrasada.
+        fim = hoje;
+        inicio = somarDias(hoje, -(dias - 1));
+      } else {
+        inicio = de === undefined ? null : lerData(de);
+        fim = ate === undefined ? null : lerData(ate);
+        if ((de !== undefined && !inicio) || (ate !== undefined && !fim)) {
+          return {
+            estado: "erro_de_parametro",
+            motivo: "Use datas AAAA-MM-DD ou DD/MM/AAAA.",
+          };
+        }
       }
 
       const conteudo = await readFile(alvo.caminho);
-      const leitura = lerCsv(conteudo.toString("utf8"));
+      const leitura = lerCsv(conteudo.toString("utf8"), { hoje });
       if (!leitura.ok) {
         await registrar({
           tipo: "execucao",
@@ -423,7 +487,7 @@ export function criarFerramentas(
         loja: config.lojaPermitida,
         de: inicio,
         ate: fim,
-        hoje: hojeEmSaoPaulo(agora()),
+        hoje,
         diasParaDesatualizado: config.diasParaDesatualizado,
       });
 
@@ -464,29 +528,12 @@ export function criarFerramentas(
             // O CONTEÚDO não muda, mas o RELÓGIO sim: o frescor é
             // recalculado a cada reaproveitamento, nunca fica congelado no
             // instante do primeiro cálculo.
-            const hoje = hojeEmSaoPaulo(agora());
-            const ultimaData = existente.dados.ultimaData;
-            const diasSemAtualizacao = ultimaData
-              ? diasEntre(ultimaData, hoje)
-              : null;
-            const desatualizado =
-              diasSemAtualizacao !== null &&
-              diasSemAtualizacao > config.diasParaDesatualizado;
-            let avisos = existente.dados.avisos.filter(
-              (a) => !a.startsWith("Arquivo desatualizado:"),
+            const dadosAtualizados = comFrescorAtual(
+              existente.dados,
+              hoje,
+              config.diasParaDesatualizado,
             );
-            if (desatualizado) {
-              avisos = [
-                `Arquivo desatualizado: a última informação é de ${dataBr(ultimaData)}, há ${diasSemAtualizacao} dias.`,
-                ...avisos,
-              ];
-            }
-            const dadosAtualizados = {
-              ...existente.dados,
-              desatualizado,
-              diasSemAtualizacao,
-              avisos,
-            };
+            const { desatualizado, avisos } = dadosAtualizados;
             const estado = estadoAtual(existente, agora());
             if (desatualizado !== existente.dados.desatualizado) {
               await gravarDados(config.pastaTrabalho, chave, dadosAtualizados);
@@ -558,7 +605,15 @@ export function criarFerramentas(
           motivo: "Esta execução foi cancelada.",
         };
       }
-      const d = execucao.dados;
+      // O frescor é recalculado agora, na hora de SALVAR — não confia no
+      // que está gravado em disco, que só é atualizado quando o alarme
+      // MUDA de estado (Item 2: calculado há 5 dias, salvo 11 dias depois
+      // com o alarme continuando ligado, imprimiria "há 5 dias" para sempre).
+      const d = comFrescorAtual(
+        execucao.dados,
+        hojeEmSaoPaulo(agora()),
+        config.diasParaDesatualizado,
+      );
       await gravarRelatorio(
         config.pastaTrabalho,
         chave,

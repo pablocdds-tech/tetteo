@@ -149,3 +149,36 @@ test("sem linhas da loja no período: sem_dados", () => {
   assert.equal(r.ticketCentavos, null);
   assert.equal(r.totalCentavos, 0);
 });
+
+test("IMPORTANTE: severidade manda mais que a data — fora_do_comum vem antes de dia_sem_linha, mesmo sendo mais tarde", () => {
+  const r = calcularFechamento({
+    linhas: [
+      linha(2, "2026-09-01", 100000),
+      linha(3, "2026-09-03", 100000),
+      linha(4, "2026-09-04", 100000),
+      linha(5, "2026-09-05", 100000),
+      linha(6, "2026-09-06", 100000),
+      linha(7, "2026-09-07", 100000),
+      linha(8, "2026-09-08", 400000), // 4x a mediana, e é o dia mais tarde
+    ],
+    loja: "Loja Centro",
+    hoje: "2026-09-09",
+  });
+  const tipos = r.anomalias.map((a) => a.tipo);
+  assert.deepEqual(tipos, ["fora_do_comum", "dia_sem_linha"]);
+});
+
+test("IMPORTANTE: razão pequena nunca vira '0x a mediana' (precisão suficiente)", () => {
+  const normais = Array.from({ length: 7 }, (_, i) =>
+    linha(i + 2, `2026-09-0${i + 1}`, 120000),
+  );
+  const r = calcularFechamento({
+    linhas: [...normais, linha(9, "2026-09-08", 5000)], // R$ 50 contra mediana R$ 1.200
+    loja: "Loja Centro",
+    hoje: "2026-09-09",
+  });
+  const fora = r.anomalias.find((a) => a.tipo === "fora_do_comum");
+  assert.ok(fora, "deveria detectar o dia fraco como fora do comum");
+  assert.ok(!fora.texto.includes("0× a mediana"), fora.texto);
+  assert.match(fora.texto, /0,04\d?× a mediana/);
+});

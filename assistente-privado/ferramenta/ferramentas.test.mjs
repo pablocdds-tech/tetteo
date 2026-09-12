@@ -387,3 +387,121 @@ test("configuração: ${VAR} não resolvido conta como ausente", () => {
   assert.equal(c.diasParaDesatualizado, 2);
   assert.throws(() => lerConfiguracao({}), /Configuração incompleta/);
 });
+
+test("CRÍTICO: linha com data no futuro não redefine o período nem esconde o alarme de desatualizado", async () => {
+  const csv = [
+    "data;loja;pedidos;valor_total",
+    "10/09/2026;Loja Centro;10;100,00",
+    "11/09/2026;Loja Centro;10;100,00",
+    "20/11/2026;Loja Centro;10;100,00",
+  ].join("\n");
+  const { ferramentas, avancarDias } = await montar({ "futuro.csv": csv });
+  avancarDias(1); // relógio de montar() começa em 2026-09-11; hoje passa a ser 2026-09-12
+  const r = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "futuro.csv",
+  });
+  assert.equal(r.estado, "calculado");
+  assert.equal(r.ultimaData, "2026-09-11");
+  assert.deepEqual(r.periodo, { de: "2026-09-10", ate: "2026-09-11" });
+  assert.equal(r.diasNoPeriodo, 2);
+  assert.equal(r.diasSemAtualizacao, 1);
+  assert.equal(r.desatualizado, false);
+  assert.equal(r.anomalias.length, 0);
+  assert.equal(r.linhasDescartadas, 1);
+  assert.ok(r.avisos.some((a) => a.includes("1 linha(s) descartada(s)")));
+});
+
+test("CRÍTICO: salvar_relatorio recalcula o frescor na hora de salvar, não usa o congelado do cálculo", async () => {
+  const csvAntigo = [
+    "data;loja;pedidos;valor_total",
+    "31/08/2026;Loja Centro;10;100,00",
+  ].join("\n");
+  const { ferramentas, enviados, pastaTrabalho, avancarDias } = await montar({
+    "antigo.csv": csvAntigo,
+  });
+  // relógio de montar() começa em 2026-09-11T15:00:00Z; o cenário do
+  // revisor precisa de "calculado em 2026-09-05 (5 dias de atraso), salvo
+  // em 2026-09-16 (16 dias)" — o alarme continua ligado nas duas datas
+  // (true → true), só o NÚMERO de dias muda.
+  avancarDias(-6); // 2026-09-05
+  const { chave } = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "antigo.csv",
+  });
+  avancarDias(11); // 2026-09-16
+  const r = await ferramentas.chamar("salvar_relatorio", {
+    chave,
+    texto: "x",
+  });
+  assert.equal(r.estado, "concluido");
+  const md = await readFile(
+    path.join(pastaTrabalho, "relatorios", `${chave}.md`),
+    "utf8",
+  );
+  assert.match(md, /há 16 dias/);
+  assert.ok(!md.includes("há 5 dias"));
+  const ultimoEnvio = enviados.at(-1);
+  assert.equal(ultimoEnvio.estado, "concluido");
+  assert.ok(ultimoEnvio.avisos.some((a) => a.includes("há 16 dias")));
+  assert.ok(!ultimoEnvio.avisos.some((a) => a.includes("há 5 dias")));
+});
+
+test("IMPORTANTE: o corte de 30 anomalias guarda o outlier real, não some com ele no meio das linhas ausentes", async () => {
+  const de = "2026-01-01";
+  const ate = somarDias(de, 59); // 60 dias no período
+  const linhas = ["data;loja;pedidos;valor_total"];
+  for (let i = 0; i < 60; i += 6) {
+    const valor = i === 54 ? "4.000,00" : "1.000,00"; // dia 54: 4x a mediana
+    linhas.push(`${dataBr(somarDias(de, i))};Loja Centro;10;${valor}`);
+  }
+  const { ferramentas } = await montar({
+    "esparso.csv": linhas.join("\n"),
+  });
+  const r = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "esparso.csv",
+    de,
+    ate,
+  });
+  assert.equal(r.estado, "calculado");
+  assert.equal(r.anomalias.length, 30);
+  assert.equal(r.anomaliasOmitidas, 21);
+  assert.equal(r.anomalias[0].tipo, "fora_do_comum");
+  assert.ok(r.anomalias.some((a) => a.tipo === "fora_do_comum"));
+});
+
+test("IMPORTANTE: 'dias' calcula a janela dos últimos N dias terminando hoje; com de/ate junto é erro", async () => {
+  const csv = [
+    "data;loja;pedidos;valor_total",
+    "05/09/2026;Loja Centro;10;100,00",
+    "10/09/2026;Loja Centro;10;100,00",
+    "11/09/2026;Loja Centro;10;100,00",
+  ].join("\n");
+  const { ferramentas } = await montar({ "vendas.csv": csv });
+  // relógio de montar() é 2026-09-11T15:00:00Z -> hoje = 2026-09-11
+  const r = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+    dias: 3,
+  });
+  assert.equal(r.estado, "calculado");
+  assert.deepEqual(r.periodo, { de: "2026-09-09", ate: "2026-09-11" });
+  assert.equal(r.diasNoPeriodo, 3);
+
+  const conflito = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+    dias: 3,
+    de: "2026-09-01",
+  });
+  assert.equal(conflito.estado, "erro_de_parametro");
+
+  const conflito2 = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+    dias: 3,
+    ate: "2026-09-11",
+  });
+  assert.equal(conflito2.estado, "erro_de_parametro");
+
+  const invalido = await ferramentas.chamar("calcular_fechamento", {
+    arquivo: "vendas.csv",
+    dias: 0,
+  });
+  assert.equal(invalido.estado, "erro_de_parametro");
+});

@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   codigoDeSaida,
+  demonstracaoAtiva,
   estadoDaVerificacao,
   mascararEmail,
   obterStatus,
@@ -173,10 +174,9 @@ test("problema na rota do modelo é modelo_indisponivel", () => {
 });
 
 test("mascararEmail troca o e-mail por um marcador, nunca o mostra", () => {
-  const linha =
-    "Profiles: openai/oauth (pablocdds@gmail.com) — 0 api-key, Shell env: off";
+  const linha = `Profiles: openai/oauth (${EMAIL_FALSO}) — 0 api-key, Shell env: off`;
   const mascarada = mascararEmail(linha);
-  assert.ok(!mascarada.includes("pablocdds@gmail.com"));
+  assert.ok(!mascarada.includes(EMAIL_FALSO));
   assert.ok(!mascarada.includes("@"));
   assert.match(mascarada, /\[e-mail oculto\]/);
 });
@@ -201,15 +201,14 @@ test("mensagem de rota com e-mail embutido não vaza no detalhe", () => {
       ...oauthOk.auth,
       modelRouteIssues: [
         {
-          message:
-            "runtime indisponível para o perfil pablocdds@gmail.com (openai)",
+          message: `runtime indisponível para o perfil ${EMAIL_FALSO} (openai)`,
         },
       ],
     },
   };
   const r = estadoDaVerificacao(rota, { gatewayDePe: true });
   assert.equal(r.estado, "modelo_indisponivel");
-  assert.ok(!r.detalhe.includes("pablocdds@gmail.com"));
+  assert.ok(!r.detalhe.includes(EMAIL_FALSO));
   assert.ok(!r.detalhe.includes("@"));
 });
 
@@ -251,7 +250,7 @@ test("obterStatus: saída que não é JSON válido também vira desligado, nunca
 
 test("obterStatus: e-mail que vazasse na mensagem de erro do comando não sobrevive ao detalhe", async () => {
   const erroComEmail = new Error(
-    "Command failed: falha para o perfil pablocdds@gmail.com",
+    `Command failed: falha para o perfil ${EMAIL_FALSO}`,
   );
   const { erroDeExecucao: motivo } = await obterStatus(async () => {
     throw erroComEmail;
@@ -260,7 +259,7 @@ test("obterStatus: e-mail que vazasse na mensagem de erro do comando não sobrev
     {},
     { gatewayDePe: true, erroDeExecucao: motivo },
   );
-  assert.ok(!r.detalhe.includes("pablocdds@gmail.com"));
+  assert.ok(!r.detalhe.includes(EMAIL_FALSO));
   assert.ok(!r.detalhe.includes("@"));
 });
 
@@ -404,4 +403,11 @@ test("Fix round 3 — a captura real ainda é conectado com runtime codex (não 
   const r = estadoDaVerificacao(statusReal, { gatewayDePe: true });
   assert.equal(r.estado, "conectado");
   assert.equal(r.runtime, "codex");
+});
+
+test("IMPORTANTE: demonstracaoAtiva lê DEMONSTRACAO do ambiente, como lerConfiguracao — falso por padrão", () => {
+  assert.equal(demonstracaoAtiva({}), false);
+  assert.equal(demonstracaoAtiva({ DEMONSTRACAO: "1" }), true);
+  assert.equal(demonstracaoAtiva({ DEMONSTRACAO: "0" }), false);
+  assert.equal(demonstracaoAtiva({ DEMONSTRACAO: "${DEMONSTRACAO}" }), false);
 });

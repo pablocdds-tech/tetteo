@@ -1,4 +1,4 @@
-﻿import { dataBr, diasDoPeriodo, diasEntre } from "./datas.mjs";
+import { dataBr, diasDoPeriodo, diasEntre } from "./datas.mjs";
 import { reais } from "./dinheiro.mjs";
 import { limparTexto } from "./sanitizar.mjs";
 
@@ -16,6 +16,23 @@ import { limparTexto } from "./sanitizar.mjs";
 
 export const FATOR_FORA_DO_COMUM = 2;
 export const MINIMO_DE_DIAS_PARA_COMPARAR = 7;
+
+/**
+ * A ORDEM DE SEVERIDADE — do mais grave para o mais brando.
+ *
+ * O relatório e o registro cortam a lista em 30 (MAXIMO_DE_ANOMALIAS, em
+ * ferramentas.mjs) para não virar um arquivo de milhares de linhas. Esse
+ * corte tem que sobrar com os outliers de verdade, não com os "dia sem
+ * linha" — que em um período longo contra um arquivo curto podem ser
+ * centenas, e são o tipo mais brando (falta de dado, não dado ruim).
+ */
+const ORDEM_DE_SEVERIDADE = {
+  fora_do_comum: 0,
+  valor_negativo: 1,
+  data_repetida: 2,
+  venda_zero: 3,
+  dia_sem_linha: 4,
+};
 
 export function mesmaLoja(a, b) {
   const normal = (s) =>
@@ -160,8 +177,12 @@ export function calcularFechamento({
       if (dia.centavos <= 0 || med <= 0) continue;
       const razao = dia.centavos / med;
       if (razao >= FATOR_FORA_DO_COMUM || razao <= 1 / FATOR_FORA_DO_COMUM) {
+        // Dígitos SIGNIFICATIVOS, não casas decimais fixas: um dia fraco
+        // (R$ 50 contra uma mediana de R$ 1.200, razão 0,0417) com
+        // maximumFractionDigits:1 virava "0× a mediana" — uma frase falsa,
+        // porque o dia vendeu, só que pouco.
         const vezes = razao.toLocaleString("pt-BR", {
-          maximumFractionDigits: 1,
+          maximumSignificantDigits: 2,
         });
         anomalias.push({
           tipo: "fora_do_comum",
@@ -172,7 +193,9 @@ export function calcularFechamento({
     }
   }
   anomalias.sort(
-    (a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo),
+    (a, b) =>
+      ORDEM_DE_SEVERIDADE[a.tipo] - ORDEM_DE_SEVERIDADE[b.tipo] ||
+      a.data.localeCompare(b.data),
   );
 
   const observacoes = [];

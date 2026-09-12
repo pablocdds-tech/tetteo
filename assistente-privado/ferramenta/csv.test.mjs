@@ -76,3 +76,46 @@ test("arquivo inválido diz o motivo", () => {
   });
   assert.equal(lerCsv("data;loja\u0000").ok, false);
 });
+
+// CRÍTICO: uma linha digitada com o mês/ano errado (20/11/2026 em vez de
+// 20/09/2026) não pode virar a "última data" do arquivo — ela é descartada
+// como qualquer outra linha ruim, com motivo e número, e contada no total.
+test("descarta linha com data no futuro (relativa a 'hoje'), contada como as demais", () => {
+  const r = lerCsv(
+    [
+      "data;loja;pedidos;valor_total",
+      "10/09/2026;Loja Centro;40;100,00",
+      "11/09/2026;Loja Centro;40;100,00",
+      "20/11/2026;Loja Centro;40;100,00",
+    ].join("\n"),
+    { hoje: "2026-09-12" },
+  );
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.descartadas, [{ linha: 4, motivo: "data no futuro" }]);
+  assert.deepEqual(
+    r.linhas.map((l) => l.data),
+    ["2026-09-10", "2026-09-11"],
+  );
+  assert.equal(r.linhasLidas, 3);
+});
+
+test("uma data igual a 'hoje' não é descartada — só o que vem DEPOIS", () => {
+  const r = lerCsv(
+    ["data;loja;pedidos;valor_total", "12/09/2026;Loja Centro;40;100,00"].join(
+      "\n",
+    ),
+    { hoje: "2026-09-12" },
+  );
+  assert.equal(r.linhas.length, 1);
+  assert.equal(r.descartadas.length, 0);
+});
+
+test("sem 'hoje' informado, nenhuma linha é descartada por data (compatibilidade)", () => {
+  const r = lerCsv(
+    ["data;loja;pedidos;valor_total", "20/11/2099;Loja Centro;40;100,00"].join(
+      "\n",
+    ),
+  );
+  assert.equal(r.linhas.length, 1);
+  assert.equal(r.descartadas.length, 0);
+});

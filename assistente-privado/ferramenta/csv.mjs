@@ -10,6 +10,10 @@ import { lerCentavos } from "./dinheiro.mjs";
  *
  * Limite conhecido: quebra de linha DENTRO de um campo entre aspas não é
  * aceita — a linha fica "aspas sem fechar".
+ *
+ * Quando `hoje` é informado, uma linha datada DEPOIS de hoje também é
+ * descartada ("data no futuro") — ela é sempre erro de digitação, nunca uma
+ * venda real, e não pode virar a "última data" do arquivo.
  */
 
 export const COLUNAS_OBRIGATORIAS = ["data", "loja", "pedidos", "valor_total"];
@@ -45,7 +49,7 @@ export function dividirLinha(linha, separador) {
   return { campos, aspasAbertas: dentroDeAspas };
 }
 
-export function lerCsv(texto) {
+export function lerCsv(texto, { hoje = null } = {}) {
   if (typeof texto !== "string") {
     return { ok: false, motivo: "o arquivo não é texto", linha: null };
   }
@@ -105,6 +109,13 @@ export function lerCsv(texto) {
     const data = lerData(campos[indice.data]);
     if (!data) {
       descartar("data inválida");
+      continue;
+    }
+    // Uma data depois de "hoje" nunca é um dia de venda real — é erro de
+    // digitação (mês ou ano trocado). Sem isso, uma linha assim vira a
+    // "última data" do arquivo e derruba o alarme de desatualizado.
+    if (hoje && data > hoje) {
+      descartar("data no futuro");
       continue;
     }
     const loja = campos[indice.loja].trim();

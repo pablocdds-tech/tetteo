@@ -38,6 +38,19 @@ export function mascararEmail(texto) {
   return String(texto ?? "").replace(RE_EMAIL, "[e-mail oculto]");
 }
 
+/**
+ * Lê DEMONSTRACAO do ambiente do MESMO jeito, e com o MESMO padrão (falso),
+ * que `lerConfiguracao()` em ferramentas.mjs — a bandeira "dados de
+ * demonstração" do cartão não pode discordar da que a ferramenta usa de
+ * verdade. Antes disso, `principal()` mandava `demonstracao: true` fixo:
+ * como a verificação roda pra sempre, o cartão nunca saía do modo
+ * demonstração, mesmo depois de autorizado o uso real.
+ */
+export function demonstracaoAtiva(env = process.env) {
+  const v = env.DEMONSTRACAO;
+  return (v && !v.startsWith("${") ? v : "") === "1";
+}
+
 const LIMITE_DETALHE = 300;
 
 /** Qualquer texto livre do CLI (mensagem de erro, motivo de rota) passa por
@@ -301,7 +314,7 @@ async function principal() {
       chave: "verificacao",
       estado: resultado.estado,
       ocorridoEm: new Date().toISOString(),
-      demonstracao: true,
+      demonstracao: demonstracaoAtiva(),
       avisos: [],
       pendencias: [],
       detalhe: resultado.detalhe ?? null,
