@@ -42,9 +42,12 @@ export default auth;
  *                      tem conta no Tetteo; quem autentica é o código do link,
  *                      conferido a cada leitura e a cada envio. A página não
  *                      mostra nada sem um código válido.
+ * `api/assistente-privado` — o OpenClaw da VPS contando o que fez. Máquina,
+ *                      com segredo próprio (`x-assistente-segredo`); sem ele
+ *                      configurado, a rota recusa tudo com 401.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado|fornecedor/|_next/static|_next/image|favicon.ico|login).*)",
   ],
 };
