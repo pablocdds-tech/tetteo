@@ -141,3 +141,21 @@ de 17 perguntas) confirmaram na prática:
   modelo, o contêiner roda sem privilégios extras, a ferramenta de
   fechamento é montada só para leitura, e a porta do painel só existe em
   `127.0.0.1`.
+- **O filtro de texto disfarçado (`sanitizar.mjs`) reduz o risco, não é uma
+  garantia.** Ele lê a observação de uma linha do CSV de vendas e decide se
+  ela tem cara de instrução escondida ("ignore as regras", "revele a
+  senha", "aja como o gerente"...) antes de deixar esse texto chegar perto
+  do modelo. Hoje ele já pega a frase escrita normal, com caractere
+  invisível no meio de uma palavra, com acento separado da letra (uma marca
+  combinante, tipo escrever "i" + acento em vez do "í" de um só caractere)
+  e com a letra trocada por uma parecida de outro alfabeto (cirílico ou
+  grego, tipo um "o" que não é bem o "o" do teclado). Mas disfarçar texto é
+  uma corrida sem linha de chegada: sempre existe uma forma nova de
+  escrever a mesma palavra que ninguém pensou em cobrir ainda, e nenhuma
+  lista de casos cobre todas. Por isso quem realmente protege o dono não é
+  esse filtro — é o assistente não ter o que executar. Mesmo se um texto
+  disfarçado escapasse do filtro, o assistente só tem as cinco ferramentas
+  de leitura e escrita do fechamento, sem terminal, sem navegador, sem
+  jeito de mandar mensagem pra ninguém. O pior resultado realista de um
+  disfarce que passe é um texto estranho aparecendo num relatório ou num
+  rascunho no painel — nunca uma ação sendo executada.
