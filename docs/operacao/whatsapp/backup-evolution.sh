@@ -12,8 +12,14 @@
 # COMO INSTALAR — uma vez, na VPS, como root. O repositório é privado, mas o
 # Dokploy já baixou o código na máquina, então o script sai de lá:
 #
-#   cp /etc/dokploy/applications/*/code/docs/operacao/whatsapp/backup-evolution.sh /root/backup-evolution.sh
-#   sh /root/backup-evolution.sh
+#   find /etc/dokploy -name backup-evolution.sh -exec sh {} ;
+#
+# Ele se copia para /root/backup-evolution.sh e roda de lá.
+#
+# Quem agenda pelo Dokploy (Schedules do servidor) roda com SEM_CRON=1, para
+# não ficar com dois agendamentos fazendo o mesmo backup:
+#
+#   SEM_CRON=1 sh /root/backup-evolution.sh
 #
 # Se esse caminho não existir, procure o arquivo primeiro:
 #
@@ -34,6 +40,17 @@ RETENCAO_DIAS="${RETENCAO_DIAS:-14}"
 CRON="/etc/cron.d/evolution-backup"
 CARIMBO="$(date +%Y%m%d-%H%M%S)"
 EU="$(readlink -f "$0")"
+
+# Chamado de dentro do código que o Dokploy baixou? Então me copio para o
+# /root e sigo de lá. O agendamento precisa de um caminho que não desapareça
+# no próximo deploy, e o backup não pode morar junto do repositório.
+CASA="/root/backup-evolution.sh"
+if [ "$EU" != "$CASA" ] && [ -z "${SEM_COPIA:-}" ]; then
+  cp "$EU" "$CASA"
+  chmod 700 "$CASA"
+  echo "copiei o script para $CASA e sigo por ele"
+  exec /bin/sh "$CASA"
+fi
 
 umask 077
 mkdir -p "$DESTINO"
@@ -91,7 +108,9 @@ fi
 # --- Limpeza e agendamento --------------------------------------------------
 find "$DESTINO" -type f -mtime +"$RETENCAO_DIAS" -delete
 
-if [ ! -f "$CRON" ]; then
+if [ -n "${SEM_CRON:-}" ]; then
+  echo "[$CARIMBO] SEM_CRON: quem agenda é outro, não mexi no cron"
+elif [ ! -f "$CRON" ]; then
   # O agendamento chama o interpretador na mão: continua funcionando mesmo
   # que o arquivo perca a permissão de execução numa cópia às pressas.
   printf '40 3 * * * root /bin/sh %s >> /var/log/backup-evolution.log 2>&1
