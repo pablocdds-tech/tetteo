@@ -18,14 +18,15 @@
       "skipBootstrap": true,
       "heartbeat": { "every": "0m" },
       "timeoutSeconds": 600,
-      "model": { "fallbacks": [] },
-      "models": { "openai/*": { "agentRuntime": { "id": "openclaw" } } }
+      "model": { "fallbacks": [] }
     }
   },
   "session": { "dmScope": "per-channel-peer" },
   "cron": { "enabled": false },
   "browser": { "enabled": false },
-  "plugins": { "entries": { "browser": { "enabled": false } } },
+  "plugins": {
+    "entries": { "browser": { "enabled": false }, "codex": { "enabled": true } }
+  },
   "tools": {
     "profile": "messaging",
     "deny": [

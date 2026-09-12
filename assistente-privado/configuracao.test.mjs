@@ -27,10 +27,32 @@ test("nenhuma chave de API e nenhum modelo reserva", () => {
   assert.deepEqual(config.agents.defaults.model.fallbacks, []);
 });
 
-test("runtime embutido para qualquer modelo openai", () => {
-  assert.deepEqual(config.agents.defaults.models["openai/*"].agentRuntime, {
-    id: "openclaw",
-  });
+test("nenhum agentRuntime em openai/* — a assinatura só entra pela rota automática", () => {
+  // docs.openclaw.ai/providers/openai/setup.md, aba "Codex subscription":
+  // "No runtime config is required for this exact official HTTPS native
+  // route." Fixar `agentRuntime.id: "openclaw"` pula essa rota e troca para
+  // o runtime embutido do OpenClaw, cuja autenticação é um perfil de CHAVE
+  // DE API `openai` (ou OAuth só por um transporte interno com ordem de auth
+  // declarada) — e não temos nenhum dos dois, de propósito. Foi exatamente
+  // esse override que produziu, ao vivo, "No route-compatible authentication
+  // source is configured for openai" com `models list --provider openai`
+  // mostrando `Auth: no` mesmo com OAuth válido. Sem esta trava, qualquer um
+  // pode recolocar o override e trazer o defeito de volta.
+  assert.ok(
+    !/agentRuntime/.test(JSON.stringify(config)),
+    "achou agentRuntime na config — isso tira a rota automática da assinatura",
+  );
+});
+
+test("plugin do Codex habilitado — de fábrica ele vem desligado", () => {
+  // A rota da assinatura "pode selecionar o runtime do Codex app-server
+  // automaticamente, e o OpenClaw instala ou repara o plugin do Codex
+  // embutido quando esse runtime é escolhido" — mas só se o plugin estiver
+  // habilitado. Verificado ao vivo: `config get plugins.entries.codex` vem
+  // "valid but unset" e `plugins list` mostra o Codex como "disabled" de
+  // fábrica. Sem este `enabled: true`, a assinatura não tem por onde
+  // autenticar.
+  assert.equal(config.plugins.entries.codex.enabled, true);
 });
 
 test("gateway com token por variável e freio de força bruta", () => {
