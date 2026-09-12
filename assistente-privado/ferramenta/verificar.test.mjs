@@ -6,13 +6,91 @@ import {
   estadoDaVerificacao,
   mascararEmail,
   obterStatus,
+  saidaFinal,
 } from "./verificar.mjs";
 
+// Fix round 2: a forma real de `auth.oauth` é `{ warnAfterMs, profiles }`,
+// não uma lista — e cada perfil tem `status`/`remainingMs`, não `expired`.
 const oauthOk = {
   auth: {
-    oauth: [{ profileId: "openai:conta", provider: "openai", expired: false }],
+    oauth: {
+      profiles: [
+        {
+          profileId: "openai:conta",
+          provider: "openai",
+          status: "ok",
+          remainingMs: 999_999_999,
+        },
+      ],
+    },
     unusableProfiles: [],
     modelRouteIssues: [],
+  },
+};
+
+// O e-mail real do dono, para os testes que provam que ele nunca sai — nunca
+// o e-mail de verdade, só um valor com a MESMA forma.
+const EMAIL_FALSO = "dono@exemplo.com";
+
+// Captura real de `openclaw models status --json` na VPS (Fix round 2), só
+// com o e-mail trocado. `auth.oauth.profiles[].label`/`.profileId` e
+// `auth.providers[].profiles.labels[]` são os três lugares que carregam o
+// e-mail de verdade.
+const statusReal = {
+  defaultModel: "openai/gpt-5.6-sol",
+  resolvedDefault: "openai/gpt-5.6-sol",
+  fallbacks: [],
+  utilityModel: { ref: "openai/gpt-5.6-luna", source: "provider-default" },
+  auth: {
+    storePath: "/home/node/.openclaw/state/openclaw.sqlite",
+    shellEnvFallback: { enabled: false, appliedKeys: [] },
+    providersWithOAuth: ["openai (1)"],
+    missingProvidersInUse: [],
+    modelRouteIssues: [],
+    runtimeAuthRoutes: [
+      {
+        provider: "openai",
+        runtime: "codex",
+        authProvider: "openai",
+        status: "usable",
+        effective: {
+          kind: "profiles",
+          detail: "~/.openclaw/state/openclaw.sqlite",
+        },
+      },
+    ],
+    providers: [
+      {
+        provider: "openai",
+        effective: {
+          kind: "profiles",
+          detail: "~/.openclaw/state/openclaw.sqlite",
+        },
+        profiles: {
+          count: 1,
+          oauth: 1,
+          token: 0,
+          apiKey: 0,
+          labels: [`openai:${EMAIL_FALSO}=OAuth (${EMAIL_FALSO})`],
+        },
+      },
+    ],
+    unusableProfiles: [],
+    oauth: {
+      warnAfterMs: 86_400_000,
+      profiles: [
+        {
+          profileId: `openai:${EMAIL_FALSO}`,
+          provider: "openai",
+          type: "oauth",
+          status: "ok",
+          expiresAt: 1_790_041_227_632,
+          remainingMs: 825_383_970,
+          source: "store",
+          label: `openai:${EMAIL_FALSO} (${EMAIL_FALSO})`,
+        },
+      ],
+    },
   },
 };
 
@@ -32,12 +110,28 @@ test("login OAuth válido e sem problema de rota é conectado", () => {
 
 test("sem login da OpenAI, ou login vencido, é login_expirado", () => {
   assert.equal(
-    estadoDaVerificacao({ auth: { oauth: [] } }, { gatewayDePe: true }).estado,
+    estadoDaVerificacao(
+      { auth: { oauth: { profiles: [] } } },
+      { gatewayDePe: true },
+    ).estado,
+    "login_expirado",
+  );
+  assert.equal(
+    estadoDaVerificacao({ auth: {} }, { gatewayDePe: true }).estado,
     "login_expirado",
   );
   const vencido = {
     auth: {
-      oauth: [{ profileId: "openai:conta", provider: "openai", expired: true }],
+      oauth: {
+        profiles: [
+          {
+            profileId: "openai:conta",
+            provider: "openai",
+            status: "expired",
+            remainingMs: -1000,
+          },
+        ],
+      },
     },
   };
   assert.equal(
@@ -188,4 +282,40 @@ test("codigoDeSaida: 0 só para conectado, 1 para qualquer outro estado", () => 
   ]) {
     assert.equal(codigoDeSaida(estado), 1, estado);
   }
+});
+
+test("Fix round 2 — a forma real de auth.oauth (profiles, não lista) é conectado, não login_expirado", () => {
+  const r = estadoDaVerificacao(statusReal, { gatewayDePe: true });
+  assert.equal(r.estado, "conectado");
+  assert.notEqual(r.estado, "login_expirado");
+});
+
+test("Fix round 2 — a rota usável de auth.runtimeAuthRoutes aparece como runtime", () => {
+  const r = estadoDaVerificacao(statusReal, { gatewayDePe: true });
+  assert.equal(r.runtime, "codex");
+});
+
+test("Fix round 2 — sem auth.runtimeAuthRoutes ainda conecta, só sem nome de runtime", () => {
+  const semRotas = { ...statusReal.auth, runtimeAuthRoutes: undefined };
+  const r = estadoDaVerificacao({ auth: semRotas }, { gatewayDePe: true });
+  assert.equal(r.estado, "conectado");
+  assert.equal(r.runtime, null);
+});
+
+test("Fix round 2 — o e-mail de profileId, label e providers[].profiles.labels não aparece em lugar nenhum da saída", () => {
+  const resultado = estadoDaVerificacao(statusReal, { gatewayDePe: true });
+
+  // A função de decisão em si nunca copia profileId/label para o resultado.
+  assert.ok(!JSON.stringify(resultado).includes(EMAIL_FALSO));
+
+  // E a saída final, do jeito que principal() manda para a tela do Pablo
+  // (resultado + modelo + versão + registro, depois da máscara), também não.
+  const saida = saidaFinal(resultado, {
+    modelo: statusReal.defaultModel,
+    versao: "2026.9.4 (3a9d69d)",
+    registro: { enviado: false, motivo: "registro desligado" },
+  });
+  const impresso = mascararEmail(JSON.stringify(saida, null, 2));
+  assert.ok(!impresso.includes(EMAIL_FALSO));
+  assert.ok(!impresso.includes("@"));
 });

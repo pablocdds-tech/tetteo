@@ -14,8 +14,10 @@ import { enviarRegistro } from "./registro.mjs";
  * o modelo.
  *
  * Tudo que sai por stdout passa pela máscara de e-mail antes de imprimir: se
- * o CLI um dia devolver o perfil OAuth com o e-mail do dono num campo de
- * texto, ele não aparece aqui mesmo assim.
+ * o CLI devolver o perfil OAuth com o e-mail do dono num campo de texto
+ * (como de fato devolve, em `auth.oauth.profiles[].label`/`.profileId` e em
+ * `auth.providers[].profiles.labels[]` — Fix round 2), ele não aparece aqui
+ * mesmo assim.
  */
 
 const CLI = "/app/dist/index.js";
@@ -67,8 +69,8 @@ function motivoDoErro(erro) {
  * não deu para rodar o comando ou entender a saída, o motivo em português.
  *
  * NUNCA lança: uma falha aqui é dado para o estado "desligado" (Fix round
- * 1 — antes, isso virava `status = null` e `estadoDaVerificacao` lia
- * `auth.oauth` vazio, confundindo "não consegui perguntar" com "perguntei e
+ * 1 — antes, isso virava `status = null` e `estadoDaVerificacao` lia o
+ * login como vazio, confundindo "não consegui perguntar" com "perguntei e
  * não tem login". São coisas diferentes: a segunda manda o Pablo refazer o
  * login; a primeira manda olhar o container, e refazer o login não ajudaria
  * em nada.
@@ -97,6 +99,40 @@ export async function obterStatus(executarFn = executarModelsStatus) {
         "container para ver o que ele mostra.",
     };
   }
+}
+
+// Status conhecidos de um perfil OAuth que NÃO servem para logar, além de
+// vencido por tempo (checado à parte, por remainingMs/expiresAt).
+const STATUS_OAUTH_RUIM = new Set(["expired", "revoked", "invalid"]);
+
+/**
+ * Um perfil está vencido se o próprio status disser isso, ou se o tempo
+ * disser (Fix round 2 — a forma real de `models status --json` não marca
+ * `expired: true`; ela manda `status: "ok"` mais `remainingMs`/`expiresAt`).
+ * `remainingMs` é uma duração, então não depende do relógio da máquina que
+ * roda o teste; só cai para `expiresAt` (um instante absoluto) quando
+ * `remainingMs` não vem.
+ */
+function perfilOAuthVencido(perfil) {
+  const status = String(perfil?.status ?? "").toLowerCase();
+  if (STATUS_OAUTH_RUIM.has(status)) return true;
+  if (typeof perfil?.remainingMs === "number") return perfil.remainingMs <= 0;
+  if (typeof perfil?.expiresAt === "number")
+    return perfil.expiresAt <= Date.now();
+  return false;
+}
+
+/**
+ * A rota da assinatura para a OpenAI, quando o próprio OpenClaw confirma que
+ * ela funciona (Fix round 2). Não é obrigatória: um CLI mais antigo pode não
+ * mandar `auth.runtimeAuthRoutes` nenhuma, e isso sozinho não é motivo para
+ * dizer que a conexão está ruim — só significa que não há o nome do runtime
+ * para mostrar.
+ */
+function rotaOpenaiUsavel(auth) {
+  return lista(auth.runtimeAuthRoutes).find(
+    (r) => ehOpenai(r) && String(r?.status ?? "").toLowerCase() === "usable",
+  );
 }
 
 export function estadoDaVerificacao(
@@ -132,13 +168,15 @@ export function estadoDaVerificacao(
       return { estado: "login_expirado" };
   }
 
-  const oauth = lista(auth.oauth).filter(ehOpenai);
-  if (oauth.length === 0)
+  // Fix round 2: `auth.oauth` é um objeto (`{ warnAfterMs, profiles }`), não
+  // uma lista — os perfis moram em `auth.oauth.profiles`.
+  const perfisOAuth = lista(auth.oauth?.profiles).filter(ehOpenai);
+  if (perfisOAuth.length === 0)
     return {
       estado: "login_expirado",
       detalhe: "Nenhum login da OpenAI encontrado.",
     };
-  if (oauth.every((p) => p.expired === true || p.status === "expired"))
+  if (perfisOAuth.every(perfilOAuthVencido))
     return { estado: "login_expirado" };
 
   const rota = lista(auth.modelRouteIssues)[0];
@@ -150,13 +188,25 @@ export function estadoDaVerificacao(
       ),
     };
   }
-  return { estado: "conectado" };
+
+  const rotaUsavel = rotaOpenaiUsavel(auth);
+  return {
+    estado: "conectado",
+    runtime: rotaUsavel?.runtime != null ? String(rotaUsavel.runtime) : null,
+  };
 }
 
 /** 0 só quando está tudo bem; qualquer outro estado é falha para quem só
  * olha o código de saída (`$?`) — o corpo JSON continua sendo o contrato. */
 export function codigoDeSaida(estado) {
   return estado === "conectado" ? 0 : 1;
+}
+
+/** Monta o objeto final, exatamente como vai para a tela do Pablo — antes
+ * da máscara de e-mail, que é aplicada em cima da string inteira por quem
+ * chama (`principal`, e o teste que prova que o e-mail não sobrevive). */
+export function saidaFinal(resultado, { modelo, versao, registro }) {
+  return { ...resultado, modelo, versao, registro };
 }
 
 async function principal() {
@@ -211,7 +261,11 @@ async function principal() {
   // os campos que hoje parecem arriscados.
   console.log(
     mascararEmail(
-      JSON.stringify({ ...resultado, modelo, versao, registro }, null, 2),
+      JSON.stringify(
+        saidaFinal(resultado, { modelo, versao, registro }),
+        null,
+        2,
+      ),
     ),
   );
 }
