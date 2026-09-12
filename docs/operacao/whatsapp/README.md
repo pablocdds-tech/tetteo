@@ -189,6 +189,14 @@ banco da Evolution — fora deste trabalho.
   sh $(find /etc/dokploy -name backup-evolution.sh)
   ```
 
+  **Instalado em 11/09/2026.** O script achou o banco `evolution_postgres`, o
+  `evolution_redis` e o volume `severinawpp-7u0cjk_evolution_instances`. O
+  volume veio vazio, com 133 bytes: nesta instalação a sessão mora no banco e
+  no Redis, que são justamente os dois que saem cheios. O agendamento fica em
+  `/etc/cron.d/evolution-backup`, às 03:40 no fuso do servidor, que é UTC.
+  Para atualizar o script depois de uma mudança aqui no repositório, rode o
+  mesmo comando de novo: ele sobrescreve a cópia do `/root`.
+
   O script descobre sozinho os nomes dos contêineres, recusa um dump vazio,
   guarda 14 dias e se agenda para as 03:40. Rodar de novo não duplica o
   agendamento.
