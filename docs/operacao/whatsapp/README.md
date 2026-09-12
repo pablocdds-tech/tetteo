@@ -186,7 +186,7 @@ banco da Evolution — fora deste trabalho.
   lá:
 
   ```
-  find /etc/dokploy -name backup-evolution.sh -exec sh {} \;
+  sh $(find /etc/dokploy -name backup-evolution.sh)
   ```
 
   O script descobre sozinho os nomes dos contêineres, recusa um dump vazio,

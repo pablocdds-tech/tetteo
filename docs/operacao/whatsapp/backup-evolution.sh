@@ -12,7 +12,7 @@
 # COMO INSTALAR — uma vez, na VPS, como root. O repositório é privado, mas o
 # Dokploy já baixou o código na máquina. No terminal da VPS, digite:
 #
-#   find /etc/dokploy -name backup-evolution.sh -exec sh {} ;
+#   sh $(find /etc/dokploy -name backup-evolution.sh)
 #
 # O script se copia para /root/backup-evolution.sh, roda de lá, descobre
 # sozinho os nomes dos contêineres, faz o primeiro backup e se agenda para as
@@ -23,8 +23,9 @@
 #   SEM_COPIA=1 sh <caminho>                         rodar sem copiar
 #   EVOLUTION_DB_CONTAINER=nome /root/backup-evolution.sh   nomes na mão
 #
-# Se o find não achar nada, procure no disco inteiro:
-#   find / -name backup-evolution.sh -not -path "*/node_modules/*" 2>/dev/null
+# Se aparecer "can't open", há mais de uma cópia no disco. Rode só o find
+# para ver os caminhos e chame o que estiver dentro de /etc/dokploy:
+#   find /etc/dokploy -name backup-evolution.sh
 # =============================================================================
 set -eu
 
