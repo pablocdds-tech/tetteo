@@ -10,28 +10,21 @@
 # Fica numa pasta do root, com permissão 600, fora de qualquer repositório.
 #
 # COMO INSTALAR — uma vez, na VPS, como root. O repositório é privado, mas o
-# Dokploy já baixou o código na máquina, então o script sai de lá:
+# Dokploy já baixou o código na máquina. No terminal da VPS, digite:
 #
 #   find /etc/dokploy -name backup-evolution.sh -exec sh {} ;
 #
-# Ele se copia para /root/backup-evolution.sh e roda de lá.
+# O script se copia para /root/backup-evolution.sh, roda de lá, descobre
+# sozinho os nomes dos contêineres, faz o primeiro backup e se agenda para as
+# 03:40 de todo dia. Rodar de novo não duplica o agendamento.
 #
-# Quem agenda pelo Dokploy (Schedules do servidor) roda com SEM_CRON=1, para
-# não ficar com dois agendamentos fazendo o mesmo backup:
+# Variantes:
+#   SEM_CRON=1 sh /root/backup-evolution.sh          quem agenda é outro
+#   SEM_COPIA=1 sh <caminho>                         rodar sem copiar
+#   EVOLUTION_DB_CONTAINER=nome /root/backup-evolution.sh   nomes na mão
 #
-#   SEM_CRON=1 sh /root/backup-evolution.sh
-#
-# Se esse caminho não existir, procure o arquivo primeiro:
-#
-#   F=$(find /etc/dokploy -path "*docs/operacao/whatsapp/backup-evolution.sh" -print -quit) \n#
-# Ele descobre sozinho os nomes dos contêineres, faz o primeiro backup e se
-# agenda para as 03:40 de todo dia. Rodar de novo não duplica o agendamento.
-#
-# Se o find não achar nada, o código está em outro lugar: rode
+# Se o find não achar nada, procure no disco inteiro:
 #   find / -name backup-evolution.sh -not -path "*/node_modules/*" 2>/dev/null
-#
-# Se a descoberta dos contêineres errar, rode com os nomes na mão:
-#   EVOLUTION_DB_CONTAINER=nome /root/backup-evolution.sh
 # =============================================================================
 set -eu
 
