@@ -1,0 +1,13 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/login",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "AUTH_SECRET",
+      "description": "Signing secret for NextAuth JWT session tokens. Generate with: openssl rand -base64 32. A development placeholder is auto-generated; replace with a real value for production.",
+      "requiredAtBoot": true,
+      "generatedForDevelopment": true
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+# =============================================================================
+# TETTEO — ambiente de desenvolvimento no Base44
+#
+# Roda o app A PARTIR DO CÓDIGO-FONTE (bind-mount), nunca de imagem pronta.
+# Next.js dev server com live-reload: cada edição aparece no preview sem rebuild.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Banco de dados
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: on-failure
+    environment:
+      POSTGRES_USER: tetteo
+      POSTGRES_PASSWORD: tetteo
+      POSTGRES_DB: tetteo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tetteo -d tetteo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Setup: instala deps, gera cliente Prisma, aplica migrações e roda o seed.
+  # Serviço one-shot — sai quando termina.
+  # ---------------------------------------------------------------------------
+  setup:
+    image: node:24-alpine
+    working_dir: /app
+    restart: "no"
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://tetteo:tetteo@db:5432/tetteo
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    command: sh -c "npm install && npx prisma generate && npx prisma migrate deploy && npx tsx prisma/seed.ts"
+
+  # ---------------------------------------------------------------------------
+  # App: Next.js dev server com live-reload
+  # ---------------------------------------------------------------------------
+  web:
+    image: node:24-alpine
+    working_dir: /app
+    restart: on-failure
+    volumes:
+      - ./:/app
+      - node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    environment:
+      - DATABASE_URL=postgresql://tetteo:tetteo@db:5432/tetteo
+      - AUTH_TRUST_HOST=true
+      - APP_URL=http://localhost:3000
+      - BASE44_PUBLIC_HOST_SUFFIX=${BASE44_PUBLIC_HOST_SUFFIX}
+      - __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS=${BASE44_PUBLIC_HOST_SUFFIX}
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    command: sh -c "npx next dev -H 0.0.0.0 -p 3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/login || exit 1"]
+      interval: 15s
+      timeout: 15s
+      retries: 10
+      start_period: 90s
+
+volumes:
+  postgres_data:
+  node_modules:
