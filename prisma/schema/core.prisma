@@ -106,6 +106,8 @@ model Usuario {
   telefone  String?
   avatarUrl String?
   senhaHash String?
+  googleSubject String? @unique
+  versaoSessao Int @default(0)
 
   status         StatusUsuario @default(CONVIDADO)
   ultimoAcessoEm DateTime?
@@ -125,8 +127,33 @@ model Usuario {
   eventos          Evento[]
   auditorias       Auditoria[]
   notificacoes     Notificacao[]
+  recuperacoesSenha RecuperacaoSenha[]
 
   @@map("usuario")
+}
+
+/// O link é descartável. Apenas o hash do segredo fica no banco.
+model RecuperacaoSenha {
+  id        String    @id @default(cuid())
+  usuarioId String
+  usuario   Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  criadoEm  DateTime  @default(now())
+  expiraEm  DateTime
+  usadoEm   DateTime?
+
+  @@index([usuarioId, expiraEm])
+  @@map("recuperacao_senha")
+}
+
+/// Contador compartilhado entre réplicas; a chave não contém e-mail nem IP.
+model LimiteAutenticacao {
+  chave      String   @id
+  tentativas Int      @default(1)
+  expiraEm   DateTime
+
+  @@index([expiraEm])
+  @@map("limite_autenticacao")
 }
 
 /// O cargo dentro do sistema: Diretor, Gerente, Caixa, Cozinha, Financeiro.
