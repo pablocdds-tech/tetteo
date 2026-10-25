@@ -6,7 +6,7 @@ import { obterContexto, pode } from "@/core/sessao/contexto";
 import { CabecalhoDePagina } from "@/design-system/cabecalho-de-pagina";
 import { PainelVendas } from "@/modules/analytics/components/painel-vendas";
 import { periodoVendas } from "@/modules/analytics/schemas/vendas";
-import { solicitarAtualizacao } from "./acoes";
+import { salvarReferencia, solicitarAtualizacao } from "./acoes";
 import { diaDeslocado, horarioBrasilia } from "@/connectors/saipos/tempo";
 
 export default async function Vendas({
@@ -88,7 +88,7 @@ export default async function Vendas({
           </p>
         </form>
       )}
-      <PainelVendas de={de} ate={ate} />
+      <PainelVendas de={de} ate={ate} salvarReferencia={salvarReferencia} />
     </div>
   );
 }

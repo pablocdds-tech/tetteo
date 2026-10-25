@@ -43,3 +43,20 @@ test("datas fora do calendário não mudam silenciosamente de turno", () => {
     "2026-10-17",
   );
 });
+
+test("origem usa o parceiro do pedido, nunca a marca ou o parceiro de entrega", () => {
+  const r = normalizarVenda(
+    { ...venda, id_sale_type: 1, partner_sale: { desc_partner_sale: "iFood" } },
+    20437,
+  );
+  assert.equal(r.origem, "iFood");
+  assert.equal(r.modalidade, 1);
+  assert.equal(r.canalImportado, true);
+  const direto = normalizarVenda(
+    { ...venda, id_sale_type: 3, partner_sale: null },
+    20437,
+  );
+  assert.equal(direto.origem, null);
+  assert.equal(direto.canalImportado, true);
+  assert.equal(normalizarVenda(venda, 20437).canalImportado, false);
+});

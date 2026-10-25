@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SaiposClient, type SaiposSale } from "./client";
+import { SaiposClient, SaiposError, type SaiposSale } from "./client";
 
 test("upsert conserva chave e cancelamento; falha não confirma cursor; segundo worker é recusado", async () => {
   process.env.DATABASE_URL ??=
@@ -16,6 +16,8 @@ test("upsert conserva chave e cancelamento; falha não confirma cursor; segundo 
     concessaoDono: string | null;
     concessaoAte: Date | null;
     ultimoErro?: string | null;
+    canaisAte?: string | null;
+    ultimoErroCanais?: string | null;
   };
   type Venda = {
     id: string;
@@ -24,6 +26,9 @@ test("upsert conserva chave e cancelamento; falha não confirma cursor; segundo 
     cancelada: boolean;
     dataTurno: string;
     alteradaNoSaiposEm: Date;
+    origem?: string | null;
+    modalidade?: number | null;
+    canalImportado?: boolean;
   };
   let estado: Estado = {
     id: "vinculo",
@@ -39,10 +44,16 @@ test("upsert conserva chave e cancelamento; falha não confirma cursor; segundo 
   let falhar = false,
     cancelada: "Y" | "N" = "N",
     auditorias = 0;
+  let detalhado = false,
+    falharHistorico = false,
+    valor = 64.44;
   const venda = (): SaiposSale => ({
     id_store: 20437,
     id_sale: 10,
-    total_amount: 64.44,
+    total_amount: valor,
+    ...(detalhado
+      ? { id_sale_type: 1, partner_sale: { desc_partner_sale: "iFood" } }
+      : {}),
     canceled: cancelada,
     shift_date: "2026-10-17",
     created_at: "2026-10-17T23:00:00",
@@ -50,7 +61,11 @@ test("upsert conserva chave e cancelamento; falha não confirma cursor; segundo 
       cancelada === "Y" ? "2026-10-20T01:00:00" : "2026-10-18T01:00:00",
   });
   const cliente = {
-    sales: async () => [venda()],
+    sales: async (periodo: { start: string }) => {
+      if (falharHistorico && periodo.start < "2026-10-01")
+        throw new SaiposError("temporary", "Falha histórica controlada.");
+      return [venda()];
+    },
     incremental: async () => ({ sales: [venda()] }),
   } as unknown as SaiposClient;
   const repositorio = {
@@ -153,6 +168,23 @@ test("upsert conserva chave e cancelamento; falha não confirma cursor; segundo 
   await sincronizarVendas("vinculo", cliente, false, undefined, repositorio);
   assert.equal(linhas.size, 1);
   assert.ok(auditorias >= 2);
+  estado.cursor = "2026-10-23T00:00:00";
+  detalhado = true;
+  valor = 70;
+  await sincronizarVendas("vinculo", cliente, false, undefined, repositorio);
+  assert.equal(linhas.size, 1);
+  assert.equal([...linhas.values()][0].origem, "iFood");
+  assert.equal([...linhas.values()][0].totalCentavos, 6444);
+  estado.cursor = "2026-10-23T00:00:00";
+  estado.canaisAte = "2026-09-24";
+  estado.coberturaDesde = "2026-09-25";
+  falharHistorico = true;
+  await sincronizarVendas("vinculo", cliente, false, undefined, repositorio);
+  assert.equal(estado.canaisAte, "2026-09-24");
+  assert.match(estado.ultimoErroCanais ?? "", /Falha histórica/);
+  assert.ok(estado.cursor > "2026-10-23T00:00:00");
+  falharHistorico = false;
+  valor = 64.44;
   estado.cursor = "2026-10-23T00:00:00";
   cancelada = "Y";
   await sincronizarVendas("vinculo", cliente, false, undefined, repositorio);

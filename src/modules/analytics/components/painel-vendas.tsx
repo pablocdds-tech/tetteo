@@ -1,3 +1,5 @@
+import { ConferenciaCanais } from "./conferencia-canais";
+import type { SalvarReferencia } from "./referencia-form";
 import Link from "next/link";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { Cartao } from "@/design-system/cartao";
@@ -15,10 +17,12 @@ export async function PainelVendas({
   de,
   ate,
   compacto = false,
+  salvarReferencia,
 }: {
   de: string;
   ate: string;
   compacto?: boolean;
+  salvarReferencia?: SalvarReferencia;
 }) {
   const contexto = await obterContexto();
   if (!contexto || !pode(contexto, "analytics.ver")) return null;
@@ -43,6 +47,16 @@ export async function PainelVendas({
     return (
       <>
         <BentoVendas dados={dados} pulso={pulso} de={de} ate={ate} />
+        <ConferenciaCanais
+          key={`${contexto.unidadeAtiva?.id}:${de}:${ate}`}
+          dados={dados}
+          de={de}
+          ate={ate}
+          diretor={contexto.ehDiretor && !!contexto.unidadeAtiva}
+          salvarReferencia={
+            contexto.unidadeAtiva ? salvarReferencia : undefined
+          }
+        />
         <DetalheDiario dados={dados} de={de} ate={ate} />
       </>
     );

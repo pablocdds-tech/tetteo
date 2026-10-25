@@ -28,6 +28,10 @@ export function normalizarVenda(venda: SaiposSale, loja: number) {
     vendaExternaId: String(venda.id_sale),
     dataTurno: venda.shift_date,
     totalCentavos,
+    modalidade: venda.id_sale_type ?? null,
+    origem: venda.partner_sale?.desc_partner_sale?.trim() || null,
+    canalImportado:
+      venda.id_sale_type !== undefined && venda.partner_sale !== undefined,
     cancelada: venda.canceled === "Y",
     criadaNoSaiposEm,
     alteradaNoSaiposEm,

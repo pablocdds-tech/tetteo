@@ -18,7 +18,9 @@ export function AtualizacaoAutomatica() {
         navigator.onLine &&
         document.visibilityState === "visible" &&
         !pendente &&
-        !document.querySelector("input:focus, select:focus, textarea:focus")
+        !document.querySelector(
+          "input:focus, select:focus, textarea:focus, [data-edicao-pendente='true']",
+        )
       )
         iniciar(() => router.refresh());
     }, 60000);
