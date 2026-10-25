@@ -128,6 +128,29 @@ export function FormularioLogin({
           seu cadastro ao administrador.
         </p>
       )}
+      <nav
+        aria-label="Informações do acesso"
+        className="mt-6 flex flex-wrap gap-x-5 gap-y-2"
+      >
+        <Link
+          href="/sobre"
+          className={`${classeLinkAutenticacao} inline-flex min-h-11 items-center`}
+        >
+          Sobre o Tetteo
+        </Link>
+        <Link
+          href="/privacidade"
+          className={`${classeLinkAutenticacao} inline-flex min-h-11 items-center`}
+        >
+          Privacidade
+        </Link>
+        <Link
+          href="/termos"
+          className={`${classeLinkAutenticacao} inline-flex min-h-11 items-center`}
+        >
+          Termos de uso
+        </Link>
+      </nav>
     </main>
   );
 }
