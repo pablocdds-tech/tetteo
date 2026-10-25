@@ -75,11 +75,13 @@ model Unidade {
   eventos      Evento[]
   notificacoes Notificacao[]
   sessoes      Sessao[]
+  saiposVinculos SaiposVinculo[]
 
   // `auditoria` guarda a unidade como texto solto, de propósito: o registro é
   // só-escrita e precisa sobreviver mesmo que a unidade mude ou seja excluída.
 
   @@unique([organizacaoId, codigo])
+  @@unique([organizacaoId, id])
   @@index([organizacaoId])
   @@map("unidade")
 }
