@@ -573,3 +573,16 @@ detalhe. O link antigo `?faltando=1` continua abrindo a Despensa em "Repor".
 **5. Lista longa.** Segue o padrão das outras telas: tudo filtrado na memória,
 com o total à vista ("12 de 12 insumos"). Para catálogos de milhares de itens,
 paginar.
+
+## Analytics: composição Bento (25/10/2026)
+
+O Pulso de vendas usa o grid modular Bento da Kairu adaptado à identidade Tetteo.
+Preserva Aurora: paper #f2f3f5, surface #fdfdfe, ink #202124, ink-3 #646870,
+accent #0066cc e accent-sub #e3eefc; variantes escuras vêm dos tokens existentes.
+Sem novas fontes, cores literais nos componentes ou dependências gráficas.
+A tipografia do produto é mantida, números tabulares, faturamento em 48px no
+desktop e 36px no celular. Grid 8/4 no desktop; uma coluna principal no celular;
+comparação, quantidade e ticket têm funções distintas. Raio 24px desktop / 16px
+mobile e espaçamento 16/24px. O gráfico tem barras pareadas e alternativa em tabela.
+Comparação indisponível não vira zero. Hoje e atraso D+1 ficam explícitos; horário
+da importação e última venda recebida não se confundem. Sem metas inventadas.

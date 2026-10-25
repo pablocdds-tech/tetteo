@@ -153,3 +153,17 @@ escrita manual, job, segredo e deploy foram revisadas. Cada fronteira aparece
 em uma ameaça; runtime foi separado de build/teste. Controles novos passaram por
 testes unitários e verificação SQL isolada; não se afirma deploy ou restauração
 na produção. Riscos operacionais abertos permanecem explícitos.
+
+## Revisão incremental: dashboard Bento
+
+Em 25/10/2026 a alteração manteve analytics.ver, escopo de organização/unidade,
+GET autenticado ao host fixo e Server Action exclusiva do diretor. A atualização
+do navegador apenas renova Server Components autorizados; não enfileira consultas
+à origem. Nenhum acesso ou segredo novo é exposto. O worker usa reserva temporal
+atômica de 15 minutos e cooldown de 30 minutos após falha, além do lease existente.
+Risco residual TM-006 continua restrito a consumidores externos no mesmo IP.
+Antes da ativação anterior, backup Tetteo foi restaurado com sucesso em banco
+isolado e removido após verificação; cópias local/VPS tiveram hashes conferidos.
+O token foi configurado por SSH criptografado. O painel Dokploy permanece HTTP;
+não usá-lo para transmitir segredos. TM-001/005 tiveram as mitigações de ativação
+executadas, mantendo a melhoria de HTTPS administrativo pendente.

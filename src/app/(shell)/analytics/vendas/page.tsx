@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { Botao, estiloDeBotao } from "@/design-system/botao";
+import { AtualizacaoAutomatica } from "@/modules/analytics/components/atualizacao-automatica";
 import { notFound, redirect } from "next/navigation";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { CabecalhoDePagina } from "@/design-system/cabecalho-de-pagina";
@@ -16,8 +19,8 @@ export default async function Vendas({
   if (!pode(contexto, "analytics.ver")) notFound();
   const filtro = await searchParams,
     hoje = horarioBrasilia().slice(0, 10);
-  const de = filtro.de ?? diaDeslocado(hoje, -7),
-    ate = filtro.ate ?? diaDeslocado(hoje, -1);
+  const de = filtro.de ?? hoje,
+    ate = filtro.ate ?? hoje;
   try {
     periodoVendas(de, ate);
   } catch {
@@ -30,10 +33,28 @@ export default async function Vendas({
   return (
     <div className="mx-auto flex w-full max-w-[var(--width-data)] flex-col gap-4">
       <CabecalhoDePagina
-        titulo="Vendas"
+        titulo="Pulso de vendas"
         contexto={contexto.unidadeAtiva?.nome ?? "Unidades autorizadas"}
       />
-      <form className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap gap-2">
+        <Link className={estiloDeBotao("secundario")} href="/analytics/vendas">
+          Hoje
+        </Link>
+        <Link
+          className={estiloDeBotao("secundario")}
+          href={`/analytics/vendas?de=${diaDeslocado(hoje, -1)}&ate=${diaDeslocado(hoje, -1)}`}
+        >
+          Ontem
+        </Link>
+        <Link
+          className={estiloDeBotao("secundario")}
+          href={`/analytics/vendas?de=${diaDeslocado(hoje, -7)}&ate=${diaDeslocado(hoje, -1)}`}
+        >
+          Últimos 7 dias completos
+        </Link>
+      </div>
+      <AtualizacaoAutomatica />
+      <form className="bg-surface border-line flex flex-wrap items-end gap-3 rounded-2xl border p-4">
         <label className="text-sm">
           De
           <input
@@ -41,7 +62,7 @@ export default async function Vendas({
             name="de"
             defaultValue={de}
             required
-            className="border-line bg-surface mt-1 block rounded-md border px-3 py-2"
+            className="border-line-2 bg-surface mt-1 block rounded-md border px-3 py-2"
           />
         </label>
         <label className="text-sm">
@@ -51,15 +72,10 @@ export default async function Vendas({
             name="ate"
             defaultValue={ate}
             required
-            className="border-line bg-surface mt-1 block rounded-md border px-3 py-2"
+            className="border-line-2 bg-surface mt-1 block rounded-md border px-3 py-2"
           />
         </label>
-        <button
-          type="submit"
-          className="bg-brand rounded-md px-4 py-2 text-sm font-semibold text-white"
-        >
-          Consultar período
-        </button>
+        <Botao type="submit">Consultar período</Botao>
       </form>
       {contexto.ehDiretor && contexto.unidadeAtiva && (
         <form action={solicitarAtualizacao}>
@@ -67,8 +83,8 @@ export default async function Vendas({
             Solicitar atualização do Saipos
           </button>
           <p className="text-ink-3 mt-1 text-xs">
-            O processamento começa em até um minuto. Recarregue esta página
-            depois de alguns minutos para conferir o resultado.
+            A importação começa em até um minuto. O painel acompanha o resultado
+            automaticamente.
           </p>
         </form>
       )}

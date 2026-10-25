@@ -18,16 +18,19 @@ export function diaDeslocado(data: string, dias: number) {
     .toISOString()
     .slice(0, 10);
 }
-export function deveRodar(
+/** Periodicidade de importação independente da atualização visual. */
+export function deveAtualizarPainel(
   agora: Date,
   tentativa: Date | null,
-  primeiraCarga: boolean,
+  erro: string | null,
 ) {
-  const local = horarioBrasilia(agora);
   if (
-    tentativa &&
-    horarioBrasilia(tentativa).slice(0, 10) >= local.slice(0, 10)
+    erro &&
+    /Token inválido|sem permissão|Formato .*mudou|não é JSON|recusou os parâmetros|primeira carga não retornou/i.test(
+      erro,
+    )
   )
     return false;
-  return (primeiraCarga && !tentativa) || local.slice(11) >= "05:15:00";
+  if (!tentativa) return true;
+  return agora.getTime() - tentativa.getTime() >= (erro ? 30 : 15) * 60000;
 }

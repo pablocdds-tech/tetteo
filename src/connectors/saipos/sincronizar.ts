@@ -2,7 +2,12 @@ import { normalizarVenda } from "./normalizar";
 import { randomUUID } from "node:crypto";
 import { db } from "@/server/db";
 import { SaiposClient, SaiposError, type SaiposSale } from "./client";
-import { deveRodar, diaDeslocado, FUSO, horarioBrasilia } from "./tempo";
+import {
+  deveAtualizarPainel,
+  diaDeslocado,
+  FUSO,
+  horarioBrasilia,
+} from "./tempo";
 
 /** Configuração administrativa: IDs vêm do ambiente privado, nunca de URL. */
 export async function configurarVinculo() {
@@ -53,14 +58,14 @@ export async function configurarVinculo() {
 export async function sincronizarVendas(
   id: string,
   cliente?: SaiposClient,
-  diario = false,
+  automatico = false,
   solicitacao?: Date,
   repositorio = db,
 ) {
   const agora = new Date(),
     dono = randomUUID(),
     ate = horarioBrasilia(agora);
-  const inicioDia = new Date(ate.slice(0, 10) + "T00:00:00-03:00");
+  const limiteAutomatico = new Date(agora.getTime() - 15 * 60000);
   const reserva = await repositorio.saiposVinculo.updateMany({
     where: {
       id,
@@ -84,12 +89,12 @@ export async function sincronizarVendas(
             ]
           : []),
         { OR: [{ concessaoAte: null }, { concessaoAte: { lt: agora } }] },
-        ...(diario
+        ...(automatico
           ? [
               {
                 OR: [
                   { ultimaTentativaEm: null },
-                  { ultimaTentativaEm: { lt: inicioDia } },
+                  { ultimaTentativaEm: { lte: limiteAutomatico } },
                 ],
               },
             ]
@@ -275,7 +280,11 @@ export function iniciarRelogioSaipos() {
       if (
         vinculo.habilitado &&
         (manual ||
-          deveRodar(new Date(), vinculo.ultimaTentativaEm, !vinculo.cursor))
+          deveAtualizarPainel(
+            new Date(),
+            vinculo.ultimaTentativaEm,
+            vinculo.ultimoErro,
+          ))
       ) {
         await sincronizarVendas(
           vinculo.id,
