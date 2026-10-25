@@ -2,7 +2,7 @@ import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
 import { escopoVendas, periodoVendas } from "../schemas/vendas";
-import { deslocarDia, resumirHoras } from "../schemas/pulso";
+import { deslocarDia, periodoProvisorio, resumirHoras } from "../schemas/pulso";
 
 export async function consultarPulso(
   contexto: ContextoSessao,
@@ -59,5 +59,6 @@ export async function consultarPulso(
     horasAnteriores: resumirHoras(horasAnteriores),
     ultimaVendaEm: ultimaVenda._max.criadaNoSaiposEm,
     hoje: ate === hoje,
+    provisorio: periodoProvisorio(ate, hoje),
   };
 }

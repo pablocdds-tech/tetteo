@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { deslocarDia, resumirHoras, variacao } from "./pulso";
+import {
+  deslocarDia,
+  periodoProvisorio,
+  resumirHoras,
+  variacao,
+} from "./pulso";
 test("horas usam Brasília, excluem canceladas e somam centavos", () => {
   const horas = resumirHoras([
     {
@@ -33,4 +38,11 @@ test("comparação usa sete dias, atravessa mês e não inventa percentual com b
   assert.equal(variacao(150, 100), 50);
   assert.equal(variacao(0, 100), -100);
   assert.equal(variacao(100, 0), null);
+});
+
+test("hoje e ontem são provisórios, inclusive na virada do mês", () => {
+  assert.equal(periodoProvisorio("2026-10-25", "2026-10-25"), true);
+  assert.equal(periodoProvisorio("2026-10-24", "2026-10-25"), true);
+  assert.equal(periodoProvisorio("2026-10-23", "2026-10-25"), false);
+  assert.equal(periodoProvisorio("2026-10-31", "2026-11-01"), true);
 });
