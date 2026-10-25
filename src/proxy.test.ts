@@ -40,7 +40,14 @@ describe("a exceção do assistente privado no proxy", () => {
     assert.equal(exigeLogin("/api/arquivos/1"), true);
   });
   test("recuperação é pública, mas conta e caminhos vizinhos exigem sessão", () => {
-    for (const caminho of ["/login", "/recuperar-senha", "/redefinir-senha"]) {
+    for (const caminho of [
+      "/login",
+      "/recuperar-senha",
+      "/redefinir-senha",
+      "/sobre",
+      "/privacidade",
+      "/termos",
+    ]) {
       assert.equal(exigeLogin(caminho), false);
     }
     for (const caminho of [
@@ -48,6 +55,9 @@ describe("a exceção do assistente privado no proxy", () => {
       "/login-interno",
       "/recuperar-senha-admin",
       "/redefinir-senha-backup",
+      "/privacidade-admin",
+      "/sobre/dados",
+      "/termos/admin",
     ]) {
       assert.equal(exigeLogin(caminho), true);
     }
