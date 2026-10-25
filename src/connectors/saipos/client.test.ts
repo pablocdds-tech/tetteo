@@ -128,6 +128,32 @@ test("paginação percorre página cheia e encerra na última; 429 não repete",
   }
 });
 
+test("vendas aceitam null observado em página vazia e rejeitam objeto inesperado", async () => {
+  const old = process.env.SAIPOS_TOKEN;
+  process.env.SAIPOS_TOKEN = "test-only";
+  try {
+    const period = {
+      start: "2026-10-25T00:00:00",
+      end: "2026-10-25T00:06:39",
+      column: "shift_date" as const,
+    };
+    const empty = new SaiposClient(
+      (async () => new Response("null")) as typeof fetch,
+    );
+    assert.deepEqual(await empty.sales(period, 1), []);
+    const invalid = new SaiposClient(
+      (async () => new Response("{}")) as typeof fetch,
+    );
+    await assert.rejects(
+      () => invalid.sales(period, 1),
+      (e: unknown) => e instanceof SaiposError && e.kind === "format",
+    );
+  } finally {
+    if (old === undefined) delete process.env.SAIPOS_TOKEN;
+    else process.env.SAIPOS_TOKEN = old;
+  }
+});
+
 test("financeiro limita tentativas temporárias, deduplica e separa seu cursor", async () => {
   const old = process.env.SAIPOS_TOKEN;
   process.env.SAIPOS_TOKEN = "test-only";

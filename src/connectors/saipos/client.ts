@@ -193,7 +193,9 @@ export class SaiposClient {
             "Limite de páginas atingido; cursor não deve avançar.",
           );
         const raw = await this.request("search_sales", window, page * 300);
-        const parsed = z.array(saleSchema).safeParse(raw);
+        // Consulta real sem vendas em 25/10/2026 retornou HTTP 200 com null.
+        // Somente esse valor equivale à página vazia; objetos inválidos falham.
+        const parsed = z.array(saleSchema).safeParse(raw === null ? [] : raw);
         if (!parsed.success)
           throw new SaiposError(
             "format",
