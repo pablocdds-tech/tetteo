@@ -225,3 +225,67 @@ que o teto maior será aceito. HTTP 429 prevalece: interrompe a operação e blo
 novos envios por pelo menos CINCO minutos, independentemente da nova janela de
 um minuto, respeitando Retry-After maior. Os testes garantem essa independência.
 Continua a exigência de coordenação por IP antes de ativar outros consumidores.
+
+## Conciliação e canais — Matriz
+
+### Origem dos campos
+
+Dados reais de 24/10/2026 consultados em 25/10 confirmaram 136 registros, 133
+válidos, três cancelados e R$ 10.457,38, com última criação às 23:15:14.
+O canal é partner_sale.desc_partner_sale: iFood, Cardápio Web ou ausência.
+Não usar desc_store_partner: esse campo contém marca/loja do parceiro. Não usar
+partner_delivery: o parceiro logístico não é a origem do pedido. Modalidade vem
+de id_sale_type (1 entrega, 2 balcão, 3 salão, 4 ficha). Ausência vira Não informado.
+São armazenados apenas esses campos operacionais, sem dados de clientes, marcas,
+códigos de pedidos do parceiro ou informações de entregadores.
+
+Exemplo agregado real, sem dados pessoais:
+
+| Origem        | Válidas | Faturamento |
+| ------------- | ------: | ----------: |
+| iFood         |      56 | R$ 3.827,92 |
+| Cardápio Web  |      37 | R$ 2.982,06 |
+| Não informado |      40 | R$ 3.647,40 |
+
+As duas tabelas são visões distintas do mesmo conjunto: origem e modalidade.
+Cada uma deve somar ao faturamento importado, sem somar uma visão à outra.
+Canceladas são contadas separadamente e não compõem receita ou participação.
+
+### Histórico e checkpoints
+
+A migração preserva os registros antigos, inicialmente identificados como ainda
+sem detalhamento. A sincronização normal traz canal e modalidade dos registros
+recentes; o complemento histórico processa no máximo sete dias por rodada.
+SaiposVinculo.canaisAte é o checkpoint dessa operação, independente do cursor de
+updated_at das vendas. Uma falha histórica preserva canaisAte e informa
+ultimoErroCanais sem impedir a confirmação das vendas recentes já consultadas.
+O preenchimento de metadados pode atualizar registros de mesma versão sem
+sobrescrever seu valor financeiro; versões antigas continuam ignoradas. A
+transação salva vendas, auditoria e ambos os checkpoints de forma atômica.
+
+### Referências do relatório
+
+A referência é informada pelo diretor autorizado para a unidade ativa. Não é um
+valor extraído automaticamente do relatório Saipos. O usuário confirmou o uso dos
+R$ 10.457,38 de 24/10 como primeira referência. Esse valor deve ser registrado pela
+interface autenticada após a implantação; não é fixado no código nem em seed.
+
+O servidor valida analytics.ver, papel diretor, unidade ativa visível, vínculo
+ativo, período até hoje em Brasília e moeda em centavos. A FK composta recusa
+outra organização. Existe uma referência por organização, unidade e período.
+Correções incrementam versão com comparação otimista; conflitos pedem recarregar.
+Referência e auditoria são gravadas em transação serializável. Uma falha da
+auditoria cancela a alteração. Autor e momento aparecem na tela, sem e-mail.
+
+Estados calculados em cada leitura: Sem referência; Cobertura incompleta;
+Diferença a conferir; Bateu com a referência. O último exige igualdade EXATA em
+centavos e cobertura do período. Não certifica completude na origem nem trava o
+fechamento: venda ou cancelamento tardio pode reabrir a diferença. Valores,
+referência e checkpoint são lidos em snapshot RepeatableRead consistente.
+A visão de rede não compara um agregado com referência de uma unidade.
+
+A atualização da tela pausa enquanto o formulário tem edição pendente, mesmo
+fora do foco; erros preservam o valor. Somente o diretor vê o formulário, e o
+servidor repete a autorização. Nenhum dado é alterado no Saipos.
+
+Fluxo documentado em saipos-conferencia-canais.excalidraw.

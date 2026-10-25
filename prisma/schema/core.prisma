@@ -133,6 +133,7 @@ model Usuario {
   acessosConcedidos Acesso[]     @relation("AcessoAutor")
   eventos          Evento[]
   auditorias       Auditoria[]
+  referenciasSaipos SaiposReferenciaFechamento[]
   notificacoes     Notificacao[]
   recuperacoesSenha RecuperacaoSenha[]
 

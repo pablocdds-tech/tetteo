@@ -25,6 +25,10 @@ const saleSchema = z.object({
   id_store: z.number().int(),
   id_sale: z.number().int(),
   total_amount: z.number().finite(),
+  id_sale_type: z.number().int().nullish(),
+  partner_sale: z
+    .object({ desc_partner_sale: z.string().max(120).nullish() })
+    .nullish(),
   canceled: z.enum(["Y", "N"]),
   shift_date: z.string(),
   created_at: z.string(),

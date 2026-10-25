@@ -21,6 +21,7 @@ export function BentoVendas({
   de: string;
   ate: string;
 }) {
+  const referenciaConfere = dados.conferencia.estado === "bateu";
   const comparavel =
     !dados.incompleto &&
     dados.vinculos.every(
@@ -58,15 +59,17 @@ export function BentoVendas({
             </p>
           </div>
           <span className="bg-warn-sub text-warn rounded-full px-3 py-1 text-xs font-medium">
-            {pulso.provisorio
-              ? "Provisório · dados recentes"
-              : "Dados importados"}
+            {referenciaConfere
+              ? "Conferido com a referência"
+              : pulso.provisorio
+                ? "Provisório · dados recentes"
+                : "Dados importados"}
           </span>
         </div>
         <p className="text-ink-3 mt-3 text-sm">
           {dia(de)} a {dia(ate)} · canceladas excluídas
         </p>
-        {pulso.provisorio && (
+        {pulso.provisorio && !referenciaConfere && (
           <div
             role="note"
             className="bg-warn-sub text-warn mt-4 rounded-xl p-4 text-sm"
