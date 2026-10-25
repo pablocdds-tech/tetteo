@@ -19,6 +19,9 @@ model SaiposVinculo {
   criadoEm DateTime @default(now())
   atualizadoEm DateTime @updatedAt
   excluidoEm DateTime?
+  canaisAte String? @db.VarChar(10)
+  ultimoErroCanais String?
+  referencias SaiposReferenciaFechamento[]
   vendas SaiposVenda[]
   @@unique([organizacaoId, unidadeId])
   @@map("saipos_vinculo")
@@ -32,6 +35,9 @@ model SaiposVenda {
   vendaExternaId String
   dataTurno String @db.VarChar(10)
   totalCentavos Int
+  modalidade Int?
+  origem String? @db.VarChar(120)
+  canalImportado Boolean @default(false)
   cancelada Boolean
   criadaNoSaiposEm DateTime
   alteradaNoSaiposEm DateTime
@@ -41,4 +47,23 @@ model SaiposVenda {
   @@unique([organizacaoId, unidadeId, vendaExternaId])
   @@index([organizacaoId, unidadeId, dataTurno, cancelada])
   @@map("saipos_venda")
+}
+
+
+model SaiposReferenciaFechamento {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  vinculo SaiposVinculo @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, unidadeId], onDelete: Restrict, map: "saipos_referencia_vinculo_fkey")
+  de String @db.VarChar(10)
+  ate String @db.VarChar(10)
+  totalCentavos Int
+  versao Int @default(1)
+  informadaPorId String
+  informadaPor Usuario @relation(fields: [informadaPorId], references: [id], onDelete: Restrict, map: "saipos_referencia_autor_fkey")
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  excluidoEm DateTime?
+  @@unique([organizacaoId, unidadeId, de, ate])
+  @@map("saipos_referencia_fechamento")
 }

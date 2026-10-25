@@ -151,6 +151,34 @@ export async function sincronizarVendas(
         )),
       );
     }
+    let canaisAte = vinculo.canaisAte ?? null;
+    let ultimoErroCanais: string | null = null;
+    if (!vinculo.cursor) canaisAte = ate.slice(0, 10);
+    else if (!canaisAte || canaisAte < ate.slice(0, 10)) {
+      const inicioCanal = canaisAte ? diaDeslocado(canaisAte, 1) : desde;
+      const fimCanal = [
+        diaDeslocado(inicioCanal, 6),
+        ate.slice(0, 10),
+      ].sort()[0];
+      try {
+        vendas.push(
+          ...(await cliente.sales(
+            {
+              start: inicioCanal + "T00:00:00",
+              end: fimCanal === ate.slice(0, 10) ? ate : fimCanal + "T23:59:59",
+              column: "shift_date",
+            },
+            vinculo.lojaSaiposId,
+          )),
+        );
+        canaisAte = fimCanal;
+      } catch (erro) {
+        ultimoErroCanais =
+          erro instanceof SaiposError
+            ? erro.message
+            : "Detalhamento histórico pendente; checkpoint preservado.";
+      }
+    }
     const unicas = new Map<string, ReturnType<typeof normalizarVenda>>();
     for (const venda of vendas) {
       const registro = normalizarVenda(venda, vinculo.lojaSaiposId);
@@ -182,6 +210,8 @@ export async function sincronizarVendas(
             coberturaDesde: desde,
             ultimoSucessoEm: new Date(),
             ultimaQuantidade: unicas.size,
+            canaisAte,
+            ultimoErroCanais,
             ultimoErro: null,
           },
         });
@@ -201,22 +231,46 @@ export async function sincronizarVendas(
           });
           if (
             anterior &&
-            anterior.alteradaNoSaiposEm >= registro.alteradaNoSaiposEm
+            anterior.alteradaNoSaiposEm > registro.alteradaNoSaiposEm
           )
             continue;
+          const mesmaVersao =
+            anterior?.alteradaNoSaiposEm.getTime() ===
+            registro.alteradaNoSaiposEm.getTime();
+          if (
+            mesmaVersao &&
+            (!registro.canalImportado ||
+              (anterior.canalImportado &&
+                anterior.modalidade === registro.modalidade &&
+                anterior.origem === registro.origem))
+          )
+            continue;
+          const atualizacao = mesmaVersao
+            ? {
+                modalidade: registro.modalidade,
+                origem: registro.origem,
+                canalImportado: registro.canalImportado,
+              }
+            : registro;
           const salvo = await tx.saiposVenda.upsert({
             where: { organizacaoId_unidadeId_vendaExternaId: chave },
             create: { ...chave, ...registro },
-            update: registro,
+            update: atualizacao,
           });
           const resumir = (r: {
             totalCentavos: number;
             cancelada: boolean;
             dataTurno: string;
+            modalidade?: number | null;
+            origem?: string | null;
+            canalImportado?: boolean;
           }) => ({
             totalCentavos: r.totalCentavos,
             cancelada: r.cancelada,
             dataTurno: r.dataTurno,
+            modalidade: r.modalidade ?? null,
+            origem: r.origem ?? null,
+            canalImportado: r.canalImportado ?? false,
           });
           await tx.auditoria.create({
             data: {
@@ -226,7 +280,7 @@ export async function sincronizarVendas(
               entidadeId: salvo.id,
               acao: anterior ? "ALTEROU" : "CRIOU",
               valoresAntes: anterior ? resumir(anterior) : undefined,
-              valoresDepois: resumir(registro),
+              valoresDepois: resumir(salvo),
             },
           });
         }

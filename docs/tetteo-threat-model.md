@@ -171,3 +171,35 @@ executadas, mantendo a melhoria de HTTPS administrativo pendente.
 Teto de 8.500/min escolhido explicitamente pelo operador. A divergência documental
 permanece; o bloqueio HTTP 429 continua por pelo menos cinco minutos e não é
 reduzido junto com a janela de contagem. Sem alteração de acesso, segredo ou host.
+
+## Revisão: referências de fechamento e canais
+
+Escopo confirmado pelo usuário: somente Matriz e leitura por analytics.ver;
+somente diretor pode registrar/corrigir referência, com auditoria; origem e
+modalidade separadas, sem inferência para campos ausentes. Nenhuma nova concessão.
+
+Fronteiras runtime: navegador HTTPS → Server Action → serviço autorizado/Prisma;
+API Saipos → Zod/normalizador → transação de vendas; diretor → referência externa
+informada → comparação de snapshot. Testes usam repositório isolado e clone SQL,
+sem confundir fixtures com resultados da API. Credencial permanece no backend.
+
+```mermaid
+flowchart LR
+ A["API Saipos"] --> B["Conector GET"]
+ B --> C["Banco por loja"]
+ D["Diretor autenticado"] --> E["Referencia auditada"]
+ E --> C
+ C --> F["Analytics autorizado"]
+```
+
+| Ameaça                                 | Caminho e impacto                                                           | Controles e evidência                                                                                                                                            | Residual / prioridade                                                              |
+| -------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Forjar referência em outra loja        | Manipular campos do formulário e alterar informação financeira              | services/referencias.ts usa unidade/organização da sessão, diretor e unidade visível; FK composta no schema/migration                                            | Sessão de diretor comprometida mantém seus poderes; medium                         |
+| Falso fechamento por soma ou atraso    | Campo de origem errado, duplicação de metadados ou igualar um total parcial | schemas/conferencia.ts soma centavos, separa modalidade/origem, não infere canal; status derivado e aviso de alterações tardias; services/vendas.ts usa snapshot | Referência humana pode conter erro; igualdade não é garantia de completude; medium |
+| Sobrescrita concorrente                | Dois diretores corrigem referência, perdendo autoria/valor anterior         | Versão otimista + transação Serializable e auditoria inseparável em services/referencias.ts                                                                      | Conflito exige tentativa explícita após recarregar; low                            |
+| Payload da origem ou vazamento         | Origem maliciosa/PII em objetos da API                                      | client.ts aceita somente desc_partner_sale e tipo; desc_store_partner/códigos/clientes descartados; React escapa rótulos                                         | Mudança de contrato interrompe consulta; low                                       |
+| Histórico impede sincronização recente | Falha do backfill deixa vendas e caixa congelados                           | sincronizar.ts mantém checkpoint canaisAte e erro separados; a transação confirma somente consultas concluídas                                                   | Histórico pode permanecer parcial durante indisponibilidade; low                   |
+
+Validação SQL anterior à publicação: migration aplicada ao clone do backup real,
+unicidade, FK entre organizações e rollback conferidos; clone removido depois.
+A confirmação final de valores e gravação autorizada ocorrerá no dashboard real.
