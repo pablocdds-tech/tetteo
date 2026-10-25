@@ -630,8 +630,8 @@ export async function alternarAcesso(
 /**
  * Define uma senha nova para alguém.
  *
- * Quem esquece a senha numa pizzaria não abre chamado: fala com o dono. Esta é
- * a saída — e ela fica registrada na auditoria, com quem fez e quando, porque
+ * A recuperação por e-mail fica no login. Esta é a alternativa administrativa,
+ * registrada na auditoria, com quem fez e quando, porque
  * poder trocar a senha dos outros é poder entrar como eles.
  */
 export async function redefinirSenha(
@@ -651,10 +651,24 @@ export async function redefinirSenha(
   });
   if (!alvo) throw new Error("Essa pessoa não tem acesso a esta rede.");
 
-  await db.usuario.update({
-    where: { id: usuarioId },
-    data: { senhaHash: await bcrypt.hash(senha, CUSTO_BCRYPT) },
-  });
+  const senhaHash = await bcrypt.hash(senha, CUSTO_BCRYPT);
+  await db.$transaction([
+    db.usuario.update({
+      where: { id: usuarioId },
+      data: {
+        senhaHash,
+        versaoSessao: { increment: 1 },
+      },
+    }),
+    db.recuperacaoSenha.updateMany({
+      where: { usuarioId, usadoEm: null },
+      data: { usadoEm: new Date() },
+    }),
+    db.sessao.updateMany({
+      where: { usuarioId, revogadaEm: null },
+      data: { revogadaEm: new Date() },
+    }),
+  ]);
 
   // A senha NUNCA entra na auditoria — nem o valor, nem o tamanho.
   await auditar(contexto, "ALTEROU", "Usuario", usuarioId, null, {

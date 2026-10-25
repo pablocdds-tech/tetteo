@@ -18,6 +18,7 @@ export const authConfigBase = {
 
   pages: {
     signIn: "/login",
+    error: "/login",
   },
 
   providers: [],

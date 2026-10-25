@@ -3,8 +3,14 @@
 import { AuthError } from "next-auth";
 
 import { signIn } from "@/core/auth";
+import { googleConfigurado } from "@/core/auth/politicas";
 
 export type EstadoLogin = { erro?: string };
+
+export async function entrarComGoogle(): Promise<void> {
+  if (!googleConfigurado()) return;
+  await signIn("google", { redirectTo: "/conta" });
+}
 
 export async function entrar(
   _anterior: EstadoLogin,

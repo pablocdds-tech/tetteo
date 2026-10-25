@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { auth } from "@/core/auth";
 
 import { obterContexto, REDE_INTEIRA } from "@/core/sessao/contexto";
 import { appsVisiveis } from "@/core/shell/apps-visiveis";
@@ -35,7 +36,7 @@ export default async function LayoutCasca({
 
   // Sem contexto: ou não há sessão, ou o usuário não tem acesso a nenhuma
   // organização. Nos dois casos, não há sistema para mostrar.
-  if (!contexto) redirect("/login");
+  if (!contexto) redirect((await auth())?.user ? "/conta" : "/login");
 
   const apps = appsVisiveis(contexto);
 
