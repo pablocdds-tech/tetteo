@@ -236,6 +236,22 @@ test("arredondamento monetário usa inteiro e meio centavo para cima", () => {
   assert.equal(calcularTaxa(1, 5000, 0), 1);
   assert.equal(calcularTaxa(125000, 300, 0), 3750);
 });
+test("lote inclui componentes de vendas fora do período sem somá-las como vendas do período", () => {
+  const f = fixture();
+  const outro = {
+    ...f.linhas[1],
+    id: "fora-do-periodo",
+    businessDay: "2026-10-18",
+    nsu: "1002",
+  };
+  f.linhas[2].amountCents = 241250;
+  const r = conciliar({ ...f, componentesLote: [outro] });
+  assert.equal(r.lotes[0].liquidoCentavos, 241250);
+  assert.equal(r.lotes[0].componentes.length, 2);
+  assert.equal(r.resultados[0].creditoAlocadoCentavos, 120625);
+  assert.equal(r.totais.vendidoCentavos, 125000);
+  assert.equal(r.totais.liquidadoCentavos, 120625);
+});
 test("exportação neutraliza fórmulas com espaços, tabulações e aspas", () => {
   for (const v of ["=HYPERLINK(x)", " \t+cmd", "@x", "-1+2"])
     assert.ok(csvSeguro(v).startsWith("\"'"));

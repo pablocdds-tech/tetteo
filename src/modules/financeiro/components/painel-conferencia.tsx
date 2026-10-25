@@ -203,6 +203,12 @@ export function PainelConferencia({
   useEffect(() => {
     if (detalhe && !dialogo.current?.open) dialogo.current?.showModal();
   }, [detalhe]);
+  useEffect(() => {
+    if (arquivoDetalhe?.linhaSelecionada)
+      document
+        .getElementById(`linha-${arquivoDetalhe.linhaSelecionada}`)
+        ?.scrollIntoView({ block: "center" });
+  }, [arquivoDetalhe]);
   async function operar(acao: () => Promise<void>) {
     if (lock.current) return;
     lock.current = true;
@@ -289,10 +295,12 @@ export function PainelConferencia({
       setDetalhe(await apiJson<Detalhe>(`${raiz}/reconciliation/${id}`));
     });
   }
-  async function abrirArquivo(id: string, pagina = 1) {
+  async function abrirArquivo(id: string, pagina = 1, linha?: number) {
     await operar(async () => {
       setArquivoDetalhe(
-        await apiJson<Importacao>(`${raiz}/imports/${id}?pagina=${pagina}`),
+        await apiJson<Importacao>(
+          `${raiz}/imports/${id}?pagina=${pagina}${linha ? `&linha=${linha}` : ""}`,
+        ),
       );
       setAba("importacoes");
     });
@@ -1006,6 +1014,7 @@ export function PainelConferencia({
                 <details
                   key={l.id}
                   id={`linha-${l.numero}`}
+                  open={l.numero === arquivoDetalhe.linhaSelecionada}
                   className="border-line border-b py-3"
                 >
                   <summary>
@@ -1273,6 +1282,7 @@ export function PainelConferencia({
       )}
       <dialog
         ref={dialogo}
+        aria-labelledby="titulo-detalhe-conferencia"
         onClose={() => setDetalhe(null)}
         className="border-line bg-surface text-ink fixed inset-0 m-auto max-h-[92dvh] w-[calc(100%-24px)] max-w-4xl overflow-auto rounded-2xl border p-4 backdrop:bg-black/40 sm:p-6"
       >
@@ -1280,7 +1290,10 @@ export function PainelConferencia({
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl font-semibold">
+                <h2
+                  id="titulo-detalhe-conferencia"
+                  className="text-xl font-semibold"
+                >
                   De onde veio a diferença
                 </h2>
                 <p className="text-ink-3 mt-1 text-xs">
@@ -1339,10 +1352,7 @@ export function PainelConferencia({
                             className="text-accent mt-2 min-h-11 text-left text-xs font-semibold break-all"
                             onClick={() => {
                               dialogo.current?.close();
-                              void abrirArquivo(
-                                l.importacaoId,
-                                Math.floor((l.numero - 1) / 50) + 1,
-                              );
+                              void abrirArquivo(l.importacaoId, 1, l.numero);
                             }}
                           >
                             Arquivo {l.importacao.nomeArquivo} · linha{" "}
@@ -1430,12 +1440,38 @@ export function PainelConferencia({
               </p>
             ))}
             {detalhe.lotes.map((l) => (
-              <p key={l.id} className="text-ink-3 mt-3 text-sm">
-                Lote: {l.liquidoCentavos / 100} BRL ·{" "}
-                {(l.componentes as string[]).length} componente(s) · alocado no
-                banco {moeda(l.alocacoes.reduce((s, a) => s + a.centavos, 0))}.
-                O crédito integral é usado uma vez por lote nesta execução.
-              </p>
+              <div key={l.id} className="text-ink-3 mt-3 text-sm">
+                <p>
+                  Lote: {moeda(l.liquidoCentavos)} ·{" "}
+                  {(l.componentes as string[]).length} componente(s) · alocado
+                  no banco{" "}
+                  {moeda(l.alocacoes.reduce((s, a) => s + a.centavos, 0))}. O
+                  crédito integral é usado uma vez por lote nesta execução.
+                </p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer">
+                    Ver componentes do lote
+                  </summary>
+                  {detalhe.componentesLote
+                    .filter((c) => (l.componentes as string[]).includes(c.id))
+                    .map((c) => {
+                      const n = c.normalizado as unknown as Linha;
+                      return (
+                        <button
+                          key={c.id}
+                          className="text-accent block min-h-11 text-left text-xs"
+                          onClick={() => {
+                            dialogo.current?.close();
+                            void abrirArquivo(c.importacaoId, 1, c.numero);
+                          }}
+                        >
+                          {c.importacao.nomeArquivo} · linha {c.numero} ·{" "}
+                          {n.businessDay} · líquido {moeda(n.netCents)}
+                        </button>
+                      );
+                    })}
+                </details>
+              </div>
             ))}
             <section className="mt-6">
               <h3 className="font-semibold">Evidências e decisões</h3>

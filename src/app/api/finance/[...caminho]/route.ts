@@ -360,6 +360,7 @@ async function atender(
         const filtro = z
           .object({
             pagina: z.coerce.number().int().min(1).max(1000).default(1),
+            linha: z.coerce.number().int().min(1).max(100000).optional(),
           })
           .strict()
           .parse(query);
@@ -368,6 +369,7 @@ async function atender(
             ctx,
             idSchema.parse(caminho[1]),
             filtro.pagina,
+            filtro.linha,
           ),
         );
       }

@@ -25,6 +25,7 @@ async function main() {
     originalImportacao,
     anexarEvidencia,
     descartarImportacao,
+    detalheImportacao,
   } = await import("../src/modules/financeiro/services/conferencia");
   const sufixo = randomUUID();
   try {
@@ -425,6 +426,88 @@ async function main() {
       substituirConflitos: true,
     });
     await executarConferencia(ctx, { ...periodo, requestKey: randomUUID() });
+    // Um lote pode atravessar o limite do período selecionado.
+    const fora = await previaImportacao(
+      ctx,
+      Buffer.from(
+        JSON.stringify([
+          {
+            ...adquirente,
+            externalId: "recebivel-dia-anterior",
+            nsu: "DEMO-1002",
+            businessDay: "2026-10-18",
+          },
+        ]),
+      ),
+      "componente-fora.json",
+      {
+        ...periodo,
+        de: "2026-10-18",
+        ate: "2026-10-18",
+        fonte: "ADQUIRENTE",
+        contaRef: "conta-demo",
+        separador: ";",
+        moeda: "BRL",
+        formatoData: "ISO",
+      },
+    );
+    await confirmarImportacao(ctx, {
+      previewId: fora.id,
+      expectedHash: fora.arquivoHash,
+      requestKey: randomUUID(),
+      revisado: false,
+      motivo: "",
+      substituirConflitos: false,
+    });
+    const depositoCompleto = await importar("BANCO", [
+      { ...banco, amountCents: 241250 },
+    ]);
+    await depositoCompleto.confirma();
+    await confirmarImportacao(ctx, {
+      previewId: depositoCompleto.previa.id,
+      expectedHash: depositoCompleto.previa.arquivoHash,
+      requestKey: randomUUID(),
+      revisado: true,
+      motivo: "Depósito fictício contém dois dias de venda no mesmo lote",
+      substituirConflitos: true,
+    });
+    await executarConferencia(ctx, { ...periodo, requestKey: randomUUID() });
+    const loteEntreDias = await consultarConferencia(ctx, periodo);
+    const vendaDoPeriodo = loteEntreDias.resultados.find((l) => l.vendaId)!;
+    assert.equal(vendaDoPeriodo.creditoAlocadoCentavos, 120625);
+    assert.equal(
+      (loteEntreDias.execucao!.totais as { vendidoCentavos: number })
+        .vendidoCentavos,
+      125000,
+    );
+    const detalheLote = await detalharCorrespondencia(ctx, vendaDoPeriodo.id);
+    assert.equal(detalheLote.componentesLote.length, 2);
+    const cabecalho =
+      "externalId;provider;merchantRef;businessDay;amountCents;direction\n";
+    const csv51 =
+      cabecalho +
+      Array.from(
+        { length: 51 },
+        (_, i) => `linha-${i};DEMO;est-demo;2026-10-21;100;DEBIT`,
+      ).join("\n");
+    const leitura51 = await previaImportacao(
+      ctx,
+      Buffer.from(csv51),
+      "linhas-51.csv",
+      {
+        de: "2026-10-21",
+        ate: "2026-10-21",
+        fonte: "BANCO",
+        contaRef: "conta-paginacao",
+        separador: ";",
+        moeda: "BRL",
+        formatoData: "ISO",
+      },
+    );
+    const paginaExata = await detalheImportacao(ctx, leitura51.id, 1, 51);
+    assert.equal(paginaExata.pagina, 1);
+    assert.equal(paginaExata.linhas.at(-1)?.numero, 51);
+    assert.equal((await detalheImportacao(ctx, leitura51.id, 1, 52)).pagina, 2);
     if (process.env.FINANCEIRO_UI_LOGIN_PATH)
       await writeFile(
         process.env.FINANCEIRO_UI_LOGIN_PATH,

@@ -5,6 +5,8 @@ node_modules
 .next
 out
 build
+.playwright-cli
+output/playwright
 
 .git
 .gitignore

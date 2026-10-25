@@ -429,6 +429,7 @@ export async function detalheImportacao(
   ctx: ContextoSessao,
   id: string,
   pagina: number,
+  linhaSelecionada?: number,
 ) {
   const e = escopoConferencia(ctx);
   const imp = await db.conferenciaImportacao.findFirst({
@@ -436,6 +437,13 @@ export async function detalheImportacao(
     select: arquivoSelect,
   });
   if (!imp) throw new ErroConferencia("Importação não encontrada.", 404);
+  if (linhaSelecionada)
+    pagina =
+      Math.floor(
+        (await db.conferenciaLinha.count({
+          where: { ...e, importacaoId: id, numero: { lt: linhaSelecionada } },
+        })) / 50,
+      ) + 1;
   const linhas = await db.conferenciaLinha.findMany({
     where: { ...e, importacaoId: id },
     select: {
@@ -451,7 +459,7 @@ export async function detalheImportacao(
     skip: (pagina - 1) * 50,
     take: 50,
   });
-  return { ...imp, linhas, pagina };
+  return { ...imp, linhas, pagina, linhaSelecionada: linhaSelecionada ?? null };
 }
 export async function originalImportacao(ctx: ContextoSessao, id: string) {
   const e = escopoConferencia(ctx);
@@ -594,13 +602,66 @@ export async function executarConferencia(
           OR: [{ ate: null }, { ate: { gte: dados.de } }],
         },
       });
+      const referenciasLote = [
+        ...new Set(
+          fontesVenda
+            .filter((l) => l.fonte === "ADQUIRENTE")
+            .map((l) => (l.normalizado as unknown as Linha).payoutRef)
+            .filter((r): r is string => !!r),
+        ),
+      ];
+      const componentesLote = referenciasLote.length
+        ? await tx.conferenciaLinha.findMany({
+            where: {
+              ...e,
+              ativa: true,
+              fonte: "ADQUIRENTE",
+              OR: referenciasLote.map((ref) => ({
+                normalizado: { path: ["payoutRef"], equals: ref },
+              })),
+            },
+            take: 20001,
+          })
+        : [];
+      if (componentesLote.length > 20000)
+        throw new ErroConferencia(
+          "Os lotes ultrapassam 20.000 componentes. Reduza o período.",
+        );
+      const importacoesComponentes = await tx.conferenciaImportacao.findMany({
+        where: {
+          ...e,
+          id: { in: [...new Set(componentesLote.map((l) => l.importacaoId))] },
+        },
+        select: {
+          id: true,
+          fonte: true,
+          contaRef: true,
+          de: true,
+          ate: true,
+          estado: true,
+          arquivoHash: true,
+          parserVersao: true,
+        },
+      });
       const todasImportacoes = [
         ...new Map(
-          [...importacoes, ...importacoesBanco].map((i) => [i.id, i]),
+          [...importacoes, ...importacoesBanco, ...importacoesComponentes].map(
+            (i) => [i.id, i],
+          ),
         ).values(),
       ];
-      const idsVersao = todasImportacoes.filter(i => i.estado === "CONFIRMADA").map(i => i.id).sort();
-      if (dados.sourceVersions && canonico([...dados.sourceVersions].sort()) !== canonico(idsVersao)) throw new ErroConferencia("As fontes mudaram. Atualize a página antes de conferir.", 409);
+      const idsVersao = todasImportacoes
+        .filter((i) => i.estado === "CONFIRMADA")
+        .map((i) => i.id)
+        .sort();
+      if (
+        dados.sourceVersions &&
+        canonico([...dados.sourceVersions].sort()) !== canonico(idsVersao)
+      )
+        throw new ErroConferencia(
+          "As fontes mudaram. Atualize a página antes de conferir.",
+          409,
+        );
       const cobertura = Object.fromEntries(
         fontes.map((f) => [
           f,
@@ -635,7 +696,18 @@ export async function executarConferencia(
           fonte: l.fonte as Fonte,
         }),
       );
-      const resultado = conciliar({ ...e, linhas, contratos, cobertura });
+      const resultado = conciliar({
+        ...e,
+        linhas,
+        contratos,
+        cobertura,
+        componentesLote: componentesLote.map((l) => ({
+          ...(l.normalizado as unknown as Linha),
+          ...e,
+          id: l.id,
+          fonte: "ADQUIRENTE" as const,
+        })),
+      });
       const versoes = todasImportacoes
         .filter((i) => i.estado === "CONFIRMADA")
         .map((i) => ({
@@ -767,9 +839,14 @@ export async function consultarConferencia(
     },
     orderBy: { criadoEm: "desc" },
   });
-  const efetivo = execucao?.periodoEfetivo as { banco: { de: string; ate: string } } | undefined;
+  const efetivo = execucao?.periodoEfetivo as
+    { banco: { de: string; ate: string } } | undefined;
   const [importacoes, contratos, historico] = await Promise.all([
-    listarImportacoes(ctx, efetivo?.banco.de ?? dados.de, efetivo?.banco.ate ?? dados.ate),
+    listarImportacoes(
+      ctx,
+      efetivo?.banco.de ?? dados.de,
+      efetivo?.banco.ate ?? dados.ate,
+    ),
     db.conferenciaContrato.findMany({
       where: e,
       orderBy: { criadoEm: "desc" },
@@ -932,6 +1009,30 @@ export async function detalharCorrespondencia(ctx: ContextoSessao, id: string) {
     where: { ...e, execucaoId: r.execucaoId },
     include: { alocacoes: true },
   });
+  const lotesRelacionados = lotes.filter((l) =>
+    (l.componentes as string[]).some((id) =>
+      resultado.adquirenteIds.includes(id),
+    ),
+  );
+  const componentesLote = await db.conferenciaLinha.findMany({
+    where: {
+      ...e,
+      id: {
+        in: [
+          ...new Set(
+            lotesRelacionados.flatMap((l) => l.componentes as string[]),
+          ),
+        ],
+      },
+    },
+    select: {
+      id: true,
+      importacaoId: true,
+      numero: true,
+      normalizado: true,
+      importacao: { select: { nomeArquivo: true, arquivoHash: true } },
+    },
+  });
   const decisaoEfetiva = r.caso.decisoes.find(
     (d) => d.decisao !== "COMENTARIO",
   );
@@ -946,11 +1047,8 @@ export async function detalharCorrespondencia(ctx: ContextoSessao, id: string) {
     evidencias: r.caso.evidencias,
     eventos,
     execucao: r.execucao,
-    lotes: lotes.filter((l) =>
-      (l.componentes as string[]).some((id) =>
-        resultado.adquirenteIds.includes(id),
-      ),
-    ),
+    lotes: lotesRelacionados,
+    componentesLote,
     revisaoAdicional:
       !!decisaoEfetiva && decisaoEfetiva.snapshotHash !== r.snapshotHash,
   };

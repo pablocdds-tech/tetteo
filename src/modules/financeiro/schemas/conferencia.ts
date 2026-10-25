@@ -231,12 +231,18 @@ export function conciliar(entrada: {
   organizacaoId: string;
   unidadeId: string;
   linhas: LinhaMotor[];
+  componentesLote?: LinhaMotor[];
   contratos: Contrato[];
   cobertura: Cobertura;
 }) {
   const { linhas, contratos, cobertura } = entrada;
   const ids = new Set<string>();
-  for (const l of linhas) {
+  for (const l of [
+    ...linhas,
+    ...(entrada.componentesLote ?? []).filter(
+      (l) => !linhas.some((o) => o.id === l.id),
+    ),
+  ]) {
     if (
       ids.has(l.id) ||
       l.organizacaoId !== entrada.organizacaoId ||
@@ -256,9 +262,18 @@ export function conciliar(entrada: {
   const adquirente = linhas.filter((l) => l.fonte === "ADQUIRENTE");
   const banco = linhas.filter((l) => l.fonte === "BANCO");
   const lotesMap = new Map<string, LinhaMotor[]>();
-  for (const a of adquirente) {
+  const adquirenteLotes = [
+    ...new Map(
+      [...adquirente, ...(entrada.componentesLote ?? [])]
+        .filter((l) => l.fonte === "ADQUIRENTE")
+        .map((l) => [l.id, l]),
+    ).values(),
+  ];
+  const chavesDoPeriodo = new Set(adquirente.map(chaveLote).filter(Boolean));
+  for (const a of adquirenteLotes) {
     const k = chaveLote(a);
-    if (k) lotesMap.set(k, [...(lotesMap.get(k) ?? []), a]);
+    if (k && chavesDoPeriodo.has(k))
+      lotesMap.set(k, [...(lotesMap.get(k) ?? []), a]);
   }
   const lotes: LoteMotor[] = [...lotesMap].map(([chave, componentes]) => {
     const a = componentes[0];
