@@ -2,6 +2,8 @@ import Link from "next/link";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { Cartao } from "@/design-system/cartao";
 import { Indicador } from "@/design-system/indicador";
+import { consultarPulso } from "../services/pulso";
+import { BentoVendas } from "./bento-vendas";
 import { consultarVendas } from "../services/vendas";
 
 const moeda = new Intl.NumberFormat("pt-BR", {
@@ -20,9 +22,12 @@ export async function PainelVendas({
 }) {
   const contexto = await obterContexto();
   if (!contexto || !pode(contexto, "analytics.ver")) return null;
-  let dados;
+  let dados, pulso;
   try {
-    dados = await consultarVendas(contexto, de, ate);
+    [dados, pulso] = await Promise.all([
+      consultarVendas(contexto, de, ate),
+      compacto ? Promise.resolve(null) : consultarPulso(contexto, de, ate),
+    ]);
   } catch {
     return (
       <Cartao className="p-4">
@@ -32,6 +37,14 @@ export async function PainelVendas({
           tente novamente mais tarde.
         </p>
       </Cartao>
+    );
+  }
+  if (!compacto && pulso) {
+    return (
+      <>
+        <BentoVendas dados={dados} pulso={pulso} de={de} ate={ate} />
+        <DetalheDiario dados={dados} de={de} ate={ate} />
+      </>
     );
   }
   const apoio = `${dia(de)} a ${dia(ate)} · Saipos · data do turno`;
@@ -98,7 +111,7 @@ export async function PainelVendas({
               ? "Atualização solicitada; aguardando processamento. "
               : ""}
             {dados.automatico && v.habilitado
-              ? "Atualização diária às 05h15 de Brasília."
+              ? "Atualização automática a cada 15 minutos."
               : "Atualização automática pausada."}
           </p>
         ))}
@@ -107,57 +120,69 @@ export async function PainelVendas({
           apresentar atraso D+1.
         </p>
       </div>
-      {!compacto && (
-        <Cartao className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="text-ink-3 p-4 text-left">
-              Vendas por turno — {apoio}
-              {dados.incompleto ? " (dados parciais)" : ""}
-            </caption>
-            <thead className="border-line border-b">
-              <tr>
-                <th scope="col" className="px-4 py-3">
-                  Data do turno
-                </th>
-                <th scope="col" className="px-4 py-3 text-right">
-                  Vendas
-                </th>
-                <th scope="col" className="px-4 py-3 text-right">
-                  Canceladas
-                </th>
-                <th scope="col" className="px-4 py-3 text-right">
-                  Faturamento
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {dados.dias.map((d) => (
-                <tr key={d.data} className="border-line border-b">
-                  <th scope="row" className="px-4 py-3 font-normal">
-                    {dia(d.data)}
-                  </th>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {d.quantidade}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {d.canceladas}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">
-                    {moeda.format(d.centavos / 100)}
-                  </td>
-                </tr>
-              ))}
-              {dados.dias.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="text-ink-3 px-4 py-6">
-                    Nenhuma venda importada para este período.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </Cartao>
-      )}
     </section>
+  );
+}
+
+function DetalheDiario({
+  dados,
+  de,
+  ate,
+}: {
+  dados: Awaited<ReturnType<typeof consultarVendas>>;
+  de: string;
+  ate: string;
+}) {
+  const apoio = `${dia(de)} a ${dia(ate)} · Saipos · data do turno`;
+  return (
+    <Cartao className="overflow-x-auto">
+      <table className="w-full text-left text-sm">
+        <caption className="text-ink-3 p-4 text-left">
+          Vendas por turno — {apoio}
+          {dados.incompleto ? " (dados parciais)" : ""}
+        </caption>
+        <thead className="border-line border-b">
+          <tr>
+            <th scope="col" className="px-4 py-3">
+              Data do turno
+            </th>
+            <th scope="col" className="px-4 py-3 text-right">
+              Vendas
+            </th>
+            <th scope="col" className="px-4 py-3 text-right">
+              Canceladas
+            </th>
+            <th scope="col" className="px-4 py-3 text-right">
+              Faturamento
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {dados.dias.map((d) => (
+            <tr key={d.data} className="border-line border-b">
+              <th scope="row" className="px-4 py-3 font-normal">
+                {dia(d.data)}
+              </th>
+              <td className="px-4 py-3 text-right tabular-nums">
+                {d.quantidade}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums">
+                {d.canceladas}
+              </td>
+              <td className="px-4 py-3 text-right tabular-nums">
+                {moeda.format(d.centavos / 100)}
+              </td>
+            </tr>
+          ))}
+          {dados.dias.length === 0 && (
+            <tr>
+              <td colSpan={4} className="text-ink-3 px-4 py-6">
+                Nenhuma venda importada para este período.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Cartao>
   );
 }
