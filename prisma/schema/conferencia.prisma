@@ -1,0 +1,237 @@
+// Conferência em observação. Nenhum destes registros altera Lancamento.
+// organizacaoId = tenant; unidadeId = loja. Bytes originais são privados no banco.
+model ConferenciaImportacao {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  fonte         String
+  contaRef      String
+  arquivoHash   String
+  nomeArquivo   String
+  original      Bytes
+  parserVersao  String
+  configuracao  Json
+  de            String
+  ate           String
+  lidas         Int
+  aceitas       Int
+  rejeitadas    Int
+  ignoradas     Int @default(0)
+  estado        String @default("PREVIA")
+  motivoRevisao String?
+  enviadoPorId  String
+  criadoEm      DateTime @default(now())
+  confirmadoEm  DateTime?
+  chaveConfirmacao String?
+  linhas        ConferenciaLinha[]
+
+  @@unique([organizacaoId, unidadeId, fonte, contaRef, arquivoHash])
+  @@unique([organizacaoId, unidadeId, chaveConfirmacao], map: "conferencia_importacao_confirmacao_unica")
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, fonte, de, ate])
+  @@map("conferencia_importacao")
+}
+
+// Venda, recebível e crédito são interpretações tipadas de linhas imutáveis.
+// A identidade ativa é única somente quando o provedor forneceu externalId.
+model ConferenciaLinha {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  importacaoId  String
+  importacao    ConferenciaImportacao @relation(fields: [organizacaoId, unidadeId, importacaoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  numero        Int
+  fonte         String
+  contaRef      String
+  identidade    String?
+  dia           String?
+  bruto         Json
+  normalizado   Json?
+  erros         Json
+  hash          String
+  ativa         Boolean @default(false)
+  criadoEm      DateTime @default(now())
+  alocacoes     ConferenciaAlocacao[]
+
+  @@unique([importacaoId, numero])
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, fonte, ativa, dia])
+  @@index([organizacaoId, unidadeId, identidade])
+  @@map("conferencia_linha")
+}
+
+model ConferenciaContrato {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  provedor      String
+  estabelecimento String
+  bandeira      String
+  metodo        String
+  parcelasDe    Int
+  parcelasAte   Int
+  de            String
+  ate           String?
+  taxaBps       Int
+  fixaCentavos  Int @default(0)
+  toleranciaCentavos Int @default(0)
+  versao        Int @default(1)
+  ativa         Boolean @default(true)
+  substituiId   String?
+  anterior      ConferenciaContrato? @relation("ContratoVersoes", fields: [organizacaoId, unidadeId, substituiId], references: [organizacaoId, unidadeId, id], onDelete: Restrict, map: "conferencia_contrato_anterior_mesmo_escopo")
+  sucessores    ConferenciaContrato[] @relation("ContratoVersoes")
+  criadoPorId   String
+  criadoEm      DateTime @default(now())
+
+  @@unique([organizacaoId, unidadeId, id])
+  @@unique([organizacaoId, unidadeId, substituiId], map: "conferencia_contrato_sucessor_unico")
+  @@index([organizacaoId, unidadeId, provedor, estabelecimento, de])
+  @@map("conferencia_contrato")
+}
+
+model ConferenciaExecucao {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  chavePedido   String
+  de            String
+  ate           String
+  periodoEfetivo Json
+  fontesVersao  Json
+  regrasVersao  String
+  cobertura     Json
+  totais        Json
+  estado        String @default("CONCLUIDA")
+  criadoPorId   String
+  criadoEm      DateTime @default(now())
+  correspondencias ConferenciaCorrespondencia[]
+  lotes         ConferenciaLote[]
+
+  @@unique([organizacaoId, unidadeId, chavePedido])
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, de, ate, criadoEm])
+  @@map("conferencia_execucao")
+}
+
+model ConferenciaCaso {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  chave         String
+  versao        Int @default(0)
+  correspondencias ConferenciaCorrespondencia[]
+  decisoes      ConferenciaDecisao[]
+  evidencias    ConferenciaEvidencia[]
+
+  @@unique([organizacaoId, unidadeId, chave])
+  @@unique([organizacaoId, unidadeId, id])
+  @@map("conferencia_caso")
+}
+
+model ConferenciaCorrespondencia {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  execucaoId    String
+  execucao      ConferenciaExecucao @relation(fields: [organizacaoId, unidadeId, execucaoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  casoId        String
+  caso          ConferenciaCaso @relation(fields: [organizacaoId, unidadeId, casoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  estado        String
+  categoria     String
+  snapshotHash  String
+  dados         Json
+
+  @@unique([execucaoId, casoId])
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, execucaoId, estado])
+  @@map("conferencia_correspondencia")
+}
+
+model ConferenciaLote {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  execucaoId    String
+  execucao      ConferenciaExecucao @relation(fields: [organizacaoId, unidadeId, execucaoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  chave         String
+  liquidoCentavos Int
+  componentes   Json
+  alocacoes     ConferenciaAlocacao[]
+
+  @@unique([execucaoId, chave])
+  @@unique([organizacaoId, unidadeId, id])
+  @@map("conferencia_lote")
+}
+
+model ConferenciaAlocacao {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  loteId        String
+  lote          ConferenciaLote @relation(fields: [organizacaoId, unidadeId, loteId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  bancoId       String
+  banco         ConferenciaLinha @relation(fields: [organizacaoId, unidadeId, bancoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  centavos      Int
+  versao        Int @default(1)
+  aprovadoPorId String?
+
+  @@unique([loteId, bancoId])
+  @@index([organizacaoId, unidadeId, bancoId])
+  @@map("conferencia_alocacao")
+}
+
+model ConferenciaDecisao {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  casoId        String
+  caso          ConferenciaCaso @relation(fields: [organizacaoId, unidadeId, casoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  versao        Int
+  decisao       String
+  motivo        String
+  evidenciaIds  Json
+  snapshotHash  String
+  anteriorId    String?
+  autorId       String
+  criadoEm      DateTime @default(now())
+
+  @@unique([casoId, versao])
+  @@index([organizacaoId, unidadeId, casoId, criadoEm])
+  @@map("conferencia_decisao")
+}
+
+model ConferenciaEvidencia {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  casoId        String
+  caso          ConferenciaCaso @relation(fields: [organizacaoId, unidadeId, casoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  nome          String
+  tipo          String
+  bytes         Bytes
+  hash          String
+  autorId       String
+  criadoEm      DateTime @default(now())
+
+  @@index([organizacaoId, unidadeId, casoId])
+  @@map("conferencia_evidencia")
+}
+
+model ConferenciaEvento {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  unidade       Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  entidadeId    String
+  tipo          String
+  payloadHash   String
+  autorId       String
+  criadoEm      DateTime @default(now())
+
+  @@index([organizacaoId, unidadeId, entidadeId, criadoEm])
+  @@map("conferencia_evento")
+}

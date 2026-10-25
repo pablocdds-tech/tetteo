@@ -76,6 +76,11 @@ model Unidade {
   notificacoes Notificacao[]
   sessoes      Sessao[]
   saiposVinculos SaiposVinculo[]
+  conferenciasImportadas ConferenciaImportacao[]
+  conferenciasContratos ConferenciaContrato[]
+  conferenciasExecucoes ConferenciaExecucao[]
+  conferenciasCasos ConferenciaCaso[]
+  conferenciasEventos ConferenciaEvento[]
 
   // `auditoria` guarda a unidade como texto solto, de propósito: o registro é
   // só-escrita e precisa sobreviver mesmo que a unidade mude ou seja excluída.

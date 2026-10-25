@@ -2,6 +2,8 @@
 .next/
 node_modules/
 package-lock.json
+.playwright-cli/
+output/playwright/
 
 # Ferramental de IA instalado na pasta — não é código do Tetteo
 .agents/
