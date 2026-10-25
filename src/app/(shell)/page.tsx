@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { PainelVendas } from "@/modules/analytics/components/painel-vendas";
+import { diaDeslocado, horarioBrasilia } from "@/connectors/saipos/tempo";
 
 import {
   obterContexto,
@@ -109,6 +111,17 @@ export default async function PainelDaOperacao({
       <Suspense key={periodo} fallback={<EsqueletoDoPainel />}>
         <CorpoDoPainel periodo={periodo} />
       </Suspense>
+      {pode(contexto, "analytics.ver") && (
+        <Suspense
+          fallback={<p className="text-ink-3 text-sm">Carregando vendas…</p>}
+        >
+          <PainelVendas
+            de={diaDeslocado(horarioBrasilia().slice(0, 10), -7)}
+            ate={diaDeslocado(horarioBrasilia().slice(0, 10), -1)}
+            compacto
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

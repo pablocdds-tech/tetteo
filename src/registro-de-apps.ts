@@ -1,3 +1,4 @@
+import { manifestoAnalytics } from "@/modules/analytics/manifest";
 import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
 import { manifestoSeverina } from "@/modules/assistente/manifest";
@@ -28,26 +29,7 @@ import { manifestoFinanceiro } from "@/modules/financeiro/manifest";
  * abre o painel lê o caminho do dinheiro.
  */
 export const APPS_REGISTRADOS: ManifestoDoApp[] = [
-  {
-    chave: "analytics",
-    nome: "Analytics",
-    subtitulo: "Vendas & KPIs",
-    icone: "grafico",
-    cor: { fundo: "#7C3AED", frente: "#FFFFFF" },
-    area: "gestao",
-    rota: "/analytics",
-    navegacao: [
-      { rota: "/analytics", nome: "Visão geral" },
-      { rota: "/analytics/vendas", nome: "Vendas" },
-      { rota: "/analytics/comparativo", nome: "Comparar unidades" },
-    ],
-    permissaoParaVer: "analytics.ver",
-    permissoes: [
-      { chave: "analytics.ver", descricao: "Ver indicadores e relatórios" },
-    ],
-    comportamentoNaRede: "compara",
-    emConstrucao: true,
-  },
+  manifestoAnalytics,
 
   {
     chave: "crm",

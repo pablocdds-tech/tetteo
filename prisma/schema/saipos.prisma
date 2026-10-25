@@ -1,0 +1,44 @@
+// Apenas campos operacionais verificados na API real. Nenhum cliente, telefone,
+// endereço, observação ou token é persistido.
+model SaiposVinculo {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String @unique
+  unidade Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  lojaSaiposId Int @unique
+  habilitado Boolean @default(true)
+  cursor String? @db.VarChar(19)
+  coberturaDesde String? @db.VarChar(10)
+  ultimaTentativaEm DateTime?
+  solicitadaEm DateTime?
+  ultimoSucessoEm DateTime?
+  ultimoErro String?
+  ultimaQuantidade Int @default(0)
+  concessaoDono String?
+  concessaoAte DateTime?
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  excluidoEm DateTime?
+  vendas SaiposVenda[]
+  @@unique([organizacaoId, unidadeId])
+  @@map("saipos_vinculo")
+}
+
+model SaiposVenda {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  vinculo SaiposVinculo @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, unidadeId], onDelete: Restrict)
+  vendaExternaId String
+  dataTurno String @db.VarChar(10)
+  totalCentavos Int
+  cancelada Boolean
+  criadaNoSaiposEm DateTime
+  alteradaNoSaiposEm DateTime
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  excluidoEm DateTime?
+  @@unique([organizacaoId, unidadeId, vendaExternaId])
+  @@index([organizacaoId, unidadeId, dataTurno, cancelada])
+  @@map("saipos_venda")
+}
