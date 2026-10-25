@@ -6,18 +6,20 @@ import {
   LIMITE_REQUISICOES,
   JANELA_REQUISICOES_MS,
 } from "./limites";
-test("teto permite 500 chamadas por janela móvel de 5 minutos, sem disparar 501", () => {
+test("teto permite 8500 chamadas por minuto e barra a chamada 8501 na janela móvel", () => {
   const controle = new ControleRequisicoesSaipos();
-  assert.equal(INTERVALO_REQUISICOES_MS, 600);
+  assert.equal(LIMITE_REQUISICOES, 8500);
+  assert.equal(JANELA_REQUISICOES_MS, 60000);
+  assert.equal(INTERVALO_REQUISICOES_MS, 7);
   for (let i = 0; i < LIMITE_REQUISICOES; i++) {
-    const agora = i * 600;
+    const agora: number = i * INTERVALO_REQUISICOES_MS;
     assert.equal(controle.espera(agora), 0);
     controle.registrar(agora);
   }
-  assert.equal(controle.espera(299999), 1);
+  assert.equal(controle.espera(59999), 1);
   assert.equal(controle.espera(JANELA_REQUISICOES_MS), 0);
   controle.registrar(JANELA_REQUISICOES_MS);
-  assert.equal(controle.espera(300001), 599);
+  assert.equal(controle.espera(60001), 6);
 });
 test("429 bloqueia por pelo menos cinco minutos e respeita Retry-After maior", () => {
   const controle = new ControleRequisicoesSaipos();
