@@ -31,3 +31,8 @@ export function resumirHoras(
 export function variacao(atual: number, anterior: number): number | null {
   return anterior > 0 ? ((atual - anterior) / anterior) * 100 : null;
 }
+
+/** A janela recente pode ainda não ter sido disponibilizada integralmente pela origem. */
+export function periodoProvisorio(ate: string, hoje: string) {
+  return ate >= deslocarDia(hoje, -1);
+}

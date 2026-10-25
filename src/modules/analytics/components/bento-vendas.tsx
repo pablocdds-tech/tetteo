@@ -26,9 +26,10 @@ export function BentoVendas({
     dados.vinculos.every(
       (v) => !!v.coberturaDesde && v.coberturaDesde <= pulso.anteriorDe,
     );
-  const diferenca = comparavel
-    ? variacao(dados.centavos, pulso.anteriorCentavos)
-    : null;
+  const diferenca =
+    comparavel && !pulso.provisorio
+      ? variacao(dados.centavos, pulso.anteriorCentavos)
+      : null;
   const maior = Math.max(
     1,
     ...pulso.horas.map((h) => h.centavos),
@@ -49,7 +50,7 @@ export function BentoVendas({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-ink-2 text-sm font-medium">
-              Faturamento{" "}
+              Faturamento importado{" "}
               {de === ate ? `do turno de ${dia(ate)}` : "no período"}
             </h2>
             <p className="mt-3 text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl">
@@ -57,12 +58,27 @@ export function BentoVendas({
             </p>
           </div>
           <span className="bg-warn-sub text-warn rounded-full px-3 py-1 text-xs font-medium">
-            {pulso.hoje ? "Hoje · parcial" : "Dados importados"}
+            {pulso.provisorio
+              ? "Provisório · dados recentes"
+              : "Dados importados"}
           </span>
         </div>
         <p className="text-ink-3 mt-3 text-sm">
           {dia(de)} a {dia(ate)} · canceladas excluídas
         </p>
+        {pulso.provisorio && (
+          <div
+            role="note"
+            className="bg-warn-sub text-warn mt-4 rounded-xl p-4 text-sm"
+          >
+            <strong>Este total ainda não é o fechamento do Saipos.</strong>
+            <p className="mt-1">
+              A API pode não ter disponibilizado todas as vendas deste turno.
+              Importação bem-sucedida não significa total conciliado. Confira o
+              relatório do Saipos antes de tomar decisões.
+            </p>
+          </div>
+        )}
         <div className="border-line mt-6 border-t pt-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="font-semibold">Ritmo por hora</h3>
@@ -166,9 +182,11 @@ export function BentoVendas({
               : `${diferenca > 0 ? "+" : ""}${diferenca.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}
           </p>
           <p className="text-ink-2 mt-3 text-sm">
-            {comparavel
-              ? `${moeda(pulso.anteriorCentavos)} em ${dia(pulso.anteriorDe)} a ${dia(pulso.anteriorAte)}${pulso.hoje ? ", até o mesmo horário" : ""}.`
-              : "Histórico insuficiente para comparar os mesmos dias."}
+            {pulso.provisorio
+              ? "Comparação de desempenho suspensa: as vendas recentes podem estar incompletas."
+              : comparavel
+                ? `${moeda(pulso.anteriorCentavos)} em ${dia(pulso.anteriorDe)} a ${dia(pulso.anteriorAte)}${pulso.hoje ? ", até o mesmo horário" : ""}.`
+                : "Histórico insuficiente para comparar os mesmos dias."}
           </p>
           <p className="text-ink-3 mt-2 text-xs">
             Atrasos da fonte podem afetar a comparação. Base zero não gera

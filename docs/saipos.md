@@ -158,3 +158,13 @@ requisitos de homologação e condições de acesso? A API de Dados atual admite
 Referência de composição: Kairu Bento, de autoria Kairu, obtida via MCP.
 https://portal.kairulabs.com.br/v3/aprender/biblioteca/design-mosaico-bento
 A marca e os tokens Aurora do Tetteo foram preservados.
+
+## Dados recentes e divergência do relatório
+
+Hoje e ontem exibem aviso destacado de total provisório junto ao faturamento.
+A variação percentual de desempenho fica suspensa nesses períodos: uma importação
+bem-sucedida confirma a gravação da resposta, não a completude da API na origem.
+A janela de dois dias é conservadora; períodos mais antigos também não ganham
+certificação automática de conciliação. Para afirmar fechamento, compare com o
+relatório da mesma loja e turno. Não ajuste totais nem crie vendas para forçar
+igualdade. O valor do relatório não é gravado como venda na integração.
