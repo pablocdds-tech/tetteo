@@ -98,8 +98,8 @@ A migration também foi aplicada em PostgreSQL embarcado isolado, verificando
 FK de organização, unicidade e rollback de cursor. Isso não substitui backup,
 restauração e conferência da carga na VPS.
 
-O limite conservador é 500 requisições por janela móvel de 5 minutos,
-com espaçamento mínimo de 600ms, páginas de 1.000, janelas de
+O teto escolhido pelo operador é 8.500 requisições por janela móvel de um minuto,
+com espaçamento mínimo de 7ms e orçamento móvel limitando o total, páginas de 1.000, janelas de
 15 dias e no máximo 1000 páginas por janela. Em vários processos/consumidores
 no mesmo IP, manter um worker único ou um limitador distribuído por IP.
 Atualizações atrasadas além da sobreposição exigem reconciliação adicional.
@@ -170,7 +170,7 @@ certificação automática de conciliação. Para afirmar fechamento, compare co
 relatório da mesma loja e turno. Não ajuste totais nem crie vendas para forçar
 igualdade. O valor do relatório não é gravado como venda na integração.
 
-## Revisão de contrato e capacidade — 25/10/2026
+## Revisão anterior de contrato e capacidade — 25/10/2026
 
 Fontes oficiais consultadas novamente: a página Limites informa 500 requisições
 por cinco minutos/IP; a FAQ informa 8.500/minuto/IP. Até confirmação formal do
@@ -210,3 +210,18 @@ Fontes de limites:
 
 - https://saipos-data-api.readme.io/reference/limite-consultas
 - https://saipos-data-api.readme.io/reference/duvidas-frequentes
+
+## Teto atual escolhido pelo operador: 8.500/minuto
+
+Por solicitação explícita, o teto passou para 8.500 chamadas por janela móvel de
+60 segundos, conforme a FAQ. O espaçamento mínimo é 7ms; o orçamento da janela
+impede a chamada 8.501, inclusive quando ainda caberia pelo espaçamento. Mantém-se
+p_limit=1.000. O ritmo real depende da latência; não geramos tráfego artificial
+para consumir a quota. A cadência de importação continua em 15 minutos.
+
+A divergência com a página Limites (500/5 minutos/IP) permanece não resolvida.
+Esta é uma escolha de configuração do operador, sem confirmação do fornecedor de
+que o teto maior será aceito. HTTP 429 prevalece: interrompe a operação e bloqueia
+novos envios por pelo menos CINCO minutos, independentemente da nova janela de
+um minuto, respeitando Retry-After maior. Os testes garantem essa independência.
+Continua a exigência de coordenação por IP antes de ativar outros consumidores.

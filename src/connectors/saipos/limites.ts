@@ -1,8 +1,11 @@
-// Menor teto oficial enquanto a divergência documental não for esclarecida.
-export const LIMITE_REQUISICOES = 500;
-export const JANELA_REQUISICOES_MS = 5 * 60_000;
-export const INTERVALO_REQUISICOES_MS =
-  JANELA_REQUISICOES_MS / LIMITE_REQUISICOES;
+// Teto da FAQ escolhido explicitamente pelo operador; HTTP 429 prevalece.
+export const LIMITE_REQUISICOES = 8500;
+export const JANELA_REQUISICOES_MS = 60_000;
+export const INTERVALO_REQUISICOES_MS = Math.floor(
+  JANELA_REQUISICOES_MS / LIMITE_REQUISICOES,
+);
+// O bloqueio do fornecedor continua independente da janela local de um minuto.
+export const ESPERA_MINIMA_429_MS = 5 * 60_000;
 export const TAMANHO_PAGINA = 1000;
 
 export class ControleRequisicoesSaipos {
@@ -36,7 +39,7 @@ export class ControleRequisicoesSaipos {
         ? Date.parse(retryAfter) - agora
         : 0;
     const espera = Math.max(
-      JANELA_REQUISICOES_MS,
+      ESPERA_MINIMA_429_MS,
       Number.isFinite(segundos) ? segundos : 0,
       Number.isFinite(data) ? data : 0,
     );
