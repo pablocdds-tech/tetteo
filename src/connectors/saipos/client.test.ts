@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { ControleRequisicoesSaipos } from "./limites";
 import { SaiposClient, SaiposError, windows, revenue } from "./client";
 
 test("janelas cobrem o período sem lacunas e respeitam 15 dias", () => {
@@ -93,7 +94,7 @@ test("paginação percorre página cheia e encerra na última; 429 não repete",
       offsets.push(offset);
       return new Response(
         JSON.stringify(
-          Array.from({ length: offset === 0 ? 300 : 1 }, (_, i) => ({
+          Array.from({ length: offset === 0 ? 1000 : 1 }, (_, i) => ({
             id_store: 1,
             id_sale: offset + i,
             total_amount: 1,
@@ -110,13 +111,21 @@ test("paginação percorre página cheia e encerra na última; 429 não repete",
       end: "2026-10-01T23:59:59",
       column: "shift_date" as const,
     };
-    assert.equal((await client.sales(period, 1)).length, 301);
-    assert.deepEqual(offsets, [0, 300]);
+    assert.equal((await client.sales(period, 1)).length, 1001);
+    assert.deepEqual(offsets, [0, 1000]);
     let calls = 0;
-    const limited = new SaiposClient((async () => {
-      calls++;
-      return new Response("{}", { status: 429 });
-    }) as typeof fetch);
+    const limited = new SaiposClient(
+      (async () => {
+        calls++;
+        return new Response("{}", { status: 429 });
+      }) as typeof fetch,
+      new ControleRequisicoesSaipos(),
+    );
+    await assert.rejects(
+      () => limited.sales(period, 1),
+      (e: unknown) => e instanceof SaiposError && e.kind === "rate_limit",
+    );
+    assert.equal(calls, 1);
     await assert.rejects(
       () => limited.sales(period, 1),
       (e: unknown) => e instanceof SaiposError && e.kind === "rate_limit",
@@ -168,6 +177,7 @@ test("financeiro limita tentativas temporárias, deduplica e separa seu cursor",
       created_at: "2026-10-01T00:00:00",
       updated_at: "2026-10-01T00:00:00",
       notes: "privado",
+      children: [{ id_store_fin_transaction: 99, amount: -10.25 }],
     };
     const client = new SaiposClient((async () => {
       calls++;
@@ -184,6 +194,8 @@ test("financeiro limita tentativas temporárias, deduplica e separa seu cursor",
     assert.equal(calls, 3);
     assert.equal(result.records.length, 1);
     assert.equal("notes" in result.records[0], false);
+    assert.equal("children" in result.records[0], false);
+    assert.equal(result.records[0].amount, -10.25);
     assert.equal(result.nextCursor.operation, "financial");
     calls = 0;
     const unavailable = new SaiposClient((async () => {
@@ -203,6 +215,54 @@ test("financeiro limita tentativas temporárias, deduplica e separa seu cursor",
       (e: unknown) => e instanceof SaiposError && e.kind === "temporary",
     );
     assert.equal(calls, 3);
+  } finally {
+    if (old === undefined) delete process.env.SAIPOS_TOKEN;
+    else process.env.SAIPOS_TOKEN = old;
+  }
+});
+
+test("financeiro vazio não comprova acesso; prova de acesso isola loja e recusa filtro incorreto", async () => {
+  const old = process.env.SAIPOS_TOKEN;
+  process.env.SAIPOS_TOKEN = "test-only";
+  try {
+    let calls = 0;
+    const client = new SaiposClient((async () => {
+      calls++;
+      return new Response("null");
+    }) as typeof fetch);
+    const period = {
+      start: "2000-01-01T00:00:00",
+      end: "2000-01-01T23:59:59",
+      column: "date" as const,
+    };
+    const result = await client.probeFinancial(period, 1);
+    assert.equal(result.count, 0);
+    assert.match(result.status, /não comprovadas/);
+    await assert.rejects(
+      () => client.probeFinancial({ ...period, column: "shift_date" }, 1),
+      (e: unknown) => e instanceof SaiposError && e.kind === "period",
+    );
+    assert.equal(calls, 1);
+    const invalid = new SaiposClient(
+      (async () =>
+        new Response(
+          JSON.stringify([
+            {
+              id_store: 1,
+              id_store_fin_transaction: 2,
+              amount: 1,
+              paid: "yes",
+              date: "2026-10-17",
+              created_at: "2026-10-17T00:00:00",
+              updated_at: "2026-10-17T00:00:00",
+            },
+          ]),
+        )) as typeof fetch,
+    );
+    await assert.rejects(
+      () => invalid.financial(period, 1),
+      (e: unknown) => e instanceof SaiposError && e.kind === "format",
+    );
   } finally {
     if (old === undefined) delete process.env.SAIPOS_TOKEN;
     else process.env.SAIPOS_TOKEN = old;

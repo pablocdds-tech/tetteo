@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ControleRequisicoesSaipos, TAMANHO_PAGINA } from "./limites";
 
 const BASE = "https://data.saipos.io/v1/";
 const DAY = 86_400_000;
@@ -35,7 +36,7 @@ const financialSchema = z.object({
   id_store_fin_transaction: z.number().int(),
   amount: z.number().finite(),
   date: z.string(),
-  paid: z.string(),
+  paid: z.enum(["Y", "N"]),
   created_at: z.string(),
   updated_at: z.string(),
 });
@@ -85,13 +86,17 @@ export function windows(period: Period): Period[] {
   return result;
 }
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-// Fila compartilhada no processo, inclusive entre instâncias. Em múltiplos processos,
-// execute um único worker ou substitua por um limitador distribuído por IP.
+// Fila e orçamento compartilhados no processo, inclusive entre tokens e endpoints.
+// O worker de produção é único pela concessão no banco; outros consumidores no
+// mesmo IP precisam compartilhar um limitador distribuído antes de serem ativados.
 let queue: Promise<unknown> = Promise.resolve();
-let nextRequest = 0;
+const controleCompartilhado = new ControleRequisicoesSaipos();
 export class SaiposClient {
   private readonly token: string;
-  constructor(private readonly transport: typeof fetch = fetch) {
+  constructor(
+    private readonly transport: typeof fetch = fetch,
+    private readonly controle = controleCompartilhado,
+  ) {
     this.token = (process.env.SAIPOS_TOKEN || "")
       .replace(/^Bearer\s+/i, "")
       .trim();
@@ -108,28 +113,45 @@ export class SaiposClient {
   ): Promise<unknown> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const task = queue.then(async () => {
-        await sleep(Math.max(0, nextRequest - Date.now()));
-        nextRequest = Date.now() + 700;
+        if (this.controle.bloqueada(Date.now()))
+          throw new SaiposError(
+            "rate_limit",
+            "Limite Saipos atingido. Aguarde pelo menos 5 minutos antes de executar novamente.",
+            429,
+          );
+        let espera = this.controle.espera(Date.now());
+        while (espera > 0) {
+          await sleep(espera);
+          espera = this.controle.espera(Date.now());
+        }
+        this.controle.registrar(Date.now());
         const url = new URL(path, BASE);
         url.search = new URLSearchParams({
           p_date_column_filter: period.column,
           p_filter_date_start: period.start,
           p_filter_date_end: period.end,
-          p_limit: "300",
+          p_limit: String(TAMANHO_PAGINA),
           p_offset: String(offset),
         }).toString();
-        return this.transport(url, {
+        const resposta = await this.transport(url, {
           method: "GET",
           headers: { Authorization: `Bearer ${this.token}` },
           redirect: "error",
           signal: AbortSignal.timeout(30_000),
         });
+        if (resposta.status === 429)
+          this.controle.bloquear(
+            Date.now(),
+            resposta.headers.get("Retry-After"),
+          );
+        return resposta;
       });
       queue = task.catch(() => undefined);
       let response: Response;
       try {
         response = await task;
-      } catch {
+      } catch (erro) {
+        if (erro instanceof SaiposError) throw erro;
         if (attempt === 2)
           throw new SaiposError(
             "temporary",
@@ -192,7 +214,11 @@ export class SaiposClient {
             "pagination",
             "Limite de páginas atingido; cursor não deve avançar.",
           );
-        const raw = await this.request("search_sales", window, page * 300);
+        const raw = await this.request(
+          "search_sales",
+          window,
+          page * TAMANHO_PAGINA,
+        );
         // Consulta real sem vendas em 25/10/2026 retornou HTTP 200 com null.
         // Somente esse valor equivale à página vazia; objetos inválidos falham.
         const parsed = z.array(saleSchema).safeParse(raw === null ? [] : raw);
@@ -215,7 +241,7 @@ export class SaiposClient {
           if (!previous || sale.updated_at >= previous.updated_at)
             records.set(key, sale);
         }
-        if (parsed.data.length < 300) break;
+        if (parsed.data.length < TAMANHO_PAGINA) break;
       }
     }
     return [...records.values()];
@@ -223,14 +249,14 @@ export class SaiposClient {
   // Prova de acesso sem expor dados brutos.
   async probeFinancial(
     period: Period,
+    storeId: number,
   ): Promise<{ status: string; count: number }> {
-    const [window] = windows(period);
-    const data = await this.request("search_financial_transactions", window, 0);
-    if (!Array.isArray(data))
-      throw new SaiposError("format", "Formato financeiro ainda não validado.");
+    const records = await this.financial(period, storeId);
     return {
-      status: "Acesso financeiro confirmado nesta consulta.",
-      count: data.length,
+      status: records.length
+        ? "Acesso financeiro confirmado nesta consulta para a loja autorizada."
+        : "Consulta sem registros; situação da conta e permissão ainda não comprovadas.",
+      count: records.length,
     };
   }
   async financial(period: Period, storeId: number): Promise<SaiposFinancial[]> {
@@ -258,9 +284,12 @@ export class SaiposClient {
         const raw = await this.request(
           "search_financial_transactions",
           window,
-          page * 300,
+          page * TAMANHO_PAGINA,
         );
-        const parsed = z.array(financialSchema).safeParse(raw);
+        // HTTP 200 null confirmado em consulta financeira vazia real.
+        const parsed = z
+          .array(financialSchema)
+          .safeParse(raw === null ? [] : raw);
         if (!parsed.success)
           throw new SaiposError(
             "format",
@@ -280,7 +309,7 @@ export class SaiposClient {
           if (!previous || record.updated_at >= previous.updated_at)
             records.set(key, record);
         }
-        if (parsed.data.length < 300) break;
+        if (parsed.data.length < TAMANHO_PAGINA) break;
       }
     }
     return [...records.values()];

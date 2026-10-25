@@ -98,7 +98,8 @@ A migration também foi aplicada em PostgreSQL embarcado isolado, verificando
 FK de organização, unicidade e rollback de cursor. Isso não substitui backup,
 restauração e conferência da carga na VPS.
 
-O limite conservador é uma requisição a cada 700ms, páginas de 300, janelas de
+O limite conservador é 500 requisições por janela móvel de 5 minutos,
+com espaçamento mínimo de 600ms, páginas de 1.000, janelas de
 15 dias e no máximo 1000 páginas por janela. Em vários processos/consumidores
 no mesmo IP, manter um worker único ou um limitador distribuído por IP.
 Atualizações atrasadas além da sobreposição exigem reconciliação adicional.
@@ -168,3 +169,44 @@ A janela de dois dias é conservadora; períodos mais antigos também não ganha
 certificação automática de conciliação. Para afirmar fechamento, compare com o
 relatório da mesma loja e turno. Não ajuste totais nem crie vendas para forçar
 igualdade. O valor do relatório não é gravado como venda na integração.
+
+## Revisão de contrato e capacidade — 25/10/2026
+
+Fontes oficiais consultadas novamente: a página Limites informa 500 requisições
+por cinco minutos/IP; a FAQ informa 8.500/minuto/IP. Até confirmação formal do
+fornecedor, o cliente usa o maior ritmo compatível com ambas: teto de 500 por
+janela móvel e 600ms entre inícios. É teto de capacidade, não meta de gerar tráfego.
+Os testes do limitador usam relógio simulado; não disparamos 500 chamadas reais.
+A fila e o orçamento são compartilhados por instâncias/tokens/endpoints no mesmo
+processo. O worker da Matriz é único pela concessão persistida no banco. Antes de
+ativar outros consumidores/processos com o mesmo IP, centralizar o limitador por
+IP: o cliente local não controla integrações de terceiros ou processos externos.
+
+HTTP 429 interrompe a operação e bloqueia novos envios no processo por pelo menos
+cinco minutos; Retry-After maior é respeitado em segundos ou data HTTP. O worker
+persiste o erro e mantém intervalo mínimo de 30 minutos antes de outra rodada.
+401/403 não são repetidos e exigem intervenção. Não há aumento automático para
+8.500/minuto com base em respostas sem 429.
+
+Páginas de 1.000 foram validadas com token privado real em 25/10/2026: vendas de
+17–23/10 retornaram 722 registros (711 válidos, R$ 50.419,29); financeiro de 17/10
+retornou 17 lançamentos, 13 com children, paid observado como string Y e campos
+básicos com tipos esperados. O contrato Y/N também é validado para paid.
+A consulta financeira pública do conector devolve apenas os campos operacionais
+do lançamento principal, sem dados pessoais e sem agregar children; não é uma
+DRE nem uma integração financeira com o dashboard. A prova de acesso financeiro
+também passa a exigir id_store e os filtros financeiros válidos.
+
+Vendas usam total_amount já composto: não há soma adicional de entrega, serviço,
+descontos ou complementos. Itens e histórico não são consultados pela integração
+atual; portanto, não se alega cobertura de escolhas, exclusões ou transferências
+de itens. Um futuro consumidor de sales_items deverá validar o contrato real,
+unit_price com adicionais e id_sale_to/id_sale_from antes de calcular agregados.
+Estoque continua em manutenção e não é substituído por dados simulados.
+Checkpoint de vendas continua transacional e separado do cursor financeiro.
+As validações de calendário rejeitam datas impossíveis, preservando o turno.
+
+Fontes de limites:
+
+- https://saipos-data-api.readme.io/reference/limite-consultas
+- https://saipos-data-api.readme.io/reference/duvidas-frequentes

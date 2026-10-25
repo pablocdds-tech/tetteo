@@ -24,3 +24,22 @@ test("turno após meia-noite continua no dia anterior; cancelamento conserva a c
   assert.equal(cancelada.cancelada, true);
   assert.throws(() => normalizarVenda(venda, 999));
 });
+
+test("datas fora do calendário não mudam silenciosamente de turno", () => {
+  assert.throws(() =>
+    normalizarVenda({ ...venda, shift_date: "2026-02-30" }, 20437),
+  );
+  assert.throws(() =>
+    normalizarVenda({ ...venda, created_at: "2026-02-30T20:00:00" }, 20437),
+  );
+  assert.throws(() =>
+    normalizarVenda({ ...venda, updated_at: "2026-10-19T24:00:00" }, 20437),
+  );
+  assert.equal(
+    normalizarVenda(
+      { ...venda, updated_at: "2026-10-19T23:59:59.123456" },
+      20437,
+    ).dataTurno,
+    "2026-10-17",
+  );
+});
