@@ -10,8 +10,11 @@ export function normalizarVenda(venda: SaiposSale, loja: number) {
     !Number.isSafeInteger(totalCentavos) ||
     Math.abs(totalCentavos) > 2147483647 ||
     !data.test(venda.shift_date) ||
+    !calendarioValido(venda.shift_date + "T12:00:00") ||
     !instante.test(venda.created_at) ||
-    !instante.test(venda.updated_at)
+    !calendarioValido(venda.created_at) ||
+    !instante.test(venda.updated_at) ||
+    !calendarioValido(venda.updated_at)
   )
     throw new SaiposError("format", "Valor ou data Saipos fora do contrato.");
   const criadaNoSaiposEm = new Date(venda.created_at + "-03:00");
@@ -29,4 +32,12 @@ export function normalizarVenda(venda: SaiposSale, loja: number) {
     criadaNoSaiposEm,
     alteradaNoSaiposEm,
   };
+}
+
+function calendarioValido(valor: string) {
+  const instante = new Date(valor + "Z");
+  return (
+    Number.isFinite(instante.getTime()) &&
+    instante.toISOString().slice(0, 19) === valor.slice(0, 19)
+  );
 }
