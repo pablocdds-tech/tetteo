@@ -107,6 +107,7 @@ export async function processDelivery(
           blocked = "NOT_APPROVED";
         if (
           !assignment.contact.active ||
+          !assignment.contact.phone ||
           !(await hasConsent(
             tx,
             delivery.storeId,

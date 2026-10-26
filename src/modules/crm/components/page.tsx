@@ -12,7 +12,7 @@ type Contact = {
   id: string;
   storeId: string;
   name: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   marketingOptIn: boolean;
   createdAt: string;
@@ -138,6 +138,33 @@ export default function CrmPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [saiposStatus, setSaiposStatus] = useState<
+    {
+      historyComplete: boolean;
+      historyCoveredFrom: string | null;
+      lastError: string | null;
+    }[]
+  >([]);
+  useEffect(() => {
+    setSaiposStatus([]);
+    if (!selectedStoreId || selectedStoreId === "all") return;
+    let alive = true;
+    const refresh = () =>
+      api
+        .get<typeof saiposStatus>(
+          `/api/crm/saipos?storeId=${encodeURIComponent(selectedStoreId)}`,
+        )
+        .then((data) => {
+          if (alive) setSaiposStatus(data);
+        })
+        .catch(() => {});
+    void refresh();
+    const timer = setInterval(() => void refresh(), 30000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [selectedStoreId]);
 
   const load = useCallback(async () => {
     if (!can("CRM", "VIEW")) return;
@@ -246,7 +273,7 @@ export default function CrmPage() {
     if (!detail) return;
     setForm({
       name: detail.name,
-      phone: detail.phone,
+      phone: detail.phone ?? "",
       email: detail.email ?? "",
       notes: detail.notes ?? "",
       marketingOptIn: detail.marketingOptIn,
@@ -381,8 +408,18 @@ export default function CrmPage() {
       </header>
 
       <div className={styles.context}>
-        A integração Saipos atual não fornece identidade do comprador. Vendas
-        sem vínculo não entram nas métricas de clientes.
+        Clientes identificados no Saipos são importados com suas compras. Vendas
+        anônimas permanecem sem vínculo e não entram nas métricas individuais.
+        {saiposStatus.map((state, index) => (
+          <p key={index} role="status">
+            {state.lastError ??
+              (state.historyComplete
+                ? "Histórico importado. Novas compras são sincronizadas automaticamente."
+                : state.historyCoveredFrom
+                  ? `Importando histórico: cobertura confirmada desde ${date(state.historyCoveredFrom + "T12:00:00Z")}. A carga continua para os períodos anteriores.`
+                  : "Aguardando o primeiro lote do Saipos.")}
+          </p>
+        ))}
       </div>
       {error && (
         <div className={styles.error} role="alert">
@@ -616,7 +653,7 @@ export default function CrmPage() {
                         >
                           <strong>{contact.name}</strong>
                           <small>
-                            {contact.phone}
+                            {contact.phone ?? "Sem telefone"}
                             {selectedStoreId === "all"
                               ? ` · ${storeName(contact.storeId)}`
                               : ""}
@@ -710,7 +747,7 @@ export default function CrmPage() {
                       ?.label
                   }
                 </span>
-                <strong>{detail.phone}</strong>
+                <strong>{detail.phone ?? "Sem telefone cadastrado"}</strong>
                 {detail.email && <span>{detail.email}</span>}
                 <small>
                   Marketing:{" "}

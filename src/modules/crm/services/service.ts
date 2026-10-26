@@ -67,6 +67,9 @@ export async function updateContact(
       where: { id, storeId, active: true },
       data: {
         ...data,
+        ...(["name", "phone", "email"].some((key) => key in data)
+          ? { saiposManaged: false }
+          : {}),
         ...(data.phone === undefined
           ? {}
           : { phone: normalizeBrazilPhone(data.phone) }),
@@ -106,7 +109,7 @@ export async function updateContact(
 }
 
 // Only completed, explicitly linked sales count toward customer behavior.
-// The live Saipos sales feed has no verified customer identity, so it is never guessed here.
+// Customer links come from a stable provider identity or an explicit manual link.
 const statsCte = (scope: Prisma.Sql) => Prisma.sql`
   WITH stats AS (
     SELECT c."id", c."storeId", c."name", c."phone", c."email", c."marketingOptIn", c."createdAt",

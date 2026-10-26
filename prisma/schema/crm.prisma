@@ -34,7 +34,9 @@ model CrmContact {
   storeId        String
   store          Unidade             @relation(fields: [storeId], references: [id], onDelete: Restrict)
   name           String
-  phone          String
+  phone          String?
+  saiposManaged Boolean @default(false)
+  saiposUpdatedAt DateTime?
   email          String?
   notes          String?
   marketingOptIn Boolean             @default(false)
@@ -320,4 +322,23 @@ enum CrmActivityType {
   WHATSAPP
   EMAIL
   SMS
+}
+
+model CrmSaiposSync {
+  id String @id @default(uuid())
+  organizacaoId String
+  storeId String @unique
+  store Unidade @relation(fields: [organizacaoId, storeId], references: [organizacaoId, id], onDelete: Restrict)
+  historyStart String @db.VarChar(10)
+  historyCoveredFrom String? @db.VarChar(10)
+  historyComplete Boolean @default(false)
+  cursor String? @db.VarChar(19)
+  leaseOwner String?
+  leaseUntil DateTime?
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  lastError String?
+  processed Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

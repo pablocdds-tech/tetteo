@@ -236,6 +236,10 @@ export async function mergeContacts(
   await tx.crmSegmentSnapshot.deleteMany({
     where: { storeId, contactId: { in: [sourceId, targetId] } },
   });
+  await tx.crmContact.update({
+    where: { id: targetId },
+    data: { saiposManaged: false },
+  });
   // No consent is inherited by a merge. Historical events stay on their original record.
   await recordConsent(
     tx,
@@ -668,7 +672,7 @@ export async function previewCampaign(
     },
     orderBy: { contactId: "asc" },
     take: 5001,
-    include: { contact: { select: { marketingOptIn: true } } },
+    include: { contact: { select: { marketingOptIn: true, phone: true } } },
   });
   if (rows.length > 5000)
     throw new CrmError(
@@ -692,7 +696,11 @@ export async function previewCampaign(
       )
     : new Set<string>();
   for (const row of rows) {
-    if (row.contact.marketingOptIn && consentIds.has(row.contactId))
+    if (
+      row.contact.phone &&
+      row.contact.marketingOptIn &&
+      consentIds.has(row.contactId)
+    )
       assignments.push({
         storeId,
         experimentId: id,

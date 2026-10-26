@@ -44,9 +44,9 @@ sem um mapeamento explícito e verificável de unidades, usuários e contatos.
 ## Processamento e mensagens
 
 As consultas de públicos/importações e resultados avançam tarefas pendentes da
-unidade autorizada em lotes limitados. Não há um cron global nem temporizadores
-permanentes no processo Next.js. A atualização continua enquanto essas telas
-consultam o andamento; sem consultas, tarefas aguardam a próxima abertura.
+unidade autorizada em lotes limitados. A importação de clientes Saipos tem um
+worker próprio no processo, com concessão persistida no banco, independente da
+abertura das telas. Veja `docs/saipos-crm.md`.
 
 Envios reais de WhatsApp, SMS e e-mail continuam ausentes. A simulação também
 começa desativada; `CRM_LOCAL_DELIVERY_ENABLED=true` habilita apenas recibos

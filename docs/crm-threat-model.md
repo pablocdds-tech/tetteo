@@ -29,9 +29,29 @@ flowchart LR
   campanha ou visita de outra unidade. A organização deriva da unidade
   autorizada. Não se pressupõe RLS nas tabelas novas.
   Evidência: `prisma/schema/crm.prisma` e a migração CRM.
-- Saipos/CRM: somente venda explicitamente vinculada gera projeção; atualização
-  de cancelamentos não escreve na tabela de origem.
+- Saipos/CRM: vínculos automáticos exigem identidade estável `id_customer` por
+  unidade; vendas anônimas ficam sem contato. Atualização de cancelamentos não
+  escreve na tabela de origem.
   Evidências: `services/service.ts::linkSale`, `services/saipos-links.ts`.
+
+## Extensão: importação automática Saipos
+
+O token existente permanece somente no servidor. O conector CRM descarta CPF,
+endereço e nascimento; só transporta ID, nome, telefone e e-mail. A identidade
+externa recebe HMAC por unidade e cifra autenticada. Perfis manuais não são
+sobrescritos; telefones compartilhados ou IDs conflitantes exigem revisão.
+Importar compras nunca cria consentimento. Contatos sem telefone não integram
+entregas. Falhas públicas e auditorias contêm mensagens fixas ou contagens,
+sem payloads Saipos. Administradores da VPS/banco continuam sendo confiáveis.
+
+A concessão é verificada dentro da mesma transação das compras e do cursor.
+Uma falha ou perda da concessão reverte o lote. Revisões antigas não desfazem
+cancelamentos mais novos. O status HTTP exige sessão, permissão CRM e unidade
+ativa, e não expõe tokens ou identidades cifradas. O relógio compartilhado do
+conector limita também o novo worker, reduzindo concorrência com Analytics.
+
+Evidências: `saipos-customers.integracao.ts`, `connectors/saipos/clientes.test.ts`,
+`services/saipos-sync.ts`, `services/campaign-routes.ts`.
 
 ## Ativos e ameaças priorizadas
 

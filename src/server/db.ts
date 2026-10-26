@@ -16,10 +16,15 @@ const criarCliente = () => {
       "DATABASE_URL não configurada. Em desenvolvimento, copie .env.example para .env.local e preencha.",
     );
   }
-  return new PrismaClient({
+  const client = new PrismaClient({
     adapter: new PrismaPg({ connectionString: url }),
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+    // Prisma's default error renderer can include query arguments with customer PII.
+    log: [{ emit: "event", level: "error" }],
   });
+  client.$on("error", () =>
+    console.error("[database] Operação não concluída."),
+  );
+  return client;
 };
 
 const globalParaPrisma = globalThis as unknown as {

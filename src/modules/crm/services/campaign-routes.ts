@@ -545,4 +545,22 @@ router.get(
   }),
 );
 
+router.get(
+  "/saipos",
+  read(async (_req, storeId) => {
+    return prisma.crmSaiposSync.findMany({
+      where: { storeId },
+      select: {
+        storeId: true,
+        historyStart: true,
+        historyCoveredFrom: true,
+        historyComplete: true,
+        lastSuccessAt: true,
+        lastError: true,
+        processed: true,
+      },
+    });
+  }),
+);
+
 export default router;

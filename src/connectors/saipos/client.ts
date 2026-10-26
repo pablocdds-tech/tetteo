@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ControleRequisicoesSaipos, TAMANHO_PAGINA } from "./limites";
+import { customerSchema } from "./clientes";
 
 const BASE = "https://data.saipos.io/v1/";
 const DAY = 86_400_000;
@@ -20,7 +21,7 @@ export class SaiposError extends Error {
     super(message);
   }
 }
-// Campos verificados na conta real. Dados pessoais são descartados pelo Zod.
+// Operational callers keep discarding personal data. CRM explicitly opts in.
 const saleSchema = z.object({
   id_store: z.number().int(),
   id_sale: z.number().int(),
@@ -35,6 +36,8 @@ const saleSchema = z.object({
   updated_at: z.string(),
 });
 export type SaiposSale = z.infer<typeof saleSchema>;
+const crmSaleSchema = saleSchema.extend({ customer: customerSchema });
+export type SaiposCrmSale = z.infer<typeof crmSaleSchema>;
 const financialSchema = z.object({
   id_store: z.number().int(),
   id_store_fin_transaction: z.number().int(),
@@ -114,6 +117,7 @@ export class SaiposClient {
     path: string,
     period: Period,
     offset: number,
+    pageSize = TAMANHO_PAGINA,
   ): Promise<unknown> {
     for (let attempt = 0; attempt < 3; attempt++) {
       const task = queue.then(async () => {
@@ -134,7 +138,7 @@ export class SaiposClient {
           p_date_column_filter: period.column,
           p_filter_date_start: period.start,
           p_filter_date_end: period.end,
-          p_limit: String(TAMANHO_PAGINA),
+          p_limit: String(pageSize),
           p_offset: String(offset),
         }).toString();
         const resposta = await this.transport(url, {
@@ -205,11 +209,22 @@ export class SaiposClient {
     throw new SaiposError("temporary", "Consulta não concluída.");
   }
   async sales(period: Period, storeId: number): Promise<SaiposSale[]> {
+    return this.readSales(period, storeId, false);
+  }
+  async salesForCrm(period: Period, storeId: number): Promise<SaiposCrmSale[]> {
+    return this.readSales(period, storeId, true);
+  }
+  private async readSales(
+    period: Period,
+    storeId: number,
+    customers: boolean,
+  ): Promise<SaiposCrmSale[]> {
     if (!Number.isSafeInteger(storeId) || storeId <= 0)
       throw new SaiposError("store", "Informe a loja Saipos autorizada.");
     if (!["shift_date", "created_at", "updated_at"].includes(period.column))
       throw new SaiposError("period", "Filtro inválido para vendas.");
-    const records = new Map<string, SaiposSale>();
+    const records = new Map<string, SaiposCrmSale>();
+    const pageSize = customers ? 100 : TAMANHO_PAGINA;
     for (const window of windows(period)) {
       let previousPage = "";
       for (let page = 0; ; page++) {
@@ -221,11 +236,14 @@ export class SaiposClient {
         const raw = await this.request(
           "search_sales",
           window,
-          page * TAMANHO_PAGINA,
+          page * pageSize,
+          pageSize,
         );
         // Consulta real sem vendas em 25/10/2026 retornou HTTP 200 com null.
         // Somente esse valor equivale à página vazia; objetos inválidos falham.
-        const parsed = z.array(saleSchema).safeParse(raw === null ? [] : raw);
+        const parsed = z
+          .array(customers ? crmSaleSchema : saleSchema)
+          .safeParse(raw === null ? [] : raw);
         if (!parsed.success)
           throw new SaiposError(
             "format",
@@ -245,7 +263,7 @@ export class SaiposClient {
           if (!previous || sale.updated_at >= previous.updated_at)
             records.set(key, sale);
         }
-        if (parsed.data.length < TAMANHO_PAGINA) break;
+        if (parsed.data.length < pageSize) break;
       }
     }
     return [...records.values()];
