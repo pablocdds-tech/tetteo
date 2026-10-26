@@ -12,12 +12,14 @@ export function ConferenciaCanais({
   de,
   ate,
   diretor,
+  unidadeId,
   salvarReferencia,
 }: {
   dados: Awaited<ReturnType<typeof consultarVendas>>;
   de: string;
   ate: string;
   diretor: boolean;
+  unidadeId: string | null;
   salvarReferencia?: SalvarReferencia;
 }) {
   const estado = dados.conferencia.estado;
@@ -88,7 +90,7 @@ export function ConferenciaCanais({
             · versão {dados.referencia.versao}.
           </p>
         )}
-        {diretor && salvarReferencia && (
+        {diretor && unidadeId && salvarReferencia && (
           <details className="mt-4">
             <summary className="text-accent cursor-pointer py-2 font-medium">
               {dados.referencia
@@ -100,6 +102,7 @@ export function ConferenciaCanais({
                 .map((v) => v.unidadeId)
                 .sort()
                 .join(",")}`}
+              unidadeId={unidadeId}
               de={de}
               ate={ate}
               totalInicial={

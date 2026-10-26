@@ -7,12 +7,14 @@ export type SalvarReferencia = (
   dados: FormData,
 ) => Promise<{ ok: boolean; mensagem: string; versao?: number }>;
 export function ReferenciaForm({
+  unidadeId,
   de,
   ate,
   totalInicial,
   versao,
   salvarAction,
 }: {
+  unidadeId: string;
   de: string;
   ate: string;
   totalInicial: string;
@@ -58,6 +60,7 @@ export function ReferenciaForm({
       data-edicao-pendente={edicao !== null ? "true" : "false"}
       className="mt-4 space-y-3"
     >
+      <input type="hidden" name="unidadeId" value={unidadeId} />
       <input type="hidden" name="de" value={de} />
       <input type="hidden" name="ate" value={ate} />
       <input
