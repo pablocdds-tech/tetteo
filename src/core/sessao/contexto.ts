@@ -5,6 +5,7 @@ import { auth } from "@/core/auth";
 import { db } from "@/server/db";
 
 import type { ContextoSessao, UnidadeVisivel } from "./nucleo";
+import { acessosNaOrganizacao } from "./escopo-acessos";
 
 /**
  * O CONTEXTO DA SESSÃO.
@@ -40,7 +41,7 @@ export const obterContexto = cache(async (): Promise<ContextoSessao | null> => {
   const sessao = await auth();
   if (!sessao?.user?.id) return null;
 
-  const acessos = await db.acesso.findMany({
+  const todosAcessos = await db.acesso.findMany({
     where: {
       usuarioId: sessao.user.id,
       status: "ATIVO",
@@ -52,16 +53,27 @@ export const obterContexto = cache(async (): Promise<ContextoSessao | null> => {
         select: { id: true, nome: true, email: true, avatarUrl: true },
       },
       organizacao: { select: { id: true, nome: true } },
-      unidade: { select: { id: true, nome: true, codigo: true } },
+      unidade: {
+        select: {
+          id: true,
+          nome: true,
+          codigo: true,
+          organizacaoId: true,
+          ativa: true,
+          excluidoEm: true,
+        },
+      },
       papel: { include: { permissoes: { select: { chave: true } } } },
     },
     orderBy: { criadoEm: "asc" },
   });
 
-  if (acessos.length === 0) return null;
+  if (todosAcessos.length === 0) return null;
 
-  const primeiro = acessos[0];
+  const primeiro = todosAcessos[0];
   const organizacao = primeiro.organizacao;
+  const acessos = acessosNaOrganizacao(todosAcessos, organizacao.id);
+  if (!acessos.length) return null;
 
   // Acesso com unidade vazia = REDE INTEIRA.
   const acessosDeRede = acessos.filter((a) => a.unidadeId === null);

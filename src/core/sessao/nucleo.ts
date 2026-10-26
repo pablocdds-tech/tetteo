@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { acessosNaOrganizacao } from "./escopo-acessos";
 
 /**
  * O NÚCLEO DA SESSÃO — o que não depende do Next.
@@ -62,7 +63,7 @@ export async function contextoDeFundo(
   usuarioId: string,
   unidadeId: string | null,
 ): Promise<ContextoSessao | null> {
-  const acessos = await db.acesso.findMany({
+  const todosAcessos = await db.acesso.findMany({
     where: {
       usuarioId,
       status: "ATIVO",
@@ -74,16 +75,27 @@ export async function contextoDeFundo(
         select: { id: true, nome: true, email: true, avatarUrl: true },
       },
       organizacao: { select: { id: true, nome: true } },
-      unidade: { select: { id: true, nome: true, codigo: true } },
+      unidade: {
+        select: {
+          id: true,
+          nome: true,
+          codigo: true,
+          organizacaoId: true,
+          ativa: true,
+          excluidoEm: true,
+        },
+      },
       papel: { include: { permissoes: { select: { chave: true } } } },
     },
     orderBy: { criadoEm: "asc" },
   });
 
-  if (acessos.length === 0) return null;
+  if (todosAcessos.length === 0) return null;
 
-  const primeiro = acessos[0];
+  const primeiro = todosAcessos[0];
   const organizacao = primeiro.organizacao;
+  const acessos = acessosNaOrganizacao(todosAcessos, organizacao.id);
+  if (!acessos.length) return null;
 
   const podeVerRedeInteira = acessos.some((a) => a.unidadeId === null);
 

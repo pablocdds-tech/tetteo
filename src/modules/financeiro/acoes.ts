@@ -8,7 +8,6 @@ import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 
 import {
   esquemaCategoria,
-  esquemaConta,
   esquemaLancamento,
   esquemaQuitacao,
 } from "./schemas/entradas";
@@ -16,7 +15,6 @@ import {
   desativarCategoria,
   importarNotas,
   salvarCategoria,
-  salvarConta,
 } from "./services/cadastros";
 import {
   cancelarLancamento,
@@ -181,38 +179,6 @@ export async function desativarCategoriaAcao(dados: FormData) {
 
   await desativarCategoria(contexto, id);
   revalidatePath("/financeiro/categorias");
-}
-
-export async function salvarContaAcao(
-  _anterior: EstadoFinanceiro,
-  dados: FormData,
-): Promise<EstadoFinanceiro> {
-  const contexto = await obterContexto();
-  if (!contexto) redirect("/login");
-
-  const analise = esquemaConta.safeParse({
-    nome: dados.get("nome") ?? "",
-    tipo: dados.get("tipo") ?? "BANCO",
-    saldoInicial: dados.get("saldoInicial") || "0",
-  });
-  if (!analise.success) return { erros: coletarErros(analise.error.issues) };
-
-  try {
-    await salvarConta(
-      contexto,
-      String(dados.get("id") ?? "") || null,
-      analise.data,
-    );
-  } catch (erro) {
-    if (erro instanceof Error && erro.message.includes("Unique constraint")) {
-      return { erros: { nome: "Já existe uma conta com esse nome." } };
-    }
-    return comoErro(erro);
-  }
-
-  revalidatePath("/financeiro/categorias");
-  revalidatePath("/financeiro");
-  return { ok: "Conta salva." };
 }
 
 export async function importarNotasAcao(

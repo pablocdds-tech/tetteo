@@ -1,6 +1,8 @@
-import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
+import { listarSaldosBancarios } from "./bancos";
+import { centavos, reais } from "../schemas/bancos";
 
 import {
   calcularResultado,
@@ -122,6 +124,14 @@ export async function criarLancamento(
   }
   const unidade = exigirUnidade(contexto);
 
+  if (
+    dados.contaId &&
+    !(await db.contaFinanceira.count({
+      where: { id: dados.contaId, unidadeId: unidade.id, ativa: true },
+    }))
+  )
+    throw new Error("Conta bancária não encontrada ou inativa.");
+
   const valores = dividirEmParcelas(dados.valor, dados.parcelas);
   const datas = vencimentosMensais(dados.vencimento, dados.parcelas);
   const grupo = dados.parcelas > 1 ? crypto.randomUUID() : null;
@@ -168,12 +178,27 @@ export async function quitarLancamento(
 
   const lancamento = await db.lancamento.findFirst({
     where: { id, unidadeId: unidade.id, canceladoEm: null },
-    select: { id: true, status: true, valor: true, descricao: true },
+    select: {
+      id: true,
+      status: true,
+      valor: true,
+      descricao: true,
+      contaId: true,
+    },
   });
   if (!lancamento) throw new Error("Lançamento não encontrado.");
   if (lancamento.status === "QUITADO") {
     throw new Error("Esta conta já foi quitada.");
   }
+
+  const contaId = dados.contaId ?? lancamento.contaId;
+  if (
+    contaId &&
+    !(await db.contaFinanceira.count({
+      where: { id: contaId, unidadeId: unidade.id, ativa: true },
+    }))
+  )
+    throw new Error("Conta bancária não encontrada ou inativa.");
 
   await db.lancamento.update({
     where: { id },
@@ -286,7 +311,7 @@ export async function visaoDoCaixa(contexto: ContextoSessao, dias = 30) {
   }
   const unidade = exigirUnidade(contexto);
 
-  const [abertos, contas, quitados] = await Promise.all([
+  const [abertos, contas, quitadosSemConta] = await Promise.all([
     db.lancamento.findMany({
       where: { unidadeId: unidade.id, status: "ABERTO", canceladoEm: null },
       select: {
@@ -299,27 +324,34 @@ export async function visaoDoCaixa(contexto: ContextoSessao, dias = 30) {
         valorQuitado: true,
       },
     }),
-    db.contaFinanceira.findMany({
-      where: { unidadeId: unidade.id, ativa: true },
-      select: { id: true, nome: true, tipo: true, saldoInicial: true },
-    }),
+    listarSaldosBancarios(contexto),
     // O saldo real é o inicial mais tudo que já foi quitado. Projetar a partir
     // de zero mostraria um caixa negativo desde o primeiro dia de uso.
     db.lancamento.groupBy({
       by: ["direcao"],
-      where: { unidadeId: unidade.id, status: "QUITADO" },
+      where: {
+        unidadeId: unidade.id,
+        status: "QUITADO",
+        contaId: null,
+        canceladoEm: null,
+        quitadoEm: { lte: new Date() },
+      },
       _sum: { valorQuitado: true },
     }),
   ]);
 
-  const saldoInicial = contas.reduce((s, c) => s + Number(c.saldoInicial), 0);
-  const entrou = Number(
-    quitados.find((q) => q.direcao === "RECEBER")?._sum.valorQuitado ?? 0,
+  const saldoSemContaCentavos = quitadosSemConta.reduce(
+    (s, q) =>
+      s +
+      centavos(q._sum.valorQuitado ?? 0) * (q.direcao === "RECEBER" ? 1n : -1n),
+    0n,
   );
-  const saiu = Number(
-    quitados.find((q) => q.direcao === "PAGAR")?._sum.valorQuitado ?? 0,
+  const saldoAtual = Number(
+    reais(
+      contas.reduce((s, c) => s + centavos(c.saldo), saldoSemContaCentavos),
+    ),
   );
-  const saldoAtual = Math.round((saldoInicial + entrou - saiu) * 100) / 100;
+  const saldoSemConta = Number(reais(saldoSemContaCentavos));
 
   const paraFluxo: LancamentoParaFluxo[] = abertos.map((l) => ({
     id: l.id,
@@ -335,6 +367,7 @@ export async function visaoDoCaixa(contexto: ContextoSessao, dias = 30) {
 
   return {
     saldoAtual,
+    saldoSemConta,
     contas: contas.map((c) => ({
       id: c.id,
       nome: c.nome,
@@ -361,6 +394,7 @@ export async function resultadoDoPeriodo(
       unidadeId: unidade.id,
       status: "QUITADO",
       quitadoEm: { gte: de, lte: ate },
+      OR: [{ categoria: null }, { categoria: { entraDre: true } }],
     },
     select: {
       direcao: true,
@@ -435,6 +469,7 @@ export async function movimentosParaDre(
     where: {
       unidadeId: unidade.id,
       canceladoEm: null,
+      OR: [{ categoria: null }, { categoria: { entraDre: true } }],
       ...(base === "caixa"
         ? { status: "QUITADO", quitadoEm: { gte: de, lte: ate } }
         : { status: { not: "CANCELADO" }, vencimento: { gte: de, lte: ate } }),

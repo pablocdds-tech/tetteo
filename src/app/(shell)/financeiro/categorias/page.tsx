@@ -3,10 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { AvisoUnidade } from "@/modules/financeiro/components/aviso-unidade";
 import { Cadastros } from "@/modules/financeiro/components/cadastros";
-import {
-  listarCategorias,
-  listarContas,
-} from "@/modules/financeiro/services/cadastros";
+import { listarCategorias } from "@/modules/financeiro/services/cadastros";
 
 export default async function PaginaCadastros() {
   const contexto = await obterContexto();
@@ -21,10 +18,7 @@ export default async function PaginaCadastros() {
     );
   }
 
-  const [categorias, contas] = await Promise.all([
-    listarCategorias(contexto),
-    listarContas(contexto),
-  ]);
+  const categorias = await listarCategorias(contexto);
 
   return (
     <div className="mx-auto w-full max-w-5xl">
@@ -44,13 +38,6 @@ export default async function PaginaCadastros() {
             grupo: c.grupo,
             grupoDre: c.grupoDre,
             ehSistema: c.ehSistema,
-            ativa: c.ativa,
-          }))}
-          contas={contas.map((c) => ({
-            id: c.id,
-            nome: c.nome,
-            tipo: c.tipo,
-            saldoInicial: Number(c.saldoInicial),
             ativa: c.ativa,
           }))}
         />

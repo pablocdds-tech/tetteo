@@ -4,12 +4,11 @@ import { useActionState, useRef } from "react";
 
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
-import { formatarMoeda } from "@/lib/numero";
+import Link from "next/link";
 
 import {
   desativarCategoriaAcao,
   salvarCategoriaAcao,
-  salvarContaAcao,
   type EstadoFinanceiro,
 } from "../acoes";
 
@@ -38,7 +37,6 @@ const ESTILO_SELECT =
  */
 export function Cadastros({
   categorias,
-  contas,
 }: {
   categorias: {
     id: string;
@@ -49,122 +47,28 @@ export function Cadastros({
     ehSistema: boolean;
     ativa: boolean;
   }[];
-  contas: {
-    id: string;
-    nome: string;
-    tipo: string;
-    saldoInicial: number;
-    ativa: boolean;
-  }[];
 }) {
   const [estadoCat, acaoCat, salvandoCat] = useActionState<
     EstadoFinanceiro,
     FormData
   >(salvarCategoriaAcao, {});
-  const [estadoConta, acaoConta, salvandoConta] = useActionState<
-    EstadoFinanceiro,
-    FormData
-  >(salvarContaAcao, {});
 
   const formCat = useRef<HTMLFormElement>(null);
-  const formConta = useRef<HTMLFormElement>(null);
 
   return (
     <div className="grid gap-10 lg:grid-cols-2">
-      <section>
-        <h2 className="font-semibold">Contas e caixa</h2>
-        <p className="text-ink-3 mt-1 text-sm">
-          Onde o dinheiro fica. O saldo inicial é o do dia em que você começou a
-          usar o sistema — sem ele, o saldo aqui nunca bate com o real.
+      <section className="border-line bg-surface-2 self-start rounded-xl border p-5">
+        <h2 className="font-semibold">Contas bancárias por CNPJ</h2>
+        <p className="text-ink-3 mt-2 text-sm">
+          Cadastre bancos, contas pessoais usadas pela loja e o caixa físico.
+          Confira saldos e transferências no mesmo lugar.
         </p>
-
-        {contas.length === 0 ? (
-          <p className="border-line-2 text-ink-3 mt-3 rounded-xl border border-dashed px-4 py-6 text-center text-sm">
-            Nenhuma conta ainda. Cadastre pelo menos a gaveta do caixa.
-          </p>
-        ) : (
-          <div className="border-line divide-line mt-3 divide-y rounded-xl border">
-            {contas.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{c.nome}</span>
-                  <span className="text-ink-3 block text-xs">
-                    {c.tipo === "CAIXA" ? "Caixa" : "Banco"}
-                  </span>
-                </span>
-                <span className="text-ink-2 tabular-nums">
-                  {formatarMoeda(c.saldoInicial)}
-                  <span className="text-ink-3 block text-[10px]">inicial</span>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <form
-          ref={formConta}
-          action={(d) => {
-            acaoConta(d);
-            formConta.current?.reset();
-          }}
-          className="border-line bg-surface-2 mt-3 flex flex-col gap-3 rounded-xl border p-4"
+        <Link
+          href="/financeiro/contas"
+          className="text-accent mt-4 inline-block text-sm font-semibold"
         >
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Campo
-              rotulo="Nome"
-              name="nome"
-              placeholder="Ex.: Caixa da loja"
-              erro={estadoCat.erros?.nome ?? estadoConta.erros?.nome}
-              required
-            />
-            <div className="flex w-full flex-col gap-1.5">
-              <label
-                htmlFor="tipoConta"
-                className="text-ink-2 text-sm font-semibold"
-              >
-                Tipo
-              </label>
-              <select
-                id="tipoConta"
-                name="tipo"
-                defaultValue="BANCO"
-                className={ESTILO_SELECT}
-              >
-                <option value="BANCO">Banco</option>
-                <option value="CAIXA">Caixa (gaveta)</option>
-              </select>
-            </div>
-          </div>
-
-          <Campo
-            rotulo="Saldo inicial"
-            name="saldoInicial"
-            inputMode="decimal"
-            placeholder="0,00"
-            erro={estadoConta.erros?.saldoInicial}
-            ajuda="Quanto havia quando você começou a usar o sistema."
-          />
-
-          {estadoConta.erro && (
-            <p className="bg-bad-sub text-bad rounded-md px-3 py-2 text-sm">
-              {estadoConta.erro}
-            </p>
-          )}
-
-          <div>
-            <Botao
-              type="submit"
-              peso="secundario"
-              tamanho="pequeno"
-              carregando={salvandoConta}
-            >
-              Adicionar conta
-            </Botao>
-          </div>
-        </form>
+          Abrir contas bancárias →
+        </Link>
       </section>
 
       <section>

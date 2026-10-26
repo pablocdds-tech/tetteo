@@ -42,22 +42,90 @@ model ContaFinanceira {
   nome String
   tipo TipoDeConta @default(BANCO)
 
+  /// Vínculo explícito: contas anteriores permanecem sem empresa até revisão.
+  empresaId    String?
+  empresa      EmpresaFinanceira? @relation(fields: [unidadeId, empresaId], references: [unidadeId, id])
+  modalidade   String?
+  banco        String?
+  agencia      String?
+  numero       String?
+  identidade   String?
+  titularidade String?
+  nomeTitular  String?
+  cor          String             @default("#0066cc")
+  compensacao  Boolean            @default(false)
+  versao       Int                @default(0)
+
   /// O saldo do dia em que a conta entrou no sistema. Sem ele, o saldo atual
   /// seria a soma dos lançamentos digitados — que começa em zero e mente até
   /// alguém ter lançado a história inteira.
   saldoInicial Decimal  @default(0) @db.Decimal(14, 2)
+  saldoInicialCentavos BigInt?
   iniciadaEm   DateTime @default(now())
+  corteAplicado Boolean @default(false)
 
   ativa Boolean @default(true)
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  lancamentos Lancamento[]
+  lancamentos             Lancamento[]
+  transferenciasEnviadas  TransferenciaFinanceira[] @relation("TransferenciaOrigem")
+  transferenciasRecebidas TransferenciaFinanceira[] @relation("TransferenciaDestino")
 
-  @@unique([unidadeId, nome])
+  @@unique([unidadeId, id])
+  @@unique([unidadeId, empresaId, id])
+  @@unique([unidadeId, empresaId, nome])
+  @@unique([unidadeId, identidade])
   @@index([unidadeId, ativa])
   @@map("conta_financeira")
+}
+
+/// Uma operação física pode movimentar vários CNPJs.
+model EmpresaFinanceira {
+  id             String                    @id @default(cuid())
+  organizacaoId  String
+  unidadeId      String
+  nome           String
+  razaoSocial    String
+  cnpj           String
+  regime         String
+  emiteNota      Boolean                   @default(false)
+  ativa          Boolean                   @default(true)
+  criadoEm       DateTime                  @default(now())
+  contas         ContaFinanceira[]
+  transferencias TransferenciaFinanceira[]
+
+  @@unique([unidadeId, id])
+  @@unique([unidadeId, cnpj])
+  @@map("empresa_financeira")
+}
+
+/// Um registro produz as duas pernas. Não é lançamento de receita/despesa.
+model TransferenciaFinanceira {
+  id          String                   @id @default(cuid())
+  unidadeId   String
+  empresaId   String
+  empresa     EmpresaFinanceira        @relation(fields: [unidadeId, empresaId], references: [unidadeId, id])
+  origemId    String
+  origem      ContaFinanceira          @relation("TransferenciaOrigem", fields: [unidadeId, empresaId, origemId], references: [unidadeId, empresaId, id])
+  destinoId   String
+  destino     ContaFinanceira          @relation("TransferenciaDestino", fields: [unidadeId, empresaId, destinoId], references: [unidadeId, empresaId, id])
+  valorCentavos BigInt
+  data        DateTime                 @db.Date
+  descricao   String
+  criadoPorId String
+  criadoEm    DateTime                 @default(now())
+  chave       String
+  assinatura  String
+  estornoDeId String?                  @unique
+  estornoDe   TransferenciaFinanceira? @relation("EstornoTransferencia", fields: [estornoDeId], references: [id])
+  estorno     TransferenciaFinanceira? @relation("EstornoTransferencia")
+
+  @@unique([unidadeId, chave])
+  @@index([unidadeId, origemId, data])
+  @@index([unidadeId, destinoId, data])
+  @@map("transferencia_financeira")
 }
 
 enum TipoDeCategoria {
@@ -99,6 +167,7 @@ enum GrupoDre {
 model CategoriaFinanceira {
   id            String @id @default(cuid())
   organizacaoId String
+  entraDre Boolean @default(true)
 
   nome String
   tipo TipoDeCategoria

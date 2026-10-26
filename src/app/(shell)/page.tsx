@@ -165,9 +165,15 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
         key="caixa"
         rotulo="Saldo em caixa"
         valor={formatarMoeda(caixa.saldoAtual)}
-        apoio={`Soma das ${caixa.contas.length} ${
-          caixa.contas.length === 1 ? "conta ativa" : "contas ativas"
-        } · hoje`}
+        apoio={
+          caixa.saldoSemConta !== 0
+            ? "Inclui baixas sem conta bancária vinculada · hoje"
+            : `Soma das ${caixa.contas.length} ${
+                caixa.contas.length === 1
+                  ? "conta cadastrada"
+                  : "contas cadastradas"
+              } · hoje`
+        }
       />
     ) : null,
 

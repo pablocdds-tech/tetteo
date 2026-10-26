@@ -1,4 +1,4 @@
-import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import type { GrupoDre } from "../schemas/dre";
 import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
@@ -86,11 +86,7 @@ export async function listarCategorias(contexto: ContextoSessao) {
     throw new SemPermissao("ver o financeiro");
   }
 
-  const existentes = await db.categoriaFinanceira.count({
-    where: { organizacaoId: contexto.organizacao.id },
-  });
-
-  if (existentes === 0 && pode(contexto, "financeiro.lancar")) {
+  if (pode(contexto, "financeiro.lancar")) {
     await db.categoriaFinanceira.createMany({
       data: PADRAO.map((c) => ({
         organizacaoId: contexto.organizacao.id,
@@ -172,34 +168,15 @@ export async function listarContas(contexto: ContextoSessao) {
   }
   const unidade = exigirUnidade(contexto);
 
-  return db.contaFinanceira.findMany({
-    where: { unidadeId: unidade.id },
+  const contas = await db.contaFinanceira.findMany({
+    where: { unidadeId: unidade.id, ativa: true },
+    include: { empresa: { select: { nome: true } } },
     orderBy: [{ ativa: "desc" }, { nome: "asc" }],
   });
-}
-
-export async function salvarConta(
-  contexto: ContextoSessao,
-  id: string | null,
-  dados: { nome: string; tipo: "CAIXA" | "BANCO"; saldoInicial: number },
-) {
-  if (!pode(contexto, "financeiro.lancar")) {
-    throw new SemPermissao("cadastrar contas bancárias");
-  }
-  const unidade = exigirUnidade(contexto);
-
-  if (!id) {
-    return db.contaFinanceira.create({
-      data: { unidadeId: unidade.id, ...dados },
-    });
-  }
-
-  const existe = await db.contaFinanceira.count({
-    where: { id, unidadeId: unidade.id },
-  });
-  if (!existe) throw new Error("Conta não encontrada.");
-
-  return db.contaFinanceira.update({ where: { id }, data: dados });
+  return contas.map((c) => ({
+    ...c,
+    nome: `${c.nome} · ${c.empresa?.nome ?? "CNPJ a vincular"}`,
+  }));
 }
 
 // ---------------------------------------------------------------------------

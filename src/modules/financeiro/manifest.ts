@@ -27,6 +27,7 @@ export const manifestoFinanceiro: ManifestoDoApp = {
   rota: "/financeiro",
   navegacao: [
     { rota: "/financeiro", nome: "Visão do caixa" },
+    { rota: "/financeiro/contas", nome: "Contas bancárias" },
     { rota: "/financeiro/pagar", nome: "Contas a pagar" },
     { rota: "/financeiro/receber", nome: "Contas a receber" },
     { rota: "/financeiro/conferencia", nome: "Conferência de recebimentos" },

@@ -82,6 +82,14 @@ export default async function PaginaFinanceiro() {
         </div>
       )}
 
+      {caixa.saldoSemConta !== 0 && (
+        <p className="bg-warn-sub text-warn mt-4 rounded-md p-3 text-sm">
+          {formatarMoeda(caixa.saldoSemConta)} do saldo vêm de baixas sem conta
+          bancária vinculada. Revise essas baixas para conferir os saldos por
+          banco.
+        </p>
+      )}
+
       <section className="mt-8">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="font-semibold">Quando vence</h2>
