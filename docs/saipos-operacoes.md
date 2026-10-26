@@ -14,6 +14,12 @@ O cliente existente continua importando vendas e clientes. Com
 incremental: `updated_at`, com sobreposição de dois dias. Esse cursor é separado
 do de vendas. A cobertura histórica anterior não é prometida por essa etapa.
 
+Na validação real de 26/10/2026, `sales_items` retornou códigos PDV numéricos e
+`items: null` em vendas sem itens na agregação. O conector normaliza o código
+para texto e somente o `null` explícito para lista vazia; campos ausentes ou
+itens malformados continuam recusados, sem avançar cursor. A inspeção registrou
+apenas tipos/nomes de campos, sem persistir respostas pessoais.
+
 O snapshot de itens e histórico só entra em vendas já vinculadas à unidade.
 Campos desconhecidos, observações livres e dados de usuários são descartados.
 As versões de detalhes impedem que uma resposta antiga sobrescreva a mais recente.

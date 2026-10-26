@@ -11,7 +11,11 @@ import {
 import { configOperacao } from "./operacao-config";
 import { comandoPedido, PedidosSaipos, FalhaPedidos } from "./pedidos";
 import { SaiposClient } from "./client";
-import { produtosVendidos } from "./detalhes";
+import {
+  produtosVendidos,
+  itensVendaSaipos,
+  historicosVendaSaipos,
+} from "./detalhes";
 
 test("payload cifrado fica vinculado à unidade e tokens não cruzam merchants/ambientes", () => {
   const old = process.env.SAIPOS_OPERATIONS_KEY;
@@ -54,6 +58,45 @@ test("corpo sem content-length também é limitado", async () => {
       }),
       10,
     ),
+  );
+});
+
+test("contrato observado aceita código PDV numérico e agregação null sem aceitar item malformado", () => {
+  const envelope = {
+    id_store: 1,
+    id_sale: 2,
+    updated_at: "2026-10-26T10:00:00",
+  };
+  assert.deepEqual(
+    itensVendaSaipos.parse({ ...envelope, items: null }).items,
+    [],
+  );
+  assert.deepEqual(
+    historicosVendaSaipos.parse({ ...envelope, histories: null }).histories,
+    [],
+  );
+  const item = {
+    id_sale_item: 3,
+    desc_sale_item: "Produto de teste",
+    integration_code: 456,
+    quantity: 1,
+    unit_price: 12.5,
+    deleted: "N",
+  };
+  assert.equal(
+    itensVendaSaipos.parse({ ...envelope, items: [item] }).items[0]
+      .integration_code,
+    "456",
+  );
+  assert.throws(() => itensVendaSaipos.parse(envelope));
+  assert.throws(() =>
+    itensVendaSaipos.parse({
+      ...envelope,
+      items: [{ ...item, unit_price: "12.5" }],
+    }),
+  );
+  assert.throws(() =>
+    itensVendaSaipos.parse({ ...envelope, items: { invalid: true } }),
   );
 });
 test("pedido não pode carregar loja ou campos arbitrários e exige endereço delivery", () => {

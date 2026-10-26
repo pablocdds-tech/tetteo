@@ -12,7 +12,11 @@ export const itemSaipos = z.object({
   id_sale_item: id,
   id_store_item: id.nullish(),
   desc_sale_item: z.string().max(500),
-  integration_code: z.string().max(100).nullish(),
+  // A API real também devolve o código PDV como número inteiro.
+  integration_code: z
+    .union([z.string().max(100), id])
+    .transform(String)
+    .nullish(),
   quantity: z.number().finite().nonnegative(),
   unit_price: z.number().finite().nonnegative(),
   deleted: z.enum(["Y", "N"]),
@@ -34,10 +38,19 @@ const envelope = z.object({
   updated_at: z.string().max(50),
 });
 export const itensVendaSaipos = envelope.extend({
-  items: z.array(itemSaipos).max(10000),
+  // Agregações sem itens retornam null na origem (observado em 26/10/2026).
+  items: z
+    .array(itemSaipos)
+    .max(10000)
+    .nullable()
+    .transform((value) => value ?? []),
 });
 export const historicosVendaSaipos = envelope.extend({
-  histories: z.array(historicoSaipos).max(10000),
+  histories: z
+    .array(historicoSaipos)
+    .max(10000)
+    .nullable()
+    .transform((value) => value ?? []),
 });
 export type ItensVendaSaipos = z.infer<typeof itensVendaSaipos>;
 export type HistoricosVendaSaipos = z.infer<typeof historicosVendaSaipos>;
