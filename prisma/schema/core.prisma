@@ -84,6 +84,7 @@ model Unidade {
   notificacoes Notificacao[]
   sessoes      Sessao[]
   saiposVinculos SaiposVinculo[]
+  saiposOperacoes SaiposOperacao[]
   conferenciasImportadas ConferenciaImportacao[]
   conferenciasContratos ConferenciaContrato[]
   conferenciasExecucoes ConferenciaExecucao[]

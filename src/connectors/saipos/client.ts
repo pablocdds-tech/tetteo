@@ -2,6 +2,12 @@ import { z } from "zod";
 import { ControleRequisicoesSaipos, TAMANHO_PAGINA } from "./limites";
 import { customerSchema } from "./clientes";
 import { codigoConexao } from "./indisponibilidade";
+import {
+  itensVendaSaipos,
+  historicosVendaSaipos,
+  type ItensVendaSaipos,
+  type HistoricosVendaSaipos,
+} from "./detalhes";
 
 const BASE = "https://data.saipos.io/v1/";
 const DAY = 86_400_000;
@@ -364,6 +370,69 @@ export class SaiposClient {
       "maintenance",
       "Endpoint de estoque em manutenção segundo a documentação oficial; integração indisponível.",
     );
+  }
+  async items(period: Period, storeId: number): Promise<ItensVendaSaipos[]> {
+    return this.readDetails("sales_items", itensVendaSaipos, period, storeId);
+  }
+  async histories(
+    period: Period,
+    storeId: number,
+  ): Promise<HistoricosVendaSaipos[]> {
+    return this.readDetails(
+      "sales_status_histories",
+      historicosVendaSaipos,
+      period,
+      storeId,
+    );
+  }
+  private async readDetails<
+    T extends { id_store: number; id_sale: number; updated_at: string },
+  >(
+    path: string,
+    schema: z.ZodType<T>,
+    period: Period,
+    storeId: number,
+  ): Promise<T[]> {
+    if (!Number.isSafeInteger(storeId) || storeId <= 0)
+      throw new SaiposError("store", "Informe a loja Saipos autorizada.");
+    if (!["shift_date", "created_at", "updated_at"].includes(period.column))
+      throw new SaiposError(
+        "period",
+        "Filtro inválido para detalhes de vendas.",
+      );
+    const records = new Map<number, T>();
+    for (const window of windows(period)) {
+      let previous = "";
+      for (let page = 0; ; page++) {
+        if (page >= 1000)
+          throw new SaiposError(
+            "pagination",
+            "Limite de páginas de detalhes atingido.",
+          );
+        const raw = await this.request(path, window, page * 100, 100);
+        const parsed = z.array(schema).safeParse(raw === null ? [] : raw);
+        if (!parsed.success)
+          throw new SaiposError(
+            "format",
+            "Formato dos detalhes Saipos mudou; cursor preservado.",
+          );
+        const signature = JSON.stringify(parsed.data);
+        if (parsed.data.length && signature === previous)
+          throw new SaiposError(
+            "pagination",
+            "Saipos repetiu uma página de detalhes.",
+          );
+        previous = signature;
+        for (const row of parsed.data) {
+          if (row.id_store !== storeId) continue;
+          const old = records.get(row.id_sale);
+          if (!old || row.updated_at >= old.updated_at)
+            records.set(row.id_sale, row);
+        }
+        if (parsed.data.length < 100) break;
+      }
+    }
+    return [...records.values()];
   }
   async incremental(
     cursor: Cursor,

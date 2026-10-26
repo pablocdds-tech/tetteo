@@ -1,5 +1,6 @@
 import { normalizarVenda } from "./normalizar";
 import { randomUUID } from "node:crypto";
+import { sincronizarDetalhes } from "./sincronizar-detalhes";
 import { db } from "@/server/db";
 import { SaiposClient, SaiposError, type SaiposSale } from "./client";
 import {
@@ -347,6 +348,8 @@ export function iniciarRelogioSaipos() {
           manual ? vinculo.solicitadaEm! : undefined,
         );
       }
+      if (process.env.SAIPOS_DETAILS_ENABLED === "true")
+        await sincronizarDetalhes(vinculo.id);
     } catch {
       console.error(
         "[saipos] Sincronização não concluída; verifique configuração e estado da integração.",

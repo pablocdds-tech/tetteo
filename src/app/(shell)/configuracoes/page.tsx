@@ -70,15 +70,23 @@ export default async function PaginaConfiguracoes() {
       <section className="mt-10">
         <h2 className="font-semibold">Integrações</h2>
         <Link
+          href="/configuracoes/integracoes/saipos"
+          className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"
+        >
+          <p className="font-semibold">Saipos</p>
+          <p className="text-ink-3 mt-1 text-sm">
+            Vendas, clientes, produtos, pedidos no PDV e operação de entregas
+            por unidade.
+          </p>
+        </Link>
+        <Link
           href="/configuracoes/integracoes"
           className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"
         >
           <p className="font-semibold">Conexões de IA</p>
           <p className="text-ink-3 mt-1 max-w-lg text-sm">
             Quem autorizou uma IA a consultar o Tetteo, de qual loja, e o botão
-            de revogar. A ligação com o seu PDV ainda não existe — e um campo de
-            token que não conecta em lugar nenhum seria só enfeite, então ele
-            não está aqui.
+            de revogar o acesso.
           </p>
         </Link>
       </section>

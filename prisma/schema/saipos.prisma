@@ -1,5 +1,5 @@
-// Apenas campos operacionais verificados na API real. Nenhum cliente, telefone,
-// endereço, observação ou token é persistido.
+// Vendas operacionais e snapshots de itens/status validados pelo contrato.
+// Dados pessoais dos pedidos/entregas ficam cifrados em SaiposOperacao.
 model SaiposVinculo {
   id String @id @default(cuid())
   organizacaoId String
@@ -23,6 +23,12 @@ model SaiposVinculo {
   ultimoErroCanais String?
   referencias SaiposReferenciaFechamento[]
   vendas SaiposVenda[]
+  detalhesCursor String? @db.VarChar(19)
+  detalhesTentativaEm DateTime?
+  detalhesSucessoEm DateTime?
+  detalhesErro String?
+  detalhesDono String?
+  detalhesAte DateTime?
   @@unique([organizacaoId, unidadeId])
   @@map("saipos_vinculo")
 }
@@ -45,6 +51,11 @@ model SaiposVenda {
   criadoEm DateTime @default(now())
   atualizadoEm DateTime @updatedAt
   excluidoEm DateTime?
+  itensSaipos Json?
+  historicoSaipos Json?
+  detalhesEm DateTime?
+  itensAtualizadosEm DateTime?
+  historicoAtualizadoEm DateTime?
   @@unique([organizacaoId, unidadeId, vendaExternaId])
   @@index([organizacaoId, unidadeId, dataTurno, cancelada])
   @@unique([unidadeId, id])
@@ -68,4 +79,28 @@ model SaiposReferenciaFechamento {
   excluidoEm DateTime?
   @@unique([organizacaoId, unidadeId, de, ate])
   @@map("saipos_referencia_fechamento")
+}
+
+// Conteúdos operacionais podem conter endereço e telefone: somente cifrados.
+model SaiposOperacao {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  unidade Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  ambiente String
+  tipo String
+  chave String @db.VarChar(200)
+  referencia String @db.VarChar(100)
+  hash String @db.VarChar(64)
+  estado String
+  payloadCifrado String
+  respostaCifrada String?
+  erro String?
+  versao Int @default(1)
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  excluidoEm DateTime?
+  @@unique([organizacaoId, unidadeId, ambiente, tipo, chave])
+  @@index([organizacaoId, unidadeId, ambiente, tipo, criadoEm])
+  @@map("saipos_operacao")
 }

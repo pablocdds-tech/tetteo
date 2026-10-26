@@ -9,6 +9,7 @@ export async function syncSaiposLinks(storeId: string) {
   await prisma.$executeRaw`
     UPDATE "CrmSale" c SET
       "totalAmount" = s."totalCentavos"::numeric / 100,
+      "itemsJson" = COALESCE(s."itensSaipos", c."itemsJson"),
       "netRevenueCents" = NULL,
       "status" = CASE WHEN s.cancelada OR s."excluidoEm" IS NOT NULL THEN 'CANCELLED'::"SaleStatus" ELSE 'COMPLETED'::"SaleStatus" END,
       "soldAt" = s."criadaNoSaiposEm", "providerUpdatedAt"=s."alteradaNoSaiposEm", "updatedAt" = NOW()
@@ -16,6 +17,7 @@ export async function syncSaiposLinks(storeId: string) {
     WHERE c."storeId" = ${storeId} AND s."unidadeId" = c."storeId" AND s.id = c."saiposVendaId"
       AND (c."providerUpdatedAt" IS NULL OR c."providerUpdatedAt" <= s."alteradaNoSaiposEm")
       AND (c."totalAmount" IS DISTINCT FROM s."totalCentavos"::numeric / 100
+        OR (s."itensSaipos" IS NOT NULL AND c."itemsJson" IS DISTINCT FROM s."itensSaipos")
         OR c.status::text IS DISTINCT FROM CASE WHEN s.cancelada OR s."excluidoEm" IS NOT NULL THEN 'CANCELLED' ELSE 'COMPLETED' END
         OR c."soldAt" IS DISTINCT FROM s."criadaNoSaiposEm")`;
 }

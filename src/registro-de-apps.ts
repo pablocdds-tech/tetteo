@@ -202,6 +202,11 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
         nome: "Conexões de IA",
         permissao: "configuracoes.integracoes",
       },
+      {
+        rota: "/configuracoes/integracoes/saipos",
+        nome: "Saipos",
+        permissao: "*",
+      },
     ],
     permissaoParaVer: "configuracoes.ver",
     permissoes: [...PERMISSOES_CONFIGURACOES],

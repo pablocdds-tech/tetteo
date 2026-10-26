@@ -6,7 +6,7 @@ import { useId, useState, type ReactNode } from "react";
 
 import { Icone } from "@/design-system/icones";
 
-import { appAtual, destinoEstaAtivo, type AppNaBarra } from "./apps";
+import { appAtual, destinoAtual, type AppNaBarra } from "./apps";
 
 export type { AppNaBarra };
 
@@ -167,7 +167,7 @@ export function ConteudoDaNavegacao({
         {atual && !trocando && (
           <ul className="mt-1 flex flex-col gap-0.5">
             {atual.navegacao.map((destino) => {
-              const ativo = destinoEstaAtivo(destino, atual.rota, caminho);
+              const ativo = destinoAtual(atual, caminho)?.rota === destino.rota;
               return (
                 <li key={destino.rota}>
                   <Link

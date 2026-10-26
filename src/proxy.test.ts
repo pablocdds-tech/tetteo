@@ -39,6 +39,16 @@ describe("a exceção do assistente privado no proxy", () => {
     assert.equal(exigeLogin("/api/compras/tick"), false);
     assert.equal(exigeLogin("/api/arquivos/1"), true);
   });
+  test("Saipos libera só o prefixo de máquina; operadores e vizinhos exigem sessão", () => {
+    assert.equal(exigeLogin("/api/saipos/maquina/oauth/token"), false);
+    assert.equal(
+      exigeLogin("/api/saipos/maquina/v1/logistics/delivery"),
+      false,
+    );
+    assert.equal(exigeLogin("/api/saipos/operacoes"), true);
+    assert.equal(exigeLogin("/api/saipos/maquina-vizinha"), true);
+    assert.equal(exigeLogin("/configuracoes/integracoes/saipos"), true);
+  });
   test("recuperação é pública, mas conta e caminhos vizinhos exigem sessão", () => {
     for (const caminho of [
       "/login",

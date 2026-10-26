@@ -52,6 +52,6 @@ export default auth;
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
   ],
 };
