@@ -102,6 +102,7 @@ export async function syncSaiposCustomers(
     },
   });
   if (!claim.count) return { skipped: true };
+  let stage: "source" | "database" = "database";
   try {
     if (start < state.historyStart)
       state = await prisma.crmSaiposSync.update({
@@ -135,7 +136,9 @@ export async function syncSaiposCustomers(
             end: through,
             column: "updated_at" as const,
           };
+      stage = "source";
       const rows = await source(binding.lojaSaiposId, period);
+      stage = "database";
       if (
         !state.lastSuccessAt &&
         !rows.length &&
@@ -220,6 +223,12 @@ export async function syncSaiposCustomers(
       coveredFrom: state.historyCoveredFrom,
     };
   } catch (error) {
+    const providerUnavailable =
+      stage === "source" &&
+      error &&
+      typeof error === "object" &&
+      "kind" in error &&
+      error.kind === "provider_unavailable";
     const denied =
       error &&
       typeof error === "object" &&
@@ -232,7 +241,11 @@ export async function syncSaiposCustomers(
         leaseUntil: null,
         lastError: denied
           ? "A credencial Saipos não autorizou a consulta de clientes."
-          : "Saipos ou gravação temporariamente indisponível. A carga continuará do último lote confirmado.",
+          : providerUnavailable
+            ? "O banco da API Saipos está temporariamente indisponível. A carga será retomada automaticamente do último lote confirmado."
+            : stage === "source"
+              ? "A consulta à API Saipos falhou. Uma nova tentativa será feita automaticamente; a cobertura anterior foi preservada."
+              : "Não foi possível gravar o lote no CRM. A cobertura anterior foi preservada para nova tentativa.",
       },
     });
     return { skipped: false, unavailable: true };

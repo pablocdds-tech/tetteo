@@ -46,3 +46,38 @@ Na validação inicial de 26/10/2026, a API real retornou HTTP 504 e 503, inclus
 com página de uma venda. Não foi possível confirmar o conteúdo dos clientes com
 o token atual. Os testes usam contratos documentados e dados sintéticos; a carga
 real só estará comprovada quando a API voltar e o status registrar cobertura.
+
+## Diagnóstico de 26/10/2026
+
+A resposta foi identificada como `PGRST003`, HTTP 504, emitida pelo
+`postgrest/14.3` do fornecedor: `Timed out acquiring connection from connection pool.`
+O mesmo erro ocorreu na VPS com token, sem token, numa janela de uma hora e num
+dia vazio em 2010, sempre com página de um registro. Uma conexão local independente
+confirmou o erro sem token em **26/10/2026 às 01:39:34 de Brasília**.
+
+Segundo a [documentação do PostgREST](https://docs.postgrest.org/en/stable/references/errors.html),
+`PGRST003` significa que a API esgotou o prazo aguardando uma conexão disponível
+com seu banco. Isso impede confirmar a autorização do token e obter clientes.
+Diminuir o período/paginação não resolveu. A recuperação do serviço de dados
+depende da Saipos; não existe acesso administrativo a esse banco nesta VPS.
+
+O cliente agora reconhece apenas os códigos de conexão `PGRST000`–`PGRST003`,
+com leitura do corpo de erro limitada a 4 KB e sem guardar o conteúdo. As consultas
+compartilham uma pausa mínima de cinco minutos (ou `Retry-After` maior), sem repetir
+imediatamente o mesmo erro. A importação CRM tenta novamente após 15 minutos e
+registra uma mensagem específica para falha do fornecedor. Nenhum cursor avança.
+Erros transitórios sem esses códigos mantêm as três tentativas existentes.
+
+### Texto para chamado ao Saipos
+
+> A API de Dados `GET /v1/search_sales` está retornando HTTP 503/504. Em 26/10/2026,
+> às 01:39:34 de Brasília, uma chamada mínima retornou `PGRST003`:
+> `Timed out acquiring connection from connection pool.` Ocorre a partir de duas
+> conexões independentes, inclusive sem autenticação e para período vazio, com
+> `p_limit=1`. Favor verificar a disponibilidade e o pool de conexões do PostgREST
+> da API de Dados. Identificador CloudFront da consulta de controle:
+> `zvyItbhMBX-Q4XnUUIpj7mbb1pxGa632rKX_QJrtpEquda6kgC0VSQ==`.
+
+Nenhum chamado foi enviado automaticamente; o texto não contém token ou dados
+de clientes. Após recuperação da API, conferir os contadores e a cobertura no
+CRM; não marcar o histórico como concluído antes dessa confirmação.

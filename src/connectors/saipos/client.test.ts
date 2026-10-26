@@ -3,6 +3,55 @@ import assert from "node:assert/strict";
 import { ControleRequisicoesSaipos } from "./limites";
 import { SaiposClient, SaiposError, windows, revenue } from "./client";
 
+test("falha de conexão do fornecedor suspende tentativas compartilhadas e não expõe payloads", async (t) => {
+  const old = process.env.SAIPOS_TOKEN;
+  process.env.SAIPOS_TOKEN = "test-only";
+  try {
+    const control = new ControleRequisicoesSaipos();
+    let calls = 0;
+    const transport = (async () => {
+      calls++;
+      return calls === 1
+        ? new Response(
+            JSON.stringify({
+              code: "PGRST003",
+              message: "payload privado com segredo fictício",
+              details: "não registrar",
+            }),
+            { status: 504, headers: { "Retry-After": "300" } },
+          )
+        : new Response("null");
+    }) as typeof fetch;
+    const client = new SaiposClient(transport, control),
+      other = new SaiposClient(transport, control);
+    const period = {
+      start: "2026-10-01T00:00:00",
+      end: "2026-10-01T23:59:59",
+      column: "shift_date" as const,
+    };
+    await assert.rejects(
+      () => client.salesForCrm(period, 1),
+      (error: unknown) =>
+        error instanceof SaiposError &&
+        error.kind === "provider_unavailable" &&
+        error.providerCode === "PGRST003" &&
+        !error.message.includes("payload"),
+    );
+    await assert.rejects(
+      () => other.financial({ ...period, column: "date" }, 1),
+      (error: unknown) =>
+        error instanceof SaiposError && error.kind === "provider_unavailable",
+    );
+    assert.equal(calls, 1);
+    t.mock.method(control, "indisponivel", () => false);
+    assert.deepEqual(await client.salesForCrm(period, 1), []);
+    assert.equal(calls, 2);
+  } finally {
+    if (old === undefined) delete process.env.SAIPOS_TOKEN;
+    else process.env.SAIPOS_TOKEN = old;
+  }
+});
+
 test("janelas cobrem o período sem lacunas e respeitam 15 dias", () => {
   const result = windows({
     start: "2026-10-01T00:00:00",

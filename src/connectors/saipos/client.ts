@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ControleRequisicoesSaipos, TAMANHO_PAGINA } from "./limites";
 import { customerSchema } from "./clientes";
+import { codigoConexao } from "./indisponibilidade";
 
 const BASE = "https://data.saipos.io/v1/";
 const DAY = 86_400_000;
@@ -17,6 +18,7 @@ export class SaiposError extends Error {
     public readonly kind: string,
     message: string,
     public readonly status?: number,
+    public readonly providerCode?: string,
   ) {
     super(message);
   }
@@ -127,6 +129,12 @@ export class SaiposClient {
             "Limite Saipos atingido. Aguarde pelo menos 5 minutos antes de executar novamente.",
             429,
           );
+        if (this.controle.indisponivel(Date.now()))
+          throw new SaiposError(
+            "provider_unavailable",
+            "Saipos temporariamente indisponível: falha na conexão com o banco do fornecedor. A próxima tentativa será automática.",
+            503,
+          );
         let espera = this.controle.espera(Date.now());
         while (espera > 0) {
           await sleep(espera);
@@ -152,6 +160,21 @@ export class SaiposClient {
             Date.now(),
             resposta.headers.get("Retry-After"),
           );
+        if (resposta.status >= 500) {
+          const code = await codigoConexao(resposta);
+          if (code) {
+            this.controle.suspender(
+              Date.now(),
+              resposta.headers.get("Retry-After"),
+            );
+            throw new SaiposError(
+              "provider_unavailable",
+              "Saipos temporariamente indisponível: falha na conexão com o banco do fornecedor. A próxima tentativa será automática.",
+              resposta.status,
+              code,
+            );
+          }
+        }
         return resposta;
       });
       queue = task.catch(() => undefined);

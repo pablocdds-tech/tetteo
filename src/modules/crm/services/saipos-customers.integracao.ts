@@ -188,6 +188,23 @@ test("Saipos CRM: repetição, revisões, isolamento, consentimento e retomada a
   });
   assert.equal(state.historyCoveredFrom, null);
   assert.equal(state.lastError?.includes("payload"), false);
+  await syncSaiposCustomers(
+    async () => {
+      throw Object.assign(new Error("detalhes privados"), {
+        kind: "provider_unavailable",
+        status: 504,
+      });
+    },
+    store.id,
+    1,
+    true,
+  );
+  state = await db.crmSaiposSync.findUniqueOrThrow({
+    where: { storeId: store.id },
+  });
+  assert.match(state.lastError!, /banco da API Saipos/);
+  assert.equal(state.historyCoveredFrom, null);
+  assert.equal(state.lastError?.includes("privados"), false);
   const periods: { start: string; end: string }[] = [];
   await syncSaiposCustomers(
     async (_id, period) => {

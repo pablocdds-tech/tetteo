@@ -44,6 +44,12 @@ Importar compras nunca cria consentimento. Contatos sem telefone não integram
 entregas. Falhas públicas e auditorias contêm mensagens fixas ou contagens,
 sem payloads Saipos. Administradores da VPS/banco continuam sendo confiáveis.
 
+Erros externos de conexão são lidos até 4 KB e classificados por uma lista
+fechada de códigos; mensagem e detalhes recebidos nunca são repassados à tela ou
+auditoria. A pausa compartilhada entre consumidores evita amplificar uma falha
+no banco do fornecedor. Evidências: `connectors/saipos/indisponibilidade.test.ts`,
+`connectors/saipos/client.test.ts` e `connectors/saipos/limites.test.ts`.
+
 A concessão é verificada dentro da mesma transação das compras e do cursor.
 Uma falha ou perda da concessão reverte o lote. Revisões antigas não desfazem
 cancelamentos mais novos. O status HTTP exige sessão, permissão CRM e unidade

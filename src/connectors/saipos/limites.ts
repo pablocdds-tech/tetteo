@@ -12,6 +12,16 @@ export class ControleRequisicoesSaipos {
   private inicios: number[] = [];
   private proxima = 0;
   private bloqueadaAte = 0;
+  private indisponivelAte = 0;
+  indisponivel(agora: number) {
+    return agora < this.indisponivelAte;
+  }
+  suspender(agora: number, retryAfter: string | null) {
+    this.indisponivelAte = Math.max(
+      this.indisponivelAte,
+      agora + esperaRetryAfter(agora, retryAfter),
+    );
+  }
   bloqueada(agora: number) {
     return agora < this.bloqueadaAte;
   }
@@ -32,17 +42,24 @@ export class ControleRequisicoesSaipos {
     this.proxima = agora + INTERVALO_REQUISICOES_MS;
   }
   bloquear(agora: number, retryAfter: string | null) {
-    const segundos =
-      retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : 0;
-    const data =
-      retryAfter && !/^\d+$/.test(retryAfter)
-        ? Date.parse(retryAfter) - agora
-        : 0;
-    const espera = Math.max(
-      ESPERA_MINIMA_429_MS,
-      Number.isFinite(segundos) ? segundos : 0,
-      Number.isFinite(data) ? data : 0,
+    this.bloqueadaAte = Math.max(
+      this.bloqueadaAte,
+      agora + esperaRetryAfter(agora, retryAfter),
     );
-    this.bloqueadaAte = Math.max(this.bloqueadaAte, agora + espera);
   }
+}
+
+function esperaRetryAfter(agora: number, retryAfter: string | null) {
+  const segundos =
+    retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : 0;
+  const data =
+    retryAfter && !/^\d+$/.test(retryAfter)
+      ? Date.parse(retryAfter) - agora
+      : 0;
+  const espera = Math.max(
+    ESPERA_MINIMA_429_MS,
+    Number.isFinite(segundos) ? segundos : 0,
+    Number.isFinite(data) ? data : 0,
+  );
+  return espera;
 }

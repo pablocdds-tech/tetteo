@@ -34,3 +34,17 @@ test("429 bloqueia por pelo menos cinco minutos e respeita Retry-After maior", (
   assert.equal(controle.bloqueada(agora + 1199999), true);
   assert.equal(controle.bloqueada(agora + 1200000), false);
 });
+
+test("falha do banco Saipos aguarda cinco minutos, respeita Retry-After e volta a permitir consultas", () => {
+  const control = new ControleRequisicoesSaipos();
+  control.suspender(1000, null);
+  assert.equal(control.indisponivel(300999), true);
+  assert.equal(control.indisponivel(301000), false);
+  assert.equal(control.bloqueada(2000), false);
+  control.suspender(400000, "600");
+  control.suspender(400001, "1");
+  assert.equal(control.indisponivel(999999), true);
+  assert.equal(control.indisponivel(1000000), false);
+  control.suspender(1000000, "inválido");
+  assert.equal(control.indisponivel(1300000), false);
+});
