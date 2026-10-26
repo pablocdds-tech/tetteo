@@ -1,0 +1,323 @@
+// CRM integrado. storeId referencia a unidade existente; nenhuma tabela antiga é substituída.
+model CrmSale {
+  saiposVendaId     String?            @unique
+  saiposVenda       SaiposVenda?       @relation(fields: [storeId, saiposVendaId], references: [unidadeId, id], onDelete: Restrict)
+  id                String             @id @default(uuid())
+  storeId           String
+  store             Unidade            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  crmContactId      String?
+  crmContact        CrmContact?        @relation(fields: [storeId, crmContactId], references: [storeId, id], onDelete: Restrict)
+  source            IntegrationSource  @default(GENERIC_WEBHOOK)
+  externalId        String
+  totalAmount       Decimal            @db.Decimal(18, 2)
+  netRevenueCents   Decimal?           @db.Decimal(18, 0)
+  crmRevisions      CrmVisitRevision[]
+  itemsJson         Json
+  providerPayload   Json?
+  status            SaleStatus         @default(COMPLETED)
+  soldAt            DateTime
+  shiftDate         String?            @db.VarChar(10)
+  providerUpdatedAt DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@unique([storeId, source, externalId])
+  @@unique([storeId, id])
+  @@index([storeId, soldAt])
+  @@index([storeId, status, soldAt])
+  @@index([storeId, source, shiftDate])
+  @@index([storeId, crmContactId, status, soldAt])
+}
+
+model CrmContact {
+  id             String              @id @default(uuid())
+  storeId        String
+  store          Unidade             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  name           String
+  phone          String
+  email          String?
+  notes          String?
+  marketingOptIn Boolean             @default(false)
+  active         Boolean             @default(true)
+  mergedIntoId   String?
+  mergedInto     CrmContact?         @relation("CrmMerge", fields: [storeId, mergedIntoId], references: [storeId, id], onDelete: Restrict)
+  mergedContacts CrmContact[]        @relation("CrmMerge")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  sales          CrmSale[]
+  activities     CrmActivity[]
+  identities     CrmIdentity[]
+  consents       CrmConsent[]
+  snapshot       CrmSegmentSnapshot?
+  assignments    CrmAssignment[]
+
+  @@unique([storeId, phone])
+  @@unique([storeId, id])
+  @@index([storeId, createdAt])
+}
+
+model CrmActivity {
+  id          String          @id @default(uuid())
+  storeId     String
+  contactId   String
+  contact     CrmContact      @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  type        CrmActivityType
+  summary     String
+  createdById String
+  createdBy   Usuario         @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime        @default(now())
+
+  @@index([storeId, contactId, createdAt])
+}
+
+// Unidade is the existing tenant boundary. CRM records never span stores.
+model CrmIdentity {
+  id             String     @id @default(uuid())
+  storeId        String
+  contactId      String
+  contact        CrmContact @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  type           String
+  normalizedHash String
+  encryptedValue String
+  verifiedAt     DateTime
+  verifiedById   String
+  createdAt      DateTime   @default(now())
+
+  @@unique([storeId, type, normalizedHash])
+  @@index([storeId, contactId])
+}
+
+model CrmConsent {
+  id          String     @id @default(uuid())
+  storeId     String
+  contactId   String
+  contact     CrmContact @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  channel     String     @default("LOCAL")
+  status      String
+  source      String
+  proofRef    String?
+  actorId     String
+  effectiveAt DateTime   @default(now())
+  createdAt   DateTime   @default(now())
+
+  @@index([storeId, contactId, channel, effectiveAt])
+}
+
+model CrmSegmentSnapshot {
+  contactId   String     @id
+  storeId     String
+  contact     CrmContact @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  visits      Int
+  lastVisitAt DateTime?
+  segment     String
+  asOf        DateTime
+  ruleVersion String
+
+  @@unique([storeId, contactId])
+  @@index([storeId, segment, asOf])
+}
+
+model CrmSegmentJob {
+  id        String   @id @default(uuid())
+  storeId   String
+  store     Unidade  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  asOf      DateTime @default(now())
+  cursor    String?
+  status    String   @default("ACCEPTED")
+  processed Int      @default(0)
+  actorId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model CrmImport {
+  revisions  CrmVisitRevision[]
+  id         String             @id @default(uuid())
+  storeId    String
+  store      Unidade            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  actorId    String
+  status     String             @default("ACCEPTED")
+  rows       Json
+  errors     Json               @default("[]")
+  applied    Int                @default(0)
+  durationMs Int?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@unique([storeId, id])
+  @@index([status, createdAt])
+}
+
+model CrmVisitRevision {
+  sale      CrmSale   @relation(fields: [storeId, saleId], references: [storeId, id], onDelete: Restrict, onUpdate: NoAction, map: "CrmVisitRevision_sale_fkey")
+  import    CrmImport @relation(fields: [storeId, importId], references: [storeId, id], onDelete: Restrict, onUpdate: NoAction, map: "CrmVisitRevision_import_fkey")
+  id        String    @id @default(uuid())
+  storeId   String
+  saleId    String
+  importId  String
+  before    Json?
+  after     Json
+  reason    String
+  revision  Int
+  actorId   String
+  createdAt DateTime  @default(now())
+
+  @@unique([storeId, saleId, revision])
+  @@index([storeId, saleId, createdAt])
+}
+
+model CrmExperiment {
+  id               String          @id @default(uuid())
+  storeId          String
+  store            Unidade         @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  name             String
+  objective        String
+  segment          String
+  status           String          @default("DRAFT")
+  startAt          DateTime
+  endAt            DateTime
+  assignmentSalt   String
+  ruleVersion      String
+  version          Int             @default(1)
+  messageVersion   Int             @default(1)
+  message          String
+  benefit          String
+  channel          String          @default("LOCAL")
+  costBudgetCents  Decimal         @db.Decimal(18, 0)
+  unitCostCents    Decimal         @db.Decimal(18, 0)
+  fixedCostCents   Decimal         @db.Decimal(18, 0)
+  previewHash      String?
+  eligibleAt       DateTime?
+  snapshotAsOf     DateTime?
+  lastCalculatedAt DateTime?
+  excluded         Int             @default(0)
+  createdById      String
+  assignments      CrmAssignment[]
+  approvals        CrmApproval[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@unique([storeId, id])
+  @@index([storeId, createdAt])
+}
+
+model CrmAssignment {
+  id             String        @id @default(uuid())
+  storeId        String
+  experimentId   String
+  experiment     CrmExperiment @relation(fields: [storeId, experimentId], references: [storeId, id], onDelete: Restrict)
+  contactId      String
+  contact        CrmContact    @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  arm            String
+  eligibleAt     DateTime
+  segmentAtEntry String
+  delivery       CrmDelivery?
+  outcome        CrmOutcome?
+
+  @@unique([experimentId, contactId])
+  @@unique([storeId, id])
+  @@index([storeId, contactId])
+}
+
+model CrmApproval {
+  id           String        @id @default(uuid())
+  storeId      String
+  experimentId String
+  experiment   CrmExperiment @relation(fields: [storeId, experimentId], references: [storeId, id], onDelete: Restrict)
+  version      Int
+  previewHash  String
+  actorId      String
+  approvedAt   DateTime      @default(now())
+
+  @@unique([experimentId, version])
+}
+
+model CrmDelivery {
+  receipt        CrmLocalReceipt?
+  id             String           @id @default(uuid())
+  storeId        String
+  assignmentId   String           @unique
+  assignment     CrmAssignment    @relation(fields: [storeId, assignmentId], references: [storeId, id], onDelete: Restrict)
+  channel        String           @default("LOCAL")
+  messageVersion Int
+  state          String           @default("PENDING")
+  providerId     String?
+  sentAt         DateTime?
+  failedCode     String?
+  costCents      Decimal          @default(0) @db.Decimal(18, 0)
+  claimedAt      DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@unique([storeId, assignmentId])
+  @@index([state, createdAt])
+  @@index([storeId, sentAt])
+}
+
+model CrmLocalReceipt {
+  delivery   CrmDelivery @relation(fields: [deliveryId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "CrmLocalReceipt_delivery_fkey")
+  deliveryId String      @id
+  providerId String      @unique
+  acceptedAt DateTime    @default(now())
+}
+
+model CrmOutcome {
+  assignmentId    String        @id
+  storeId         String
+  assignment      CrmAssignment @relation(fields: [storeId, assignmentId], references: [storeId, id], onDelete: Restrict)
+  returned        Boolean
+  netRevenueCents Decimal?      @db.Decimal(18, 0)
+  visits          Int
+  contaminated    Boolean       @default(false)
+  calculatedAt    DateTime      @default(now())
+
+  @@unique([storeId, assignmentId])
+}
+
+model CrmMutation {
+  store       Unidade  @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "CrmMutation_store_fkey")
+  id          String   @id @default(uuid())
+  storeId     String
+  actorId     String
+  key         String
+  payloadHash String
+  result      Json
+  createdAt   DateTime @default(now())
+
+  @@unique([storeId, actorId, key])
+}
+
+model CrmAuditEvent {
+  id         String   @id @default(uuid())
+  storeId    String
+  store      Unidade  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  actorId    String
+  entityType String
+  entityId   String
+  action     String
+  data       Json
+  createdAt  DateTime @default(now())
+
+  @@index([storeId, entityType, entityId, createdAt])
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+enum IntegrationSource {
+  GENERIC_WEBHOOK
+  SAIPOS
+  TAKEAT
+}
+
+enum CrmActivityType {
+  NOTE
+  CALL
+  WHATSAPP
+  EMAIL
+  SMS
+}

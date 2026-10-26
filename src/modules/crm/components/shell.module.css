@@ -1,0 +1,67 @@
+.shell {
+  min-width: 0;
+  color: var(--ink);
+}
+.shell :global(.btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.shell :global(.btn-primary) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.shell input:not([type="checkbox"]),
+.shell select,
+.shell textarea {
+  min-height: 40px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 0.875rem;
+  max-width: 100%;
+}
+.shell input[type="checkbox"] {
+  accent-color: var(--accent);
+}
+.shell button:focus-visible,
+.shell a:focus-visible,
+.shell input:focus-visible,
+.shell select:focus-visible,
+.shell textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.shell button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+@media (max-width: 640px) {
+  .shell input:not([type="checkbox"]),
+  .shell select,
+  .shell textarea {
+    font-size: 1rem;
+    min-height: 44px;
+  }
+  .shell :global(.btn) {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell * {
+    transition: none !important;
+  }
+}

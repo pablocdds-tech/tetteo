@@ -28,6 +28,7 @@ model SaiposVinculo {
 }
 
 model SaiposVenda {
+  crmSales CrmSale[]
   id String @id @default(cuid())
   organizacaoId String
   unidadeId String
@@ -46,6 +47,7 @@ model SaiposVenda {
   excluidoEm DateTime?
   @@unique([organizacaoId, unidadeId, vendaExternaId])
   @@index([organizacaoId, unidadeId, dataTurno, cancelada])
+  @@unique([unidadeId, id])
   @@map("saipos_venda")
 }
 

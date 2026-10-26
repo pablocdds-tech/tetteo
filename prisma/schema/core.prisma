@@ -49,6 +49,13 @@ model Organizacao {
 /// Cada loja física. Fuso e CNPJ próprios porque redes que crescem para outro
 /// estado precisam disso — e adicionar depois sairia caro.
 model Unidade {
+  crmCrmSale       CrmSale[]
+  crmCrmContact    CrmContact[]
+  crmCrmSegmentJob CrmSegmentJob[]
+  crmCrmImport     CrmImport[]
+  crmCrmExperiment CrmExperiment[]
+  crmCrmMutation   CrmMutation[]
+  crmCrmAuditEvent CrmAuditEvent[]
   id            String @id @default(cuid())
   organizacaoId String
   organizacao   Organizacao @relation(fields: [organizacaoId], references: [id])
@@ -107,6 +114,7 @@ enum StatusUsuario {
 }
 
 model Usuario {
+  crmActivities CrmActivity[]
   id        String  @id @default(cuid())
   nome      String
   email     String  @unique

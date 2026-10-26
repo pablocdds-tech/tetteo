@@ -1,3 +1,4 @@
+import { manifestoCrm } from "@/modules/crm/manifest";
 import { manifestoAnalytics } from "@/modules/analytics/manifest";
 import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
@@ -31,27 +32,7 @@ import { manifestoFinanceiro } from "@/modules/financeiro/manifest";
 export const APPS_REGISTRADOS: ManifestoDoApp[] = [
   manifestoAnalytics,
 
-  {
-    chave: "crm",
-    nome: "CRM",
-    subtitulo: "Clientes & reservas",
-    icone: "coracao",
-    cor: { fundo: "#E11D62", frente: "#FFFFFF" },
-    area: "gestao",
-    rota: "/crm",
-    navegacao: [
-      { rota: "/crm", nome: "Clientes" },
-      { rota: "/crm/reservas", nome: "Reservas" },
-      { rota: "/crm/campanhas", nome: "Campanhas" },
-    ],
-    permissaoParaVer: "crm.ver",
-    permissoes: [
-      { chave: "crm.ver", descricao: "Ver clientes e reservas" },
-      { chave: "crm.editar", descricao: "Cadastrar e alterar clientes" },
-    ],
-    comportamentoNaRede: "consolida",
-    emConstrucao: true,
-  },
+  manifestoCrm,
 
   manifestoSeverina,
 
