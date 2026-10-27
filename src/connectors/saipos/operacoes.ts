@@ -82,7 +82,7 @@ export async function enviarComando(
       scope,
       row.id,
       state,
-      undefined,
+      e instanceof FalhaPedidos ? e.resposta : undefined,
       e instanceof FalhaPedidos
         ? e.message
         : "Operação pendente de conferência na Saipos.",

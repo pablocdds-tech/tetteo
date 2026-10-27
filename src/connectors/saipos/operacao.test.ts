@@ -233,6 +233,31 @@ test("pedidos reutilizam token, sobrescrevem cod_store no servidor e não repete
     );
     assert.equal(auth, 1);
     assert.equal(sends, 2);
+    const diagnostico = { errorCode: 900, errorMessage: "Mensagem privada" };
+    const recusado = new PedidosSaipos((async () => {
+      sends++;
+      return Response.json(diagnostico, { status: 400 });
+    }) as typeof fetch);
+    await assert.rejects(
+      () => recusado.executar({ acao: "cancelar", order_id: "789" }),
+      (e: unknown) => {
+        assert.ok(e instanceof FalhaPedidos);
+        assert.equal(e.incerta, false);
+        assert.deepEqual(e.resposta, diagnostico);
+        assert.equal(e.message.includes("Mensagem privada"), false);
+        return true;
+      },
+    );
+    assert.equal(sends, 3);
+    const grande = new PedidosSaipos(
+      (async () =>
+        new Response("x".repeat(8193), { status: 400 })) as typeof fetch,
+    );
+    await assert.rejects(
+      () => grande.executar({ acao: "cancelar", order_id: "790" }),
+      (e: unknown) =>
+        e instanceof FalhaPedidos && !e.incerta && e.resposta === undefined,
+    );
     process.env.SAIPOS_OPERATIONS_ENVIRONMENT = "producao";
     assert.throws(() => configOperacao("pedidos"), /homologação/);
   } finally {

@@ -101,7 +101,7 @@ export function validarToken(
   }
 }
 
-export async function lerCorpo(request: Request, limit = 256000) {
+export async function lerCorpo(request: Request | Response, limit = 256000) {
   if (Number(request.headers.get("content-length")) > limit)
     throw new Error("Corpo excede o limite permitido.");
   const reader = request.body?.getReader();

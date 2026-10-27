@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { configOperacao, textoId } from "./operacao-config";
-import { igual, hash } from "./operacao-seguranca";
+import { igual, hash, lerCorpo } from "./operacao-seguranca";
 
 const dinheiro = z.number().finite().nonnegative().max(1000000);
 const texto = z.string().max(500);
@@ -153,6 +153,7 @@ export class FalhaPedidos extends Error {
   constructor(
     message: string,
     public incerta: boolean,
+    public resposta?: unknown,
   ) {
     super(message);
   }
@@ -212,13 +213,21 @@ export class PedidosSaipos {
           signal: AbortSignal.timeout(15000),
         },
       );
-      if (!response.ok)
+      if (!response.ok) {
+        let diagnostico: unknown;
+        try {
+          diagnostico = JSON.parse(await lerCorpo(response, 8192));
+        } catch {
+          // Corpo ausente, inválido ou grande não muda a classificação HTTP.
+        }
         throw new FalhaPedidos(
           `Saipos respondeu HTTP ${response.status}. Confira a operação antes de reenviar.`,
           response.status >= 500 ||
             response.status === 408 ||
             response.status === 409,
+          diagnostico,
         );
+      }
       const raw = await response.text();
       return raw ? (JSON.parse(raw) as unknown) : {};
     } catch (e) {

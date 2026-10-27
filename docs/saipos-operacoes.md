@@ -53,6 +53,12 @@ Pedidos: `SAIPOS_ORDER_ENABLED=true`, `SAIPOS_ORDER_SECRET`,
 `SAIPOS_ORDER_PARTNER_ID`, `SAIPOS_ORDER_STORE_CODE`. O servidor gera e reutiliza
 o token por até 48 horas com margem de 10 minutos. Nenhum segredo vai ao cliente.
 
+`SAIPOS_ORDER_STORE_CODE` recebe o **CÓD. LOJA** configurado em Canais de venda e
+Integrações → canal → Lojas no PDV. Esse código pode ser um UUID e não corresponde
+necessariamente ao ID da loja exibido no Developer ou usado pela API de Dados.
+Na homologação de 27/10/2026, enviar o ID da conta no lugar desse vínculo causou
+o erro 906. A consulta com o código do canal passou a reconhecer a integração.
+
 Logística: `SAIPOS_LOGISTICS_ENABLED=true`, `SAIPOS_LOGISTICS_CLIENT_ID`,
 `SAIPOS_LOGISTICS_CLIENT_SECRET` (mínimo 32 caracteres aleatórios),
 `SAIPOS_LOGISTICS_MERCHANT_ID` e `SAIPOS_LOGISTICS_APP_ID`. Os dois primeiros
@@ -80,6 +86,10 @@ são recusados. Um envio fica reservado antes da chamada HTTP; concorrência e
 reinício não provocam reenvio automático. `RECEBIDO` significa apenas resposta
 HTTP de sucesso. Timeout/5xx gera `INCERTO`, exigindo conferência no PDV.
 Não há recuperação automática de envio incerto nem botão de forçar reenvio.
+Respostas JSON de erro do fornecedor, limitadas a 8 KiB, são guardadas cifradas
+no registro da operação para diagnóstico privado. A mensagem pública permanece
+genérica e não expõe o conteúdo recebido. Falha ao ler o diagnóstico não altera
+a classificação do status HTTP nem causa reenvio.
 
 Consultas: `{ tipo: "consulta", dados: { consulta, parametros } }`.
 `consulta` pode ser `catalogo`, `garcons`, `comandas`, `pedido`, `comanda` ou
