@@ -28,7 +28,17 @@ O layout usa categorias à esquerda, produtos no centro, carrinho à direita e p
 
 ## Conexão e limites
 
-O carrinho fica em memória na tela durante queda de conexão; mantenha a página aberta. Ele não é um mecanismo offline e não sobrevive a fechar o navegador. O navegador avisa antes de recarregar uma página com itens. Quando a resposta da conclusão falha, a interface mantém o payload para repetir a mesma identificação da venda, evitando duplicidade. Não mude de unidade com venda pendente.
+Itens ainda não salvos ficam em memória na tela durante queda de conexão; mantenha a página aberta. Use “Salvar atendimento” para guardar os itens no servidor e liberar o caixa. Cada operador pode manter até 20 atendimentos ativos por unidade. É possível recarregar/fechar e retomar esses atendimentos depois, com o catálogo e preços atuais. Descontos, taxas e pagamentos não são guardados e precisam ser informados novamente. Salvar não reserva estoque nem conclui uma venda.
+
+Ao editar um atendimento retomado, salve novamente para guardar as alterações. Versões impedem que outra aba sobrescreva silenciosamente o mesmo rascunho; diante de conflito conhecido, é possível salvar uma cópia explícita, preservando o original. A conclusão marca o rascunho como concluído na mesma transação da venda e baixa de estoque. Cancelar uma venda não reabre o rascunho.
+
+O navegador avisa antes de recarregar uma página com itens, e os links da interface pedem confirmação antes de sair sem guardar alterações. Quando a resposta da conclusão falha, a interface mantém a identificação da tentativa, inclusive se a sessão expirar durante a confirmação, evitando criar automaticamente uma nova venda. A mesma proteção se aplica à confirmação de salvamento. Não mude de unidade com atendimento não salvo.
+
+## Preparação da operação
+
+`/pdv/preparacao` oferece diagnóstico administrativo por unidade e local de estoque; exige `pdv.ver` e `pdv.configurar`. Inclui pratos inativos ou sem preço, receitas e preparos indisponíveis, ciclos e unidades incompatíveis, grupos de complementos inválidos, códigos ausentes e complementos sem receita vinculada. Mostra links para os cadastros existentes. Não cria produtos, receitas, saldos ou caixa automaticamente.
+
+“Sem impedimento de cadastro” não garante saldo suficiente para todas as combinações de complementos. O diagnóstico separa bloqueios de cadastro, alertas de estoque e avisos; a venda continua validando a combinação e o estoque dentro da transação.
 
 Esta versão não contempla entrega com endereço/roteirização, agendamento de produção, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
 

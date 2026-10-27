@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 import { Icone } from "@/design-system/icones";
 import { PainelLateral } from "@/design-system/painel-lateral";
 import { finalizarVendaAcao } from "../acoes";
+import { CarrinhosSalvos } from "./carrinhos-salvos";
+import type { ResumoCarrinho, RetomadaCarrinho } from "../carrinho-types";
 import { calcularPrecoItem } from "../schemas/venda";
 import type {
   DadosPdv,
@@ -60,11 +62,15 @@ export function FrenteDeCaixa({
   unidade,
   podeVender,
   podeDesconto,
+  podeConfigurar,
+  carrinhos,
 }: {
   dados: DadosPdv;
   unidade: string;
   podeVender: boolean;
   podeDesconto: boolean;
+  podeConfigurar: boolean;
+  carrinhos: ResumoCarrinho[];
 }) {
   const router = useRouter();
   const buscaRef = useRef<HTMLInputElement>(null);
@@ -91,25 +97,62 @@ export function FrenteDeCaixa({
   // Uma falha de rede pode ocorrer após o servidor gravar. A retentativa usa o mesmo payload/chave.
   const [incerta, setIncerta] = useState(false);
   const [online, setOnline] = useState(true);
-  const categorias = [...new Set(dados.produtos.map((p) => p.categoria))];
+  const [rascunho, setRascunho] = useState<{
+    id: string;
+    versao: number;
+    nome: string;
+  } | null>(null);
+  const [catalogoRetomado, setCatalogoRetomado] = useState<ProdutoPdv[] | null>(
+    null,
+  );
+  const catalogo = catalogoRetomado ?? dados.produtos;
+  const categorias = [...new Set(catalogo.map((p) => p.categoria))];
   const filtro = busca.toLocaleLowerCase("pt-BR");
-  const produtos = dados.produtos.filter(
+  const produtos = catalogo.filter(
     (p) =>
       (!categoria || p.categoria === categoria) &&
       `${p.nome} ${p.codigo}`.toLocaleLowerCase("pt-BR").includes(filtro),
   );
-  const produtosPorId = new Map(dados.produtos.map((p) => [p.id, p]));
-  const subtotal = itens.reduce((soma, item) => {
-    const p = produtosPorId.get(item.produtoId);
-    return soma + (p ? calcularPrecoItem(p, item.opcoes) * item.quantidade : 0);
-  }, 0);
+  const produtosPorId = new Map(catalogo.map((p) => [p.id, p]));
+  const cotacoes = new Map<string, { preco: number; erro: string }>(
+    itens.map((item) => {
+      const p = produtosPorId.get(item.produtoId);
+      try {
+        if (!p) throw new Error("Produto indisponível no catálogo atual.");
+        return [
+          item.chave,
+          { preco: calcularPrecoItem(p, item.opcoes), erro: "" },
+        ] as const;
+      } catch {
+        return [
+          item.chave,
+          {
+            preco: 0,
+            erro: "Este produto ou suas opções mudaram. Remova o item e escolha novamente.",
+          },
+        ] as const;
+      }
+    }),
+  );
+  const temItensInvalidos = [...cotacoes.values()].some((c) => c.erro);
+  const subtotal = itens.reduce(
+    (soma, item) =>
+      soma + (cotacoes.get(item.chave)?.preco ?? 0) * item.quantidade,
+    0,
+  );
   const descontoCentavos = centavos(desconto);
   const taxaCentavos = centavos(taxa);
   const total = subtotal - descontoCentavos + taxaCentavos;
   const pago = pagamentos.reduce((soma, p) => soma + p.valorCentavos, 0);
   const troco = Math.max(0, pago - total);
   const podeAbrirPagamento =
-    itens.length > 0 && !!dados.caixa && podeVender && online;
+    itens.length > 0 &&
+    !!dados.caixa &&
+    podeVender &&
+    online &&
+    !ocupado &&
+    !incerta &&
+    !temItensInvalidos;
 
   useEffect(() => {
     const atualizar = () => setOnline(navigator.onLine);
@@ -131,14 +174,86 @@ export function FrenteDeCaixa({
     const proteger = (e: BeforeUnloadEvent) => {
       if (itens.length) e.preventDefault();
     };
+    const protegerLink = (e: MouseEvent) => {
+      if (
+        e.defaultPrevented ||
+        e.button !== 0 ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.shiftKey ||
+        e.altKey ||
+        !(e.target instanceof Element)
+      )
+        return;
+      const link = e.target.closest<HTMLAnchorElement>("a[href]");
+      if (!link || link.target === "_blank" || link.hasAttribute("download"))
+        return;
+      const destino = new URL(link.href, window.location.href);
+      if (
+        destino.pathname === location.pathname &&
+        destino.search === location.search
+      )
+        return;
+      if (
+        ocupado ||
+        incerta ||
+        (itens.length > 0 &&
+          !window.confirm(
+            "Há itens neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
+          ))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener("click", protegerLink, true);
     window.addEventListener("beforeunload", proteger);
     return () => {
       window.removeEventListener("online", atualizar);
       window.removeEventListener("offline", atualizar);
       window.removeEventListener("keydown", atalhos);
       window.removeEventListener("beforeunload", proteger);
+      document.removeEventListener("click", protegerLink, true);
     };
-  }, [podeAbrirPagamento, itens.length]);
+  }, [podeAbrirPagamento, itens.length, ocupado, incerta]);
+
+  function limparAtendimento() {
+    setItens([]);
+    setPagamentos([]);
+    setCliente("");
+    setObservacao("");
+    setDesconto("0");
+    setTaxa("0");
+    setValor("");
+    setModalidade("RETIRADA");
+    setRascunho(null);
+    setCatalogoRetomado(null);
+    setCategoria(null);
+    setBusca("");
+    setErro("");
+    chaveVenda.current = null;
+  }
+  function retomarAtendimento(retomada: RetomadaCarrinho) {
+    const { carrinho: salvo } = retomada;
+    limparAtendimento();
+    setCatalogoRetomado(retomada.produtos);
+    setRascunho({ id: salvo.id, versao: salvo.versao, nome: salvo.nome });
+    setItens(
+      salvo.conteudo.itens.map((item) => ({
+        ...item,
+        chave: crypto.randomUUID(),
+      })),
+    );
+    setCliente(salvo.conteudo.clienteId ?? "");
+    setModalidade(salvo.conteudo.modalidade);
+    setObservacao(salvo.conteudo.observacao);
+    setAviso(
+      [
+        `Atendimento “${salvo.nome}” retomado com os preços atuais.`,
+        ...retomada.avisos,
+      ].join(" "),
+    );
+  }
 
   function abrirProduto(p: ProdutoPdv) {
     if (incerta || ocupado) return;
@@ -205,7 +320,7 @@ export function FrenteDeCaixa({
     setErro("");
   }
   async function finalizar() {
-    if (trava.current || !dados.caixa) return;
+    if (trava.current || !dados.caixa || temItensInvalidos) return;
     if (!navigator.onLine) {
       setErro(
         "Sem conexão. O carrinho continua nesta tela; tente novamente quando a internet voltar.",
@@ -228,6 +343,9 @@ export function FrenteDeCaixa({
       const resultado = await finalizarVendaAcao({
         chave: chaveVenda.current,
         caixaId: dados.caixa.id,
+        ...(rascunho
+          ? { carrinhoId: rascunho.id, versaoCarrinho: rascunho.versao }
+          : {}),
         clienteId: cliente || undefined,
         modalidade,
         observacao,
@@ -243,14 +361,16 @@ export function FrenteDeCaixa({
       });
       if (resultado.erro) {
         setErro(resultado.erro);
-        setIncerta(false);
-        chaveVenda.current = null;
+        // Rejeição após resposta incerta não prova que a primeira venda falhou.
+        if (!incerta) chaveVenda.current = null;
         return;
       }
       setAviso(
         `${resultado.ok ?? "Venda concluída."}${resultado.vendaId ? ` Identificação: ${resultado.vendaId.slice(-8).toUpperCase()}.` : ""}`,
       );
       setItens([]);
+      setRascunho(null);
+      setCatalogoRetomado(null);
       setPagamentos([]);
       setCliente("");
       setObservacao("");
@@ -285,10 +405,57 @@ export function FrenteDeCaixa({
               : "Caixa fechado"}
           </p>
         </div>
-        <Link href="/pdv/caixa" className={estiloDeBotao("secundario")}>
-          Gerenciar caixa
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {podeConfigurar && (
+            <Link href="/pdv/preparacao" className={estiloDeBotao("fantasma")}>
+              Preparar operação
+            </Link>
+          )}
+          <Link href="/pdv/caixa" className={estiloDeBotao("secundario")}>
+            Gerenciar caixa
+          </Link>
+        </div>
       </header>
+      <CarrinhosSalvos
+        carrinhos={carrinhos}
+        conteudo={{
+          clienteId: cliente || undefined,
+          modalidade,
+          observacao,
+          itens: itens.map(({ produtoId, quantidade, opcoes, observacao }) => ({
+            produtoId,
+            quantidade,
+            opcoes,
+            observacao,
+          })),
+        }}
+        atual={rascunho}
+        bloqueado={ocupado || incerta}
+        podeVender={podeVender}
+        temPagamentos={pagamentos.length > 0}
+        online={online}
+        aoSalvar={() => {
+          limparAtendimento();
+          setAviso("Atendimento salvo. Você já pode iniciar outra venda.");
+        }}
+        aoRetomar={retomarAtendimento}
+        aoBloquear={setOcupado}
+      />
+      {rascunho && (
+        <p className="text-ink-2 text-sm">
+          Atendimento em edição: <strong>{rascunho.nome}</strong>. Salve
+          novamente antes de sair para guardar as alterações.
+        </p>
+      )}
+      {temItensInvalidos && (
+        <p
+          role="alert"
+          className="bg-warn-sub text-warn rounded-lg p-3 text-sm"
+        >
+          O catálogo mudou. Os itens foram preservados; revise os marcados antes
+          de pagar.
+        </p>
+      )}
       {!dados.caixa && (
         <div className="bg-warn-sub text-warn rounded-lg p-3 text-sm">
           Abra o caixa e selecione o local de estoque antes de concluir uma
@@ -322,7 +489,14 @@ export function FrenteDeCaixa({
           {erro}
         </p>
       )}
-      <div className="border-line bg-surface grid min-h-[540px] overflow-hidden rounded-xl border xl:h-[calc(100dvh-184px)] xl:min-h-[500px] xl:grid-cols-[180px_minmax(0,1fr)_340px] 2xl:grid-cols-[200px_minmax(0,1fr)_380px]">
+      <div
+        style={
+          {
+            "--reserva-pdv": `${240 + (rascunho ? 40 : 0) + (!dados.caixa ? 64 : 0) + (aviso ? 64 : 0) + (erro ? 64 : 0) + (!online ? 64 : 0) + (temItensInvalidos ? 64 : 0)}px`,
+          } as CSSProperties
+        }
+        className="border-line bg-surface grid min-h-[540px] overflow-hidden rounded-xl border xl:h-[calc(100dvh-var(--reserva-pdv))] xl:min-h-[400px] xl:grid-cols-[180px_minmax(0,1fr)_340px] 2xl:grid-cols-[200px_minmax(0,1fr)_380px]"
+      >
         <nav
           aria-label="Categorias de produtos"
           className="border-line bg-surface flex overflow-x-auto border-b xl:flex-col xl:border-r xl:border-b-0"
@@ -342,8 +516,8 @@ export function FrenteDeCaixa({
               <span className="ml-2 text-xs" aria-hidden="true">
                 {" "}
                 {c
-                  ? dados.produtos.filter((p) => p.categoria === c).length
-                  : dados.produtos.length}
+                  ? catalogo.filter((p) => p.categoria === c).length
+                  : catalogo.length}
               </span>
             </button>
           ))}
@@ -366,7 +540,7 @@ export function FrenteDeCaixa({
               onChange={(e) => setBusca(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
-                  const exato = dados.produtos.find(
+                  const exato = catalogo.find(
                     (p) => p.codigo && p.codigo === busca.trim(),
                   );
                   if (exato) {
@@ -411,16 +585,16 @@ export function FrenteDeCaixa({
             <div className="text-ink-3 m-auto max-w-sm px-6 py-16 text-center">
               <Icone nome="prato" tamanho={36} className="mx-auto mb-4" />
               <h2 className="text-ink font-semibold">
-                {dados.produtos.length
+                {catalogo.length
                   ? "Nenhum produto encontrado"
                   : "Prepare seu catálogo"}
               </h2>
               <p className="mt-2 text-sm">
-                {dados.produtos.length
+                {catalogo.length
                   ? "Busque por outro nome ou código."
                   : "Cadastre produtos como pratos nas fichas técnicas, com preço de venda e receita para a baixa de estoque."}
               </p>
-              {!dados.produtos.length && (
+              {!catalogo.length && (
                 <Link
                   href="/cardapio/fichas"
                   className="text-accent mt-4 inline-block text-sm font-semibold underline"
@@ -444,6 +618,11 @@ export function FrenteDeCaixa({
                 onChange={(e) => setCliente(e.target.value)}
               >
                 <option value="">Consumidor não identificado</option>
+                {cliente && !dados.clientes.some((c) => c.id === cliente) && (
+                  <option value={cliente}>
+                    Cliente vinculado ao atendimento salvo
+                  </option>
+                )}
                 {dados.clientes.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.nome}
@@ -501,6 +680,7 @@ export function FrenteDeCaixa({
                   if (window.confirm("Limpar todos os itens deste carrinho?")) {
                     setItens([]);
                     setPagamentos([]);
+                    setRascunho(null);
                   }
                 }}
               >
@@ -517,18 +697,19 @@ export function FrenteDeCaixa({
             )}
             {itens.map((item) => {
               const p = produtosPorId.get(item.produtoId);
-              if (!p) return null;
-              const preco = calcularPrecoItem(p, item.opcoes);
+              const cotacao = cotacoes.get(item.chave)!;
+              const preco = cotacao.preco;
+              const nome = p?.nome ?? "Produto indisponível";
               return (
                 <article
                   className="bg-surface-2 rounded-lg p-3"
                   key={item.chave}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <h4 className="text-sm font-semibold">{p.nome}</h4>
+                    <h4 className="text-sm font-semibold">{nome}</h4>
                     <button
                       type="button"
-                      aria-label={`Remover ${p.nome}`}
+                      aria-label={`Remover ${nome}`}
                       disabled={incerta || ocupado}
                       className="text-ink-3 hover:text-bad px-2"
                       onClick={() => {
@@ -541,7 +722,7 @@ export function FrenteDeCaixa({
                       ×
                     </button>
                   </div>
-                  {p.grupos.flatMap((g) =>
+                  {p?.grupos.flatMap((g) =>
                     g.opcoes
                       .filter((o) => item.opcoes.includes(o.id))
                       .map((o) => (
@@ -550,6 +731,9 @@ export function FrenteDeCaixa({
                         </p>
                       )),
                   )}
+                  {cotacao.erro && (
+                    <p className="text-warn mt-2 text-xs">{cotacao.erro}</p>
+                  )}
                   {item.observacao && (
                     <p className="text-ink-3 mt-1 text-xs">{item.observacao}</p>
                   )}
@@ -557,7 +741,7 @@ export function FrenteDeCaixa({
                     <div className="border-line-2 bg-surface flex items-center rounded border">
                       <button
                         type="button"
-                        aria-label={`Diminuir ${p.nome}`}
+                        aria-label={`Diminuir ${nome}`}
                         disabled={incerta || ocupado || item.quantidade === 1}
                         className="size-8 disabled:opacity-30"
                         onClick={() => {
@@ -578,7 +762,7 @@ export function FrenteDeCaixa({
                       </span>
                       <button
                         type="button"
-                        aria-label={`Aumentar ${p.nome}`}
+                        aria-label={`Aumentar ${nome}`}
                         disabled={incerta || ocupado || item.quantidade >= 999}
                         className="size-8"
                         onClick={() => {
@@ -596,7 +780,9 @@ export function FrenteDeCaixa({
                       </button>
                     </div>
                     <span className="text-sm font-semibold tabular-nums">
-                      {moeda(preco * item.quantidade)}
+                      {cotacao.erro
+                        ? "Revisar item"
+                        : moeda(preco * item.quantidade)}
                     </span>
                   </div>
                 </article>
@@ -645,6 +831,7 @@ export function FrenteDeCaixa({
             carregando={ocupado}
             disabled={
               !online ||
+              temItensInvalidos ||
               pago < total ||
               !pagamentos.length ||
               !Number.isSafeInteger(total) ||

@@ -83,7 +83,7 @@ function gruposValidos(valor: Prisma.JsonValue): GrupoComplemento[] {
     throw new ErroPdv("Configuração de complementos inválida.");
   return valor.map((g) => esquemaGrupo.parse(g));
 }
-async function catalogo(
+export async function catalogo(
   tx: Transacao,
   organizacaoId: string,
 ): Promise<ProdutoPdv[]> {
@@ -416,11 +416,38 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
         },
       });
       if (anterior) {
+        if (dados.carrinhoId && anterior.usuarioId !== ctx.usuario.id)
+          throw new ErroPdv(
+            "Carrinho indisponível para este operador e unidade.",
+          );
         if (anterior.payloadHash !== payloadHash)
           throw new ErroPdv(
             "Esta tentativa pertence a outro carrinho. Atualize a tela.",
           );
         return anterior.id;
+      }
+      const carrinho = dados.carrinhoId
+        ? await tx.pdvCarrinho.findFirst({
+            where: {
+              ...escopo,
+              id: dados.carrinhoId,
+              usuarioId: ctx.usuario.id,
+            },
+          })
+        : null;
+      if (dados.carrinhoId) {
+        if (!carrinho)
+          throw new ErroPdv(
+            "Carrinho indisponível para este operador e unidade.",
+          );
+        if (carrinho.status !== "ATIVO")
+          throw new ErroPdv(
+            "Este carrinho já foi concluído ou descartado. Atualize a lista.",
+          );
+        if (carrinho.versao !== dados.versaoCarrinho)
+          throw new ErroPdv(
+            "Este carrinho mudou em outra aba. Retome a versão atual antes de concluir.",
+          );
       }
       const caixa = await caixaAberto(tx, escopo, dados.caixaId);
       const produtos = await catalogo(tx, escopo.organizacaoId);
@@ -535,6 +562,31 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           consumo: json(consumo),
         },
       });
+      if (carrinho) {
+        await tx.pdvCarrinho.update({
+          where: { id: carrinho.id },
+          data: {
+            status: "CONCLUIDO",
+            concluidoEm: new Date(),
+            vendaId: venda.id,
+            versao: { increment: 1 },
+          },
+        });
+        await auditar(
+          tx,
+          ctx,
+          escopo,
+          "PdvCarrinho",
+          carrinho.id,
+          "ALTEROU",
+          { status: carrinho.status, versao: carrinho.versao },
+          {
+            status: "CONCLUIDO",
+            versao: carrinho.versao + 1,
+            vendaId: venda.id,
+          },
+        );
+      }
       // Ordem estável reduz deadlocks com outras rotinas que atualizam as posições.
       for (const c of [...consumo].sort((a, b) =>
         a.insumoId.localeCompare(b.insumoId),

@@ -32,6 +32,8 @@ export type PagamentoPdv = {
 };
 export type FinalizarEntrada = {
   chave: string;
+  carrinhoId?: string;
+  versaoCarrinho?: number;
   caixaId: string;
   clienteId?: string;
   modalidade: "RETIRADA" | "BALCAO" | "ENTREGA";

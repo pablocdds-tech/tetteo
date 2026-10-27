@@ -49,38 +49,51 @@ export const esquemaComplementos = z
         message: "Cada grupo e opção precisa ter um identificador único.",
       });
   });
-export const esquemaFinalizar = z.object({
-  chave: z.string().uuid(),
-  caixaId: identificador,
-  clienteId: identificador.optional(),
-  modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
-  observacao: z.string().trim().max(500),
-  itens: z
-    .array(
-      z.object({
-        produtoId: identificador,
-        quantidade: z.number().int().min(1).max(1000),
-        opcoes: z.array(identificador).max(200),
-        observacao: z.string().trim().max(140),
-      }),
+export const esquemaFinalizar = z
+  .object({
+    chave: z.string().uuid(),
+    carrinhoId: z.string().uuid().optional(),
+    versaoCarrinho: z.number().int().min(1).max(2_000_000_000).optional(),
+    caixaId: identificador,
+    clienteId: identificador.optional(),
+    modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
+    observacao: z.string().trim().max(500),
+    itens: z
+      .array(
+        z.object({
+          produtoId: identificador,
+          quantidade: z.number().int().min(1).max(1000),
+          opcoes: z.array(identificador).max(200),
+          observacao: z.string().trim().max(140),
+        }),
+      )
+      .min(1)
+      .max(100),
+    descontoCentavos: centavos,
+    taxaCentavos: centavos,
+    pagamentos: z
+      .array(
+        z.object({
+          forma: z.enum(["DINHEIRO", "PIX", "CREDITO", "DEBITO"]),
+          valorCentavos: centavos.refine(
+            (v) => v > 0,
+            "Informe o valor do pagamento.",
+          ),
+        }),
+      )
+      .min(1)
+      .max(20),
+  })
+  .superRefine((dados, ctx) => {
+    if (
+      (dados.carrinhoId === undefined) !==
+      (dados.versaoCarrinho === undefined)
     )
-    .min(1)
-    .max(100),
-  descontoCentavos: centavos,
-  taxaCentavos: centavos,
-  pagamentos: z
-    .array(
-      z.object({
-        forma: z.enum(["DINHEIRO", "PIX", "CREDITO", "DEBITO"]),
-        valorCentavos: centavos.refine(
-          (v) => v > 0,
-          "Informe o valor do pagamento.",
-        ),
-      }),
-    )
-    .min(1)
-    .max(20),
-});
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe a identificação e a versão do carrinho salvo.",
+      });
+  });
 export const esquemaAbrir = z.object({
   saldoInicialCentavos: centavos,
   localEstoqueId: identificador,

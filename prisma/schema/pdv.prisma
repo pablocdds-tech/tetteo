@@ -78,3 +78,23 @@ model PdvVenda {
   @@index([organizacaoId, unidadeId, criadaEm])
   @@map("pdv_venda")
 }
+
+// Carrinho é um rascunho do operador: sem pagamentos, preço congelado ou reserva.
+model PdvCarrinho {
+  id String @id
+  organizacaoId String
+  unidadeId String
+  usuarioId String
+  nome String @default("")
+  conteudo Json
+  ultimoHash String
+  versao Int @default(1)
+  status String @default("ATIVO")
+  vendaId String? @unique
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  descartadoEm DateTime?
+  concluidoEm DateTime?
+  @@index([organizacaoId, unidadeId, usuarioId, status, atualizadoEm], map: "pdv_carrinho_operador_estado_data_idx")
+  @@map("pdv_carrinho")
+}

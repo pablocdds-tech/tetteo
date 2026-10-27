@@ -2,12 +2,18 @@ import { redirect } from "next/navigation";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { FrenteDeCaixa } from "@/modules/pdv/components/frente-de-caixa";
 import { carregarPdv } from "@/modules/pdv/services/pdv";
+import { listarCarrinhos } from "@/modules/pdv/services/carrinhos";
 
 export default async function PaginaPdv() {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
   if (!contexto.unidadeAtiva) return null;
-  const dados = await carregarPdv(contexto);
+  const [dados, carrinhos] = await Promise.all([
+    carregarPdv(contexto),
+    pode(contexto, "pdv.vender")
+      ? listarCarrinhos(contexto)
+      : Promise.resolve([]),
+  ]);
   return (
     <FrenteDeCaixa
       key={contexto.unidadeAtiva.id}
@@ -15,6 +21,8 @@ export default async function PaginaPdv() {
       unidade={contexto.unidadeAtiva.nome}
       podeVender={pode(contexto, "pdv.vender")}
       podeDesconto={pode(contexto, "pdv.desconto")}
+      podeConfigurar={pode(contexto, "pdv.configurar")}
+      carrinhos={carrinhos}
     />
   );
 }
