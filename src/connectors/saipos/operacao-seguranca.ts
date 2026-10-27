@@ -6,6 +6,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
+import { urlPublica } from "@/core/auth/politicas";
 
 export function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -120,4 +121,14 @@ export async function lerCorpo(request: Request, limit = 256000) {
     throw e;
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+export function origemOperacaoValida(request: Request) {
+  try {
+    return (
+      request.headers.get("origin") === urlPublica() &&
+      request.headers.get("sec-fetch-site") !== "cross-site"
+    );
+  } catch {
+    return false;
+  }
 }

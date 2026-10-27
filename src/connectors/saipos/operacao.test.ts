@@ -7,6 +7,7 @@ import {
   emitirToken,
   validarToken,
   lerCorpo,
+  origemOperacaoValida,
 } from "./operacao-seguranca";
 import { configOperacao, configWebhookPedido } from "./operacao-config";
 import { comandoPedido, PedidosSaipos, FalhaPedidos } from "./pedidos";
@@ -16,6 +17,35 @@ import {
   itensVendaSaipos,
   historicosVendaSaipos,
 } from "./detalhes";
+
+test("origem usa APP_URL confiável atrás do proxy e recusa Host forjado e cross-site", () => {
+  const anterior = process.env.APP_URL;
+  process.env.APP_URL = "https://app.example.test";
+  const req = (origin?: string, site?: string) =>
+    new Request("http://container-interno:3000/api/saipos/operacoes", {
+      headers: {
+        host: "atacante.example",
+        "x-forwarded-host": "atacante.example",
+        ...(origin ? { origin } : {}),
+        ...(site ? { "sec-fetch-site": site } : {}),
+      },
+    });
+  try {
+    assert.equal(origemOperacaoValida(req("https://app.example.test")), true);
+    assert.equal(origemOperacaoValida(req("https://atacante.example")), false);
+    assert.equal(origemOperacaoValida(req()), false);
+    assert.equal(origemOperacaoValida(req("null")), false);
+    assert.equal(
+      origemOperacaoValida(req("https://app.example.test", "cross-site")),
+      false,
+    );
+    delete process.env.APP_URL;
+    assert.equal(origemOperacaoValida(req("https://app.example.test")), false);
+  } finally {
+    if (anterior === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = anterior;
+  }
+});
 
 test("callback autenticado funciona sem liberar envio de pedidos e falha sem chave", () => {
   const vars = {

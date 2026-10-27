@@ -3,7 +3,10 @@ import { obterContexto } from "@/core/sessao/contexto";
 import { escopoOperacao } from "@/connectors/saipos/operacao-repositorio";
 import { enviarComando } from "@/connectors/saipos/operacoes";
 import { enviarTracking } from "@/connectors/saipos/logistica";
-import { lerCorpo } from "@/connectors/saipos/operacao-seguranca";
+import {
+  lerCorpo,
+  origemOperacaoValida,
+} from "@/connectors/saipos/operacao-seguranca";
 import { configOperacao } from "@/connectors/saipos/operacao-config";
 import { PedidosSaipos, FalhaPedidos } from "@/connectors/saipos/pedidos";
 
@@ -17,7 +20,7 @@ export async function POST(request: Request) {
       { status: 403, headers },
     );
   // API de sessão: bloquear CSRF antes de qualquer envio ao fornecedor.
-  if (request.headers.get("origin") !== new URL(request.url).origin)
+  if (!origemOperacaoValida(request))
     return Response.json(
       { error: "Origem inválida." },
       { status: 403, headers },
