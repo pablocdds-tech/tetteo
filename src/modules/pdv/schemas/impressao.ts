@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { DocumentoImpressaoPdv } from "../impressao-types";
+import { esquemaEntregaSnapshot } from "./entrega";
 
 export const esquemaDocumentoImpressao = z
   .object({
@@ -44,6 +45,8 @@ const esquemaSnapshot = z.object({
   subtotalCentavos: centavos,
   descontoCentavos: centavos,
   taxaCentavos: centavos,
+  freteCentavos: centavos.default(0),
+  entrega: z.unknown().optional(),
   totalCentavos: centavos,
   trocoCentavos: centavos,
 });
@@ -55,6 +58,7 @@ export function montarDocumentoImpressao(
     unidade: string;
     tipo: "COMPROVANTE" | "COZINHA";
     podeVerCliente: boolean;
+    podeVerEntrega?: boolean;
     pedido: { id: string; numero: number; status: string } | null;
     agora?: Date;
   },
@@ -85,6 +89,9 @@ export function montarDocumentoImpressao(
     })),
   }));
   if (contexto.tipo === "COZINHA") return { ...base, tipo: "COZINHA", itens };
+  const entrega = contexto.podeVerEntrega
+    ? esquemaEntregaSnapshot.safeParse(venda.entrega)
+    : null;
   return {
     ...base,
     tipo: "COMPROVANTE",
@@ -96,6 +103,18 @@ export function montarDocumentoImpressao(
     subtotalCentavos: venda.subtotalCentavos,
     descontoCentavos: venda.descontoCentavos,
     taxaCentavos: venda.taxaCentavos,
+    freteCentavos: venda.freteCentavos,
+    ...(entrega?.success
+      ? {
+          entrega: {
+            destinatario: entrega.data.destinatario,
+            telefone: entrega.data.telefone,
+            endereco: entrega.data.endereco,
+            areaNome: entrega.data.areaNome,
+            previstoEm: entrega.data.previstoEm,
+          },
+        }
+      : {}),
     totalCentavos: venda.totalCentavos,
     trocoCentavos: venda.trocoCentavos,
     pagamentos: venda.pagamentos,

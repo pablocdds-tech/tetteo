@@ -628,6 +628,7 @@ function DetalheVenda({
             ["Subtotal", venda.subtotalCentavos],
             ["Desconto", -venda.descontoCentavos],
             ["Taxa adicional", venda.taxaCentavos],
+            ["Frete", venda.freteCentavos ?? 0],
             ["Total", venda.totalCentavos],
           ].map(([rotulo, valor]) => (
             <div

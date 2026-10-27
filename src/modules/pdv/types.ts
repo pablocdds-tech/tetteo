@@ -1,3 +1,9 @@
+import type {
+  AreaEntrega,
+  EntregaEntrada,
+  EntregaSnapshot,
+} from "./entrega-types";
+
 export type OpcaoComplemento = {
   id: string;
   nome: string;
@@ -37,6 +43,7 @@ export type FinalizarEntrada = {
   caixaId: string;
   clienteId?: string;
   modalidade: "RETIRADA" | "BALCAO" | "ENTREGA";
+  entrega?: EntregaEntrada;
   observacao: string;
   itens: ItemCarrinho[];
   descontoCentavos: number;
@@ -83,6 +90,8 @@ export type VendaPdv = {
   itens: ItemVendaPdv[];
   pagamentos: PagamentoPdv[];
   motivoCancelamento: string | null;
+  freteCentavos?: number;
+  entrega?: EntregaSnapshot | null;
 };
 export type DadosPdv = {
   produtos: ProdutoPdv[];
@@ -91,5 +100,6 @@ export type DadosPdv = {
   vendas: VendaPdv[];
   clientes: { id: string; nome: string }[];
   locais: { id: string; nome: string }[];
+  areasEntrega: AreaEntrega[];
 };
 export type ResultadoPdv = { ok?: string; erro?: string; vendaId?: string };

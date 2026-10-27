@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ErroPdv } from "./erro";
+import { esquemaEntregaEntrada } from "./entrega";
 import type {
   ItemCarrinho,
   ItemVendaPdv,
@@ -57,6 +58,7 @@ export const esquemaFinalizar = z
     caixaId: identificador,
     clienteId: identificador.optional(),
     modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
+    entrega: esquemaEntregaEntrada.optional(),
     observacao: z.string().trim().max(500),
     itens: z
       .array(

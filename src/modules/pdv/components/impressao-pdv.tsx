@@ -219,6 +219,34 @@ export function ImpressaoPdv({ inicial }: { inicial: DocumentoImpressaoPdv }) {
             </div>
           )}
         </dl>
+        {documento.tipo === "COMPROVANTE" && documento.entrega && (
+          <section className={styles.observacaoPedido}>
+            <h3>Endereço de entrega</h3>
+            <p>{documento.entrega.destinatario}</p>
+            {documento.entrega.telefone && (
+              <p>Telefone: {documento.entrega.telefone}</p>
+            )}
+            <p>
+              {documento.entrega.endereco.logradouro},{" "}
+              {documento.entrega.endereco.numero}
+            </p>
+            {documento.entrega.endereco.complemento && (
+              <p>{documento.entrega.endereco.complemento}</p>
+            )}
+            <p>
+              {documento.entrega.endereco.bairro} ·{" "}
+              {documento.entrega.endereco.cidade}/
+              {documento.entrega.endereco.uf}
+            </p>
+            {documento.entrega.endereco.cep && (
+              <p>CEP: {documento.entrega.endereco.cep}</p>
+            )}
+            {documento.entrega.endereco.referencia && (
+              <p>Referência: {documento.entrega.endereco.referencia}</p>
+            )}
+            <p>Previsão: {data(documento.entrega.previstoEm)}</p>
+          </section>
+        )}
         <section className={styles.itens}>
           <h3>Itens</h3>
           {documento.itens.map((item, indice) => (
@@ -280,6 +308,12 @@ export function ImpressaoPdv({ inicial }: { inicial: DocumentoImpressaoPdv }) {
                 <div>
                   <dt>Taxa adicional</dt>
                   <dd>{moeda(documento.taxaCentavos)}</dd>
+                </div>
+              )}
+              {documento.freteCentavos > 0 && (
+                <div>
+                  <dt>Frete</dt>
+                  <dd>{moeda(documento.freteCentavos)}</dd>
                 </div>
               )}
               <div className={styles.total}>

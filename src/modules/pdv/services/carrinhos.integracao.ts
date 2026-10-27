@@ -198,6 +198,7 @@ test("carrinhos persistem sem reserva, isolam operadores e unidades, controlam v
     carrinhoId: salvo.id,
     versaoCarrinho: 2,
     ...conteudo,
+    entrega: undefined,
     descontoCentavos: 0,
     taxaCentavos: 0,
     pagamentos: [{ forma: "PIX", valorCentavos: 2400 }],

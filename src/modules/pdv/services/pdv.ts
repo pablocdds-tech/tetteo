@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ErroPdv } from "../schemas/erro";
 import { Prisma } from "@prisma/client";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
-import { ExigeUnidade, SemPermissao } from "@/lib/erros";
+import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
 import type {
   CaixaPdv,
@@ -14,6 +14,9 @@ import type {
   VendaPdv,
 } from "../types";
 import { calcularConsumo, type ConsumoPdv } from "../schemas/consumo";
+import { exigirEscopo } from "./escopo";
+export { exigirEscopo } from "./escopo";
+import { listarAreasEntrega, prepararEntrega } from "./entregas";
 import {
   calcularVenda,
   esquemaAbrir,
@@ -30,28 +33,6 @@ type Escopo = { organizacaoId: string; unidadeId: string };
 const json = (valor: unknown) =>
   JSON.parse(JSON.stringify(valor)) as Prisma.InputJsonValue;
 
-export async function exigirEscopo(
-  contexto: ContextoSessao,
-  permissao = "pdv.ver",
-): Promise<Escopo> {
-  if (!pode(contexto, "pdv.ver") || !pode(contexto, permissao))
-    throw new SemPermissao("acessar esta operação do PDV");
-  const unidade = contexto.unidadeAtiva;
-  if (!unidade) throw new ExigeUnidade();
-  if (!contexto.unidadesVisiveis.some((u) => u.id === unidade.id))
-    throw new SemPermissao("acessar esta unidade");
-  const existe = await db.unidade.findFirst({
-    where: {
-      id: unidade.id,
-      organizacaoId: contexto.organizacao.id,
-      ativa: true,
-      excluidoEm: null,
-    },
-    select: { id: true },
-  });
-  if (!existe) throw new SemPermissao("acessar esta unidade");
-  return { organizacaoId: contexto.organizacao.id, unidadeId: unidade.id };
-}
 async function travarUnidade(tx: Transacao, escopo: Escopo) {
   // Uma mesma trava serializa abertura, venda, fechamento, sangria e cancelamento.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pdv:${escopo.organizacaoId}:${escopo.unidadeId}`},0))`;
@@ -174,6 +155,7 @@ function serializarVenda(v: Prisma.PdvVendaGetPayload<object>): VendaPdv {
     subtotalCentavos: v.subtotalCentavos,
     descontoCentavos: v.descontoCentavos,
     taxaCentavos: v.taxaCentavos,
+    freteCentavos: v.freteCentavos,
     trocoCentavos: v.trocoCentavos,
     observacao: v.observacao,
     operador: v.operador,
@@ -184,39 +166,46 @@ function serializarVenda(v: Prisma.PdvVendaGetPayload<object>): VendaPdv {
 }
 export async function carregarPdv(ctx: ContextoSessao): Promise<DadosPdv> {
   const escopo = await exigirEscopo(ctx);
-  const [produtos, caixas, vendas, clientes, locais] = await Promise.all([
-    catalogo(db, escopo.organizacaoId),
-    db.pdvCaixa.findMany({
-      where: escopo,
-      include: caixaInclude,
-      orderBy: { abertoEm: "desc" },
-      take: 31,
-    }),
-    db.pdvVenda.findMany({
-      where: escopo,
-      orderBy: { criadaEm: "desc" },
-      take: 100,
-    }),
-    pode(ctx, "crm.ver")
-      ? db.crmContact.findMany({
-          where: {
-            storeId: escopo.unidadeId,
-            active: true,
-            mergedIntoId: null,
-          },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-          take: 500,
-        })
-      : Promise.resolve([]),
-    db.localEstoque.findMany({
-      where: { unidadeId: escopo.unidadeId, ativo: true },
-      select: { id: true, nome: true },
-      orderBy: { nome: "asc" },
-    }),
-  ]);
+  const [produtos, caixas, vendas, clientes, locais, areasEntrega] =
+    await Promise.all([
+      catalogo(db, escopo.organizacaoId),
+      db.pdvCaixa.findMany({
+        where: escopo,
+        include: caixaInclude,
+        orderBy: { abertoEm: "desc" },
+        take: 31,
+      }),
+      db.pdvVenda.findMany({
+        where: escopo,
+        orderBy: { criadaEm: "desc" },
+        take: 100,
+      }),
+      pode(ctx, "crm.ver")
+        ? db.crmContact.findMany({
+            where: {
+              storeId: escopo.unidadeId,
+              active: true,
+              mergedIntoId: null,
+            },
+            select: { id: true, name: true },
+            orderBy: { name: "asc" },
+            take: 500,
+          })
+        : Promise.resolve([]),
+      db.localEstoque.findMany({
+        where: { unidadeId: escopo.unidadeId, ativo: true },
+        select: { id: true, nome: true },
+        orderBy: { nome: "asc" },
+      }),
+      pode(ctx, "pdv.vender") ||
+      pode(ctx, "pdv.entrega") ||
+      pode(ctx, "pdv.configurar")
+        ? listarAreasEntrega(ctx)
+        : Promise.resolve([]),
+    ]);
   return {
     produtos,
+    areasEntrega,
     caixa: caixas.find((c) => !c.fechadoEm)
       ? serializarCaixa(caixas.find((c) => !c.fechadoEm)!)
       : null,
@@ -426,6 +415,18 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           );
         return anterior.id;
       }
+      if (dados.modalidade === "ENTREGA" && !dados.entrega)
+        throw new ErroPdv(
+          "Informe o endereço, o frete e o prazo da entrega antes de concluir.",
+        );
+      if (dados.modalidade !== "ENTREGA" && dados.entrega)
+        throw new ErroPdv(
+          "Dados de entrega só podem acompanhar pedidos da modalidade entrega.",
+        );
+      const entrega = dados.entrega
+        ? await prepararEntrega(tx, ctx, escopo, dados.entrega, new Date())
+        : null;
+      const freteCentavos = entrega?.freteCentavos ?? 0;
       const carrinho = dados.carrinhoId
         ? await tx.pdvCarrinho.findFirst({
             where: {
@@ -455,7 +456,7 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
         produtos,
         dados.itens,
         dados.descontoCentavos,
-        dados.taxaCentavos,
+        dados.taxaCentavos + freteCentavos,
         dados.pagamentos,
       );
       const cliente = dados.clienteId
@@ -555,6 +556,8 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           subtotalCentavos: resumo.subtotalCentavos,
           descontoCentavos: dados.descontoCentavos,
           taxaCentavos: dados.taxaCentavos,
+          freteCentavos,
+          ...(entrega ? { entrega: json(entrega) } : {}),
           totalCentavos: resumo.totalCentavos,
           trocoCentavos: resumo.trocoCentavos,
           itens: json(resumo.itens),

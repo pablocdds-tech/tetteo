@@ -11,14 +11,14 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 5. **Integrar a gestão.** Publicar fatos de venda/cancelamento com idempotência e definir consumidores em Financeiro, Analytics e CRM, sem imports entre módulos. Distinguir dinheiro recebido, cartão/Pix registrados e liquidação real para evitar dupla contagem com Saipos.
 6. **Tratar exceções.** Devolução parcial, troca e devolução após caixa fechado, com estoque e compensações financeiras auditadas. Preservar o fechamento original; nunca reescrever o passado.
 7. **Ampliar consultas.** Histórico de vendas implementado com paginação, filtros por período/operador/forma de pagamento/situação/modalidade, busca e CSV de todo o filtro. Busca de clientes no atendimento e histórico de caixas continuam pendentes.
-8. **Ampliar a operação.** Delivery com endereço, áreas/frete, despacho e entregador; depois terminais/caixas independentes por unidade e permissões de supervisão.
+8. **Ampliar a operação.** Implementados endereço, áreas por cidade/bairro, frete/prazo e atribuição de entregador no quadro. Continuam pendentes mapas/rotas, rastreamento e acerto de motoboy; depois terminais/caixas independentes por unidade e permissões de supervisão.
 9. **Adicionar integrações adiadas.** Emissão fiscal, adquirentes/Pix com confirmação automática e contingência offline somente com contratos, regras e testes próprios.
 
 ## Entrega iniciada
 
 As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. A exploração seção por seção levou à impressão manual da etapa 4 e ao histórico de vendas da etapa 7. Os demais fluxos continuam pendentes, com modalidade entrega disponível para acompanhamento manual de estados.
 
-O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Próxima prioridade: endereço/frete/entregador e cliente no atendimento, depois pedido com pagamento pendente, agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
+O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). A primeira seção seguinte foi Delivery: endereço, áreas/frete e entregador. Próximas prioridades: pedido com pagamento pendente, cliente no atendimento, agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
 
 - Preparação em `/pdv/preparacao`, acessível a quem tem `pdv.ver` e `pdv.configurar`.
 - Atendimentos salvos na frente de caixa; cada operador vê somente os próprios na unidade ativa.
@@ -28,6 +28,16 @@ O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-refere
 ## Validação e publicação por etapa
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
+
+### Seção Delivery — endereço, áreas e entregadores
+
+- Cadastro por unidade de áreas com cidade/UF/bairros, frete e prazo; entregadores ativos/inativos; atribuição no detalhe do quadro antes da saída. Endereço e cotação são congelados no pedido; frete separado da taxa adicional no checkout, histórico, CSV e comprovante.
+- `npm run check`: 645 testes aprovados, sem erros de tipos, lint ou formatação; cinco avisos anteriores do CRM. `npm run build` aprovado com as duas rotas de cadastro, mantendo os três avisos anteriores de `server/arquivos.ts`.
+- Cinco testes de domínio novos, integração de cadastros/atribuição, integração independente do fluxo financeiro/logístico e quatro integrações de regressão passaram em PostgreSQL local exclusivo `_test`. Cobrem valores/versões/cobertura, frete manual, isolamento/permissões, concorrência, destinatário/endereço somente autorizados, snapshot/replay, troco, baixa/estorno e carrinhos sem cotação persistida.
+- Migração aditiva `20261027190000_pdv_delivery` aplicada no banco local de teste; frete zero mantém as vendas antigas. Nenhum dado de clientes ou pedido da plataforma de referência foi importado.
+- Playwright: criar/editar/inativar/reativar área, cadastrar entregador, capturar endereço, salvar/retomar atendimento e concluir venda fictícia. Mudança de frete em outra aba exige reaplicar cotação e confirmar, preservando o endereço. Áreas/entregadores e formulários foram conferidos em 390×844, sem overflow do documento após correção do cabeçalho acessível da tabela. Perfil somente de consulta não abre cadastros administrativos nem avança pedidos.
+- A entrega fictícia percorreu cozinha → coleta → atribuição de motoboy → saída → entregue. Saída sem responsável foi recusada; atribuição permaneceu no mesmo estado com evento próprio. Comprovante autorizado mostrou endereço/frete; HTML de cozinha e perfil de consulta não continham os novos dados pessoais. Nenhuma impressão física foi acionada.
+- Mapas/polígonos, rotas, rastreamento público e acerto de motoboy continuam pendentes. Cadastro rápido de cliente/carteira de endereços segue no CRM; pedido com pagamento pendente é a próxima seção operacional.
 
 ### Exploração por seção, impressão e histórico
 

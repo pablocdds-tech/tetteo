@@ -65,6 +65,8 @@ model PdvVenda {
   subtotalCentavos Int
   descontoCentavos Int
   taxaCentavos Int
+  freteCentavos Int @default(0)
+  entrega Json?
   totalCentavos Int
   trocoCentavos Int
   itens Json
@@ -115,6 +117,9 @@ model PdvPedido {
   saiuEntregaEm DateTime?
   entregueEm DateTime?
   canceladoEm DateTime?
+  entregadorId String?
+  entregadorNome String?
+  entregador PdvEntregador? @relation(fields: [organizacaoId, unidadeId, entregadorId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
   eventos PdvPedidoEvento[]
   @@unique([organizacaoId, unidadeId, id])
   @@unique([organizacaoId, unidadeId, numero])
@@ -139,4 +144,42 @@ model PdvPedidoEvento {
   criadoEm DateTime @default(now())
   @@unique([pedidoId, versao])
   @@map("pdv_pedido_evento")
+}
+
+model PdvAreaEntrega {
+  id String @id
+  organizacaoId String
+  unidadeId String
+  nome String
+  nomeChave String
+  cidade String
+  uf String
+  bairros Json
+  freteCentavos Int
+  prazoMinutos Int
+  ativa Boolean @default(true)
+  versao Int @default(1)
+  ultimoHash String
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  @@unique([organizacaoId, unidadeId, nomeChave], map: "pdv_area_entrega_nome_key")
+  @@index([organizacaoId, unidadeId, ativa])
+  @@map("pdv_area_entrega")
+}
+
+model PdvEntregador {
+  id String @id
+  organizacaoId String
+  unidadeId String
+  nome String
+  telefone String @default("")
+  ativo Boolean @default(true)
+  versao Int @default(1)
+  ultimoHash String
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  pedidos PdvPedido[]
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, ativo])
+  @@map("pdv_entregador")
 }

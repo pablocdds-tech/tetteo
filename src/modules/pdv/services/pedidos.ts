@@ -1,9 +1,10 @@
 import { Prisma } from "@prisma/client";
-import type { ContextoSessao } from "@/core/sessao/nucleo";
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { db } from "@/server/db";
 import type { ItemVendaPdv, PagamentoPdv, VendaPdv } from "../types";
 import type { PedidoPdv, QuadroPedidos, StatusPedido } from "../pedido-types";
 import { ErroPdv } from "../schemas/erro";
+import { esquemaEntregaSnapshot } from "../schemas/entrega";
 import {
   diaPedidos,
   esquemaListaPedidos,
@@ -32,6 +33,7 @@ function vendaSerializada(v: VendaBanco): VendaPdv {
     subtotalCentavos: v.subtotalCentavos,
     descontoCentavos: v.descontoCentavos,
     taxaCentavos: v.taxaCentavos,
+    freteCentavos: v.freteCentavos,
     trocoCentavos: v.trocoCentavos,
     observacao: v.observacao,
     operador: v.operador,
@@ -40,7 +42,14 @@ function vendaSerializada(v: VendaBanco): VendaPdv {
     motivoCancelamento: v.motivoCancelamento,
   };
 }
-function serializarPedido(p: PedidoBanco, v: VendaBanco): PedidoPdv {
+function serializarPedido(
+  p: PedidoBanco,
+  v: VendaBanco,
+  ctx: ContextoSessao,
+): PedidoPdv {
+  const entrega = pode(ctx, "pdv.entrega")
+    ? esquemaEntregaSnapshot.safeParse(v.entrega)
+    : null;
   return {
     id: p.id,
     vendaId: p.vendaId,
@@ -53,6 +62,10 @@ function serializarPedido(p: PedidoBanco, v: VendaBanco): PedidoPdv {
     saiuEntregaEm: p.saiuEntregaEm?.toISOString() ?? null,
     entregueEm: p.entregueEm?.toISOString() ?? null,
     canceladoEm: p.canceladoEm?.toISOString() ?? null,
+    entrega: entrega?.success ? entrega.data : null,
+    temEnderecoEntrega: v.entrega !== null,
+    entregadorId: p.entregadorId,
+    entregadorNome: p.entregadorNome,
     venda: vendaSerializada(v),
     historico: p.eventos.map((e) => ({
       id: e.id,
@@ -131,7 +144,7 @@ export async function listarPedidos(
           const venda = mapa.get(p.vendaId);
           if (!venda)
             throw new ErroPdv("Pedido sem venda disponível nesta unidade.");
-          return serializarPedido(p, venda);
+          return serializarPedido(p, venda, ctx);
         }),
         totais,
         ativosTotal,
@@ -170,7 +183,7 @@ export async function moverPedido(
       throw new ErroPdv("Venda deste pedido não encontrada nesta unidade.");
     // Uma resposta perdida da mesma transição recupera a confirmação sem novo evento.
     if (pedido.versao === dados.versao + 1 && pedido.status === dados.destino)
-      return serializarPedido(pedido, venda);
+      return serializarPedido(pedido, venda, ctx);
     if (pedido.versao !== dados.versao)
       throw new ErroPdv(
         "Este pedido mudou em outra tela. Atualize o quadro antes de continuar.",
@@ -182,6 +195,22 @@ export async function moverPedido(
       dados.destino,
       venda.modalidade,
     );
+    if (dados.destino === "SAIU_ENTREGA" && venda.entrega !== null) {
+      if (!pode(ctx, "pdv.entrega"))
+        throw new ErroPdv(
+          "Seu perfil precisa de permissão de entrega para despachar este pedido.",
+        );
+      const entregador = pedido.entregadorId
+        ? await tx.pdvEntregador.findFirst({
+            where: { ...escopo, id: pedido.entregadorId, ativo: true },
+            select: { id: true },
+          })
+        : null;
+      if (!entregador)
+        throw new ErroPdv(
+          "Atribua um entregador ativo antes de marcar a saída para entrega.",
+        );
+    }
     const agora = new Date();
     const atualizado = await tx.pdvPedido.update({
       where: { id: pedido.id },
@@ -214,6 +243,6 @@ export async function moverPedido(
         valoresDepois: { status: atualizado.status, versao: atualizado.versao },
       },
     });
-    return serializarPedido(atualizado, venda);
+    return serializarPedido(atualizado, venda, ctx);
   });
 }

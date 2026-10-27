@@ -32,6 +32,7 @@ async function consultarDocumento(
       unidade: ctx.unidadeAtiva!.nome,
       tipo: dados.tipo,
       podeVerCliente: pode(ctx, "crm.ver"),
+      podeVerEntrega: pode(ctx, "pdv.entrega"),
       pedido,
     });
   } catch {

@@ -7,6 +7,7 @@ import type { FinalizarEntrada } from "../types";
 import { abrirCaixa, cancelarVenda, fecharCaixa, finalizarVenda } from "./pdv";
 import { listarPedidos, moverPedido } from "./pedidos";
 import { diaPedidos } from "../schemas/pedido";
+import { atribuirEntregador, salvarEntregador } from "./entregas";
 
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid");
 if (
@@ -88,6 +89,23 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
     chave: randomUUID(),
     caixaId,
     modalidade: "ENTREGA",
+    entrega: {
+      destinatario: "Destinatário fictício",
+      telefone: "",
+      endereco: {
+        logradouro: "Rua fictícia",
+        numero: "10",
+        complemento: "",
+        bairro: "Centro",
+        cidade: "Cidade fictícia",
+        uf: "RN",
+        cep: "",
+        referencia: "",
+      },
+      freteCentavos: 0,
+      prazoMinutos: 30,
+      motivoFreteManual: "Frete gratuito de teste",
+    },
     observacao: "Pedido fictício",
     itens: [{ produtoId: ficha.id, quantidade: 1, opcoes: [], observacao: "" }],
     descontoCentavos: 0,
@@ -175,12 +193,24 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
       }),
     /outra tela/,
   );
+  const motoboy = await salvarEntregador(ctx, {
+    id: randomUUID(),
+    versao: 0,
+    nome: "Entregador fictício",
+    telefone: "",
+    ativo: true,
+  });
+  await atribuirEntregador(ctx, {
+    pedidoId: cozinha.id,
+    versaoPedido: 2,
+    entregadorId: motoboy.id,
+  });
   const saiu = await moverPedido(ctx, {
     pedidoId: cozinha.id,
-    versao: 2,
+    versao: 3,
     destino: "SAIU_ENTREGA",
   });
-  assert.equal(saiu.versao, 3);
+  assert.equal(saiu.versao, 4);
   assert.ok(saiu.saiuEntregaEm);
   await assert.rejects(
     () =>
@@ -194,10 +224,10 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
   );
   const entregue = await moverPedido(ctx, {
     pedidoId: cozinha.id,
-    versao: 3,
+    versao: 4,
     destino: "ENTREGUE",
   });
-  assert.equal(entregue.versao, 4);
+  assert.equal(entregue.versao, 5);
   assert.ok(entregue.entregueEm);
   const depois = await db.pdvVenda.findUniqueOrThrow({
     where: { id: entregaId },
@@ -219,21 +249,21 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
     vendaId: entregaId,
     motivo: "Devolução fictícia",
     pedidoId: cozinha.id,
-    versaoPedido: 4,
+    versaoPedido: 5,
   });
   await cancelarVenda(ctx, {
     vendaId: entregaId,
     motivo: "Devolução fictícia",
     pedidoId: cozinha.id,
-    versaoPedido: 4,
+    versaoPedido: 5,
   });
   const cancelado = (await listarPedidos(ctx)).pedidos.find(
     (p) => p.id === cozinha.id,
   )!;
   assert.equal(cancelado.status, "CANCELADO");
-  assert.equal(cancelado.versao, 5);
+  assert.equal(cancelado.versao, 6);
   assert.equal(cancelado.venda.status, "CANCELADA");
-  assert.equal(cancelado.historico.length, 5);
+  assert.equal(cancelado.historico.length, 6);
   assert.equal(cancelado.historico.at(-1)!.observacao, "Devolução fictícia");
   assert.equal(
     await db.movimentoEstoque.count({
@@ -253,7 +283,7 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
     () =>
       moverPedido(ctx, {
         pedidoId: cozinha.id,
-        versao: 5,
+        versao: 6,
         destino: "ENTREGUE",
       }),
     /cancelada/,
@@ -262,6 +292,7 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
     ...base,
     chave: randomUUID(),
     modalidade: "BALCAO",
+    entrega: undefined,
   });
   const balcao = (await listarPedidos(ctx)).pedidos.find(
     (p) => p.vendaId === balcaoId,
@@ -314,6 +345,7 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
     ...base,
     chave: randomUUID(),
     modalidade: "RETIRADA",
+    entrega: undefined,
   });
   const retirada = (await listarPedidos(ctx)).pedidos.find(
     (p) => p.vendaId === retiradaId,

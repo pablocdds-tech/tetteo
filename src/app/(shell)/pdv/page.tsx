@@ -7,6 +7,7 @@ import {
   periodoPedidos,
 } from "@/modules/pdv/schemas/pedido";
 import { ErroPdv } from "@/modules/pdv/schemas/erro";
+import { listarEntregadores } from "@/modules/pdv/services/entregas";
 
 export default async function PaginaGestaoPedidos({
   searchParams,
@@ -35,7 +36,12 @@ export default async function PaginaGestaoPedidos({
       throw erro;
     }
   }
-  const quadro = await listarPedidos(contexto, { dia: consulta.dia });
+  const [quadro, entregadores] = await Promise.all([
+    listarPedidos(contexto, { dia: consulta.dia }),
+    pode(contexto, "pdv.entrega")
+      ? listarEntregadores(contexto)
+      : Promise.resolve([]),
+  ]);
   return (
     <GestaoPedidos
       key={`${contexto.unidadeAtiva.id}:${quadro.dia}`}
@@ -44,6 +50,10 @@ export default async function PaginaGestaoPedidos({
       podeVender={pode(contexto, "pdv.vender")}
       podeOperar={pode(contexto, "pdv.operar")}
       podeCancelar={pode(contexto, "pdv.cancelar")}
+      podeEntrega={pode(contexto, "pdv.entrega")}
+      entregadores={entregadores
+        .filter((e) => e.ativo)
+        .map((e) => ({ id: e.id, nome: e.nome }))}
       novaVenda={consulta.novaVenda}
       instante={new Date().toISOString()}
     />

@@ -82,6 +82,7 @@ async function serializarVendas(
     subtotalCentavos: v.subtotalCentavos,
     descontoCentavos: v.descontoCentavos,
     taxaCentavos: v.taxaCentavos,
+    freteCentavos: v.freteCentavos,
     trocoCentavos: v.trocoCentavos,
     observacao: v.observacao,
     operador: v.operador,
@@ -195,6 +196,7 @@ export async function exportarHistorico(
         "Subtotal (R$)",
         "Desconto (R$)",
         "Taxa (R$)",
+        "Frete (R$)",
         "Total (R$)",
         "Troco (R$)",
         "Pagamentos registrados",
@@ -211,6 +213,7 @@ export async function exportarHistorico(
         reais(v.subtotalCentavos),
         reais(v.descontoCentavos),
         reais(v.taxaCentavos),
+        reais(v.freteCentavos ?? 0),
         reais(v.totalCentavos),
         reais(v.trocoCentavos),
         v.pagamentos

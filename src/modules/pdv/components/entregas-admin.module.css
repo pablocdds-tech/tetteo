@@ -1,0 +1,138 @@
+.pagina {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.cabecalho {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.cabecalho h1 {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.cabecalho p {
+  max-width: 680px;
+  margin-top: 5px;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+.filtros > div {
+  max-width: 480px;
+  flex: 1;
+  min-width: min(250px, 100%);
+}
+.filtros > label,
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.filtros select,
+.campo select,
+.campo textarea {
+  min-height: 40px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 400;
+}
+.campo textarea {
+  resize: vertical;
+}
+.campo > span {
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+.tabela {
+  position: relative;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.tabela table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
+}
+.tabela th,
+.tabela td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.tabela thead th {
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+.tabela tbody th {
+  font-weight: 500;
+}
+.tabela tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.tabela tbody tr:hover {
+  background: var(--surface-2);
+}
+.tabela td small {
+  display: block;
+  max-width: 340px;
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: 11px;
+}
+.situacao {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 4px;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  font-size: 11px;
+}
+.ativa {
+  background: var(--ok-sub);
+  color: var(--ok);
+}
+.vazio {
+  padding: 32px 20px;
+  text-align: center;
+}
+.vazio h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.vazio p {
+  max-width: 520px;
+  margin: 8px auto 0;
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.pagina :is(select, button, a, input, textarea):focus-visible,
+.campo :is(select, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

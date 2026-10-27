@@ -1,8 +1,15 @@
 import type { ItemCarrinho, ProdutoPdv } from "./types";
+import type { EntregaEntrada } from "./entrega-types";
+
+export type EntregaCarrinho = Pick<
+  EntregaEntrada,
+  "destinatario" | "telefone" | "endereco" | "areaId"
+>;
 
 export type ConteudoCarrinho = {
   clienteId?: string;
   modalidade: "RETIRADA" | "BALCAO" | "ENTREGA";
+  entrega?: EntregaCarrinho;
   observacao: string;
   itens: ItemCarrinho[];
 };

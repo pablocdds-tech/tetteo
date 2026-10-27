@@ -1,4 +1,5 @@
 import type { VendaPdv } from "./types";
+import type { EntregaSnapshot } from "./entrega-types";
 
 export type StatusPedido =
   "COZINHA" | "AGUARDANDO_COLETA" | "SAIU_ENTREGA" | "ENTREGUE" | "CANCELADO";
@@ -24,6 +25,10 @@ export type PedidoPdv = {
   saiuEntregaEm: string | null;
   entregueEm: string | null;
   canceladoEm: string | null;
+  entrega?: EntregaSnapshot | null;
+  temEnderecoEntrega?: boolean;
+  entregadorId?: string | null;
+  entregadorNome?: string | null;
   venda: VendaPdv;
   historico: EventoPedido[];
 };

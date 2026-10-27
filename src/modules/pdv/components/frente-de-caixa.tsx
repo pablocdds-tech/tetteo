@@ -9,11 +9,15 @@ import { Icone } from "@/design-system/icones";
 import { PainelLateral } from "@/design-system/painel-lateral";
 import { finalizarVendaAcao } from "../acoes";
 import { CarrinhosSalvos } from "./carrinhos-salvos";
+import { DadosEntrega } from "./dados-entrega";
+import type { EntregaEntrada } from "../entrega-types";
+import { conferirAreaEntrega, esquemaEntregaEntrada } from "../schemas/entrega";
 import type { ResumoCarrinho, RetomadaCarrinho } from "../carrinho-types";
 import { calcularPrecoItem } from "../schemas/venda";
 import styles from "./novo-pedido.module.css";
 import type {
   DadosPdv,
+  FinalizarEntrada,
   ItemCarrinho,
   PagamentoPdv,
   ProdutoPdv,
@@ -78,6 +82,7 @@ export function FrenteDeCaixa({
   const checkoutRef = useRef<HTMLDialogElement>(null);
   const trava = useRef(false);
   const chaveVenda = useRef<string | null>(null);
+  const tentativaVenda = useRef<FinalizarEntrada | null>(null);
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState<string | null>(null);
   const [itens, setItens] = useState<Linha[]>([]);
@@ -86,6 +91,9 @@ export function FrenteDeCaixa({
   const [modalidade, setModalidade] = useState<
     "RETIRADA" | "BALCAO" | "ENTREGA"
   >("RETIRADA");
+  const [entrega, setEntrega] = useState<EntregaEntrada | null>(null);
+  const [entregaConferida, setEntregaConferida] = useState(false);
+  const [editarEntrega, setEditarEntrega] = useState(false);
   const [observacao, setObservacao] = useState("");
   const [pagamento, setPagamento] = useState(false);
   const [desconto, setDesconto] = useState("0");
@@ -98,6 +106,7 @@ export function FrenteDeCaixa({
   const [ocupado, setOcupado] = useState(false);
   // Uma falha de rede pode ocorrer após o servidor gravar. A retentativa usa o mesmo payload/chave.
   const [incerta, setIncerta] = useState(false);
+  const [valorCongelado, setValorCongelado] = useState<number | null>(null);
   const [online, setOnline] = useState(true);
   const [rascunho, setRascunho] = useState<{
     id: string;
@@ -144,7 +153,36 @@ export function FrenteDeCaixa({
   );
   const descontoCentavos = centavos(desconto);
   const taxaCentavos = centavos(taxa);
-  const total = subtotal - descontoCentavos + taxaCentavos;
+  const areasEntrega = dados.areasEntrega ?? [];
+  let erroEntrega = "";
+  if (modalidade === "ENTREGA") {
+    const validacao = esquemaEntregaEntrada.safeParse(entrega);
+    if (!entregaConferida || !validacao.success)
+      erroEntrega =
+        "Confirme o destinatário, o endereço, o frete e o prazo antes de pagar.";
+    else if (validacao.data.areaId) {
+      const area = areasEntrega.find(
+        (item) => item.id === validacao.data.areaId,
+      );
+      if (!area)
+        erroEntrega =
+          "A área de entrega não está disponível. Atualize as áreas e confira o frete.";
+      else
+        try {
+          conferirAreaEntrega(area, validacao.data);
+        } catch (falha) {
+          erroEntrega =
+            falha instanceof Error
+              ? falha.message
+              : "Confira a área de entrega.";
+        }
+    }
+  }
+  const freteCentavos =
+    modalidade === "ENTREGA" ? (entrega?.freteCentavos ?? 0) : 0;
+  const totalAtual = subtotal - descontoCentavos + taxaCentavos + freteCentavos;
+  const total =
+    incerta && valorCongelado !== null ? valorCongelado : totalAtual;
   const pago = pagamentos.reduce((soma, p) => soma + p.valorCentavos, 0);
   const troco = Math.max(0, pago - total);
   const podeAbrirPagamento =
@@ -154,7 +192,8 @@ export function FrenteDeCaixa({
     online &&
     !ocupado &&
     !incerta &&
-    !temItensInvalidos;
+    !temItensInvalidos &&
+    !erroEntrega;
 
   useEffect(() => {
     const dialogo = checkoutRef.current;
@@ -193,7 +232,7 @@ export function FrenteDeCaixa({
     window.addEventListener("offline", atualizar);
     window.addEventListener("keydown", atalhos);
     const proteger = (e: BeforeUnloadEvent) => {
-      if (itens.length) e.preventDefault();
+      if (itens.length || entrega) e.preventDefault();
     };
     const protegerLink = (e: MouseEvent) => {
       if (
@@ -218,9 +257,9 @@ export function FrenteDeCaixa({
       if (
         ocupado ||
         incerta ||
-        (itens.length > 0 &&
+        ((itens.length > 0 || entrega) &&
           !window.confirm(
-            "Há itens neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
+            "Há itens ou dados de entrega neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
           ))
       ) {
         e.preventDefault();
@@ -236,7 +275,7 @@ export function FrenteDeCaixa({
       window.removeEventListener("beforeunload", proteger);
       document.removeEventListener("click", protegerLink, true);
     };
-  }, [podeAbrirPagamento, itens.length, ocupado, incerta]);
+  }, [podeAbrirPagamento, itens.length, ocupado, incerta, entrega]);
 
   function limparAtendimento() {
     setItens([]);
@@ -247,12 +286,17 @@ export function FrenteDeCaixa({
     setTaxa("0");
     setValor("");
     setModalidade("RETIRADA");
+    setEntrega(null);
+    setEntregaConferida(false);
+    setEditarEntrega(false);
     setRascunho(null);
     setCatalogoRetomado(null);
     setCategoria(null);
     setBusca("");
     setErro("");
     chaveVenda.current = null;
+    tentativaVenda.current = null;
+    setValorCongelado(null);
   }
   function retomarAtendimento(retomada: RetomadaCarrinho) {
     const { carrinho: salvo } = retomada;
@@ -267,6 +311,25 @@ export function FrenteDeCaixa({
     );
     setCliente(salvo.conteudo.clienteId ?? "");
     setModalidade(salvo.conteudo.modalidade);
+    if (salvo.conteudo.entrega) {
+      const salva = salvo.conteudo.entrega;
+      const area = areasEntrega.find(
+        (item) => item.id === salva.areaId && item.ativa,
+      );
+      setEntrega({
+        ...salva,
+        ...(area
+          ? {
+              areaId: area.id,
+              versaoArea: area.versao,
+              freteCentavos: area.freteCentavos,
+              prazoMinutos: area.prazoMinutos,
+            }
+          : { freteCentavos: 0, prazoMinutos: 30 }),
+        motivoFreteManual: "",
+      });
+      setEntregaConferida(false);
+    }
     setObservacao(salvo.conteudo.observacao);
     setAviso(
       [
@@ -341,7 +404,12 @@ export function FrenteDeCaixa({
     setErro("");
   }
   async function finalizar() {
-    if (trava.current || !dados.caixa || temItensInvalidos) return;
+    if (
+      trava.current ||
+      (!dados.caixa && !tentativaVenda.current) ||
+      (!incerta && (temItensInvalidos || !!erroEntrega))
+    )
+      return;
     if (!navigator.onLine) {
       setErro(
         "Sem conexão. O carrinho continua nesta tela; tente novamente quando a internet voltar.",
@@ -349,9 +417,8 @@ export function FrenteDeCaixa({
       return;
     }
     if (
-      !Number.isSafeInteger(total) ||
-      total < 0 ||
-      descontoCentavos > subtotal
+      !incerta &&
+      (!Number.isSafeInteger(total) || total < 0 || descontoCentavos > subtotal)
     ) {
       setErro("Revise o desconto e a taxa adicional.");
       return;
@@ -361,14 +428,15 @@ export function FrenteDeCaixa({
     setErro("");
     chaveVenda.current ??= crypto.randomUUID();
     try {
-      const resultado = await finalizarVendaAcao({
+      tentativaVenda.current ??= {
         chave: chaveVenda.current,
-        caixaId: dados.caixa.id,
+        caixaId: dados.caixa!.id,
         ...(rascunho
           ? { carrinhoId: rascunho.id, versaoCarrinho: rascunho.versao }
           : {}),
         clienteId: cliente || undefined,
         modalidade,
+        ...(modalidade === "ENTREGA" && entrega ? { entrega } : {}),
         observacao,
         itens: itens.map(({ produtoId, quantidade, opcoes, observacao }) => ({
           produtoId,
@@ -379,11 +447,17 @@ export function FrenteDeCaixa({
         descontoCentavos,
         taxaCentavos,
         pagamentos,
-      });
+      };
+      setValorCongelado(total);
+      const resultado = await finalizarVendaAcao(tentativaVenda.current);
       if (resultado.erro) {
         setErro(resultado.erro);
         // Rejeição após resposta incerta não prova que a primeira venda falhou.
-        if (!incerta) chaveVenda.current = null;
+        if (!incerta) {
+          chaveVenda.current = null;
+          tentativaVenda.current = null;
+          setValorCongelado(null);
+        }
         return;
       }
       setAviso(
@@ -395,11 +469,16 @@ export function FrenteDeCaixa({
       setPagamentos([]);
       setCliente("");
       setObservacao("");
+      setEntrega(null);
+      setEntregaConferida(false);
+      setEditarEntrega(false);
       setDesconto("0");
       setTaxa("0");
       setPagamento(false);
       setIncerta(false);
       chaveVenda.current = null;
+      tentativaVenda.current = null;
+      setValorCongelado(null);
       router.push(
         resultado.vendaId
           ? `/pdv?novaVenda=${encodeURIComponent(resultado.vendaId)}`
@@ -426,9 +505,9 @@ export function FrenteDeCaixa({
         evento.preventDefault();
         if (ocupado || incerta) return;
         if (
-          !itens.length ||
+          (!itens.length && !entrega) ||
           window.confirm(
-            "Há itens neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
+            "Há itens ou dados de entrega neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
           )
         )
           router.push("/pdv");
@@ -470,6 +549,16 @@ export function FrenteDeCaixa({
           conteudo={{
             clienteId: cliente || undefined,
             modalidade,
+            ...(modalidade === "ENTREGA" && entrega
+              ? {
+                  entrega: {
+                    destinatario: entrega.destinatario,
+                    telefone: entrega.telefone,
+                    endereco: entrega.endereco,
+                    ...(entrega.areaId ? { areaId: entrega.areaId } : {}),
+                  },
+                }
+              : {}),
             observacao,
             itens: itens.map(
               ({ produtoId, quantidade, opcoes, observacao }) => ({
@@ -637,7 +726,9 @@ export function FrenteDeCaixa({
           )}
         </section>
         <aside className={styles.pedido}>
-          <div className={styles.dadosPedido}>
+          <div
+            className={`${styles.dadosPedido} ${modalidade === "ENTREGA" ? "min-[900px]:max-h-[35dvh] min-[900px]:overflow-y-auto" : ""}`}
+          >
             <h2 className="sr-only">Dados do pedido</h2>
             <label className={styles.seletor}>
               <span className="sr-only">Cliente (opcional)</span>
@@ -673,20 +764,42 @@ export function FrenteDeCaixa({
                 className={styles.campoSeletor}
                 value={modalidade}
                 disabled={incerta || ocupado}
-                onChange={(e) =>
-                  setModalidade(e.target.value as typeof modalidade)
-                }
+                onChange={(e) => {
+                  const escolhida = e.target.value as typeof modalidade;
+                  setModalidade(escolhida);
+                  setPagamentos([]);
+                  if (escolhida === "ENTREGA" && !entregaConferida)
+                    setEditarEntrega(true);
+                }}
               >
                 <option value="RETIRADA">Retirada</option>
                 <option value="BALCAO">Balcão</option>
-                <option value="ENTREGA">Entrega (acompanhar pedido)</option>
+                <option value="ENTREGA">Entrega</option>
               </select>
             </label>
             {modalidade === "ENTREGA" && (
-              <p className="text-ink-3 text-xs">
-                A entrega será acompanhada na gestão de pedidos. Endereço e
-                frete não são calculados automaticamente.
-              </p>
+              <>
+                <button
+                  type="button"
+                  className={`${styles.seletor} py-2 text-left`}
+                  disabled={ocupado || incerta}
+                  onClick={() => setEditarEntrega(true)}
+                >
+                  <Icone nome="entrega" tamanho={18} />
+                  <span className="min-w-0 flex-1">
+                    Endereço e entrega
+                    <small className="text-ink-3 mt-1 block text-xs">
+                      {entrega
+                        ? `${entrega.endereco.logradouro}, ${entrega.endereco.numero} · ${entrega.endereco.bairro}`
+                        : "Informar destinatário e endereço"}
+                    </small>
+                  </span>
+                  <Icone nome="seta-direita" tamanho={16} />
+                </button>
+                {erroEntrega && (
+                  <p className="text-warn text-xs">{erroEntrega}</p>
+                )}
+              </>
             )}
             <div className={styles.agora}>
               <Icone nome="relogio" tamanho={18} />
@@ -840,6 +953,14 @@ export function FrenteDeCaixa({
               <span className="text-ink-3">Subtotal</span>
               <strong className="tabular-nums">{moeda(subtotal)}</strong>
             </div>
+            {modalidade === "ENTREGA" && (
+              <div className="flex justify-between text-sm">
+                <span className="text-ink-3">Frete de entrega</span>
+                <strong className="tabular-nums">
+                  {entregaConferida ? moeda(freteCentavos) : "Conferir"}
+                </strong>
+              </div>
+            )}
             <Botao
               className={styles.pagar}
               disabled={!podeAbrirPagamento}
@@ -851,11 +972,28 @@ export function FrenteDeCaixa({
               <span>
                 Pagar <span className="ml-1 text-xs font-normal">Ctrl + P</span>
               </span>
-              <span>{moeda(subtotal)}</span>
+              <span>
+                {Number.isFinite(total) ? moeda(total) : "Revisar valores"}
+              </span>
             </Botao>
           </footer>
         </aside>
       </div>
+      {editarEntrega && (
+        <DadosEntrega
+          entrega={entrega}
+          areas={areasEntrega}
+          bloqueado={ocupado || incerta}
+          aoFechar={() => setEditarEntrega(false)}
+          aoConfirmar={(confirmada) => {
+            setEntrega(confirmada);
+            setEntregaConferida(true);
+            setPagamentos([]);
+            setEditarEntrega(false);
+            setErro("");
+          }}
+        />
+      )}
       {produto && (
         <PersonalizarProduto
           produto={produto}
@@ -877,12 +1015,14 @@ export function FrenteDeCaixa({
             carregando={ocupado}
             disabled={
               !online ||
-              temItensInvalidos ||
-              pago < total ||
-              !pagamentos.length ||
-              !Number.isSafeInteger(total) ||
-              total < 0 ||
-              descontoCentavos > subtotal
+              (!incerta &&
+                (temItensInvalidos ||
+                  !!erroEntrega ||
+                  pago < total ||
+                  !pagamentos.length ||
+                  !Number.isSafeInteger(total) ||
+                  total < 0 ||
+                  descontoCentavos > subtotal))
             }
             onClick={() => void finalizar()}
           >
@@ -896,6 +1036,12 @@ export function FrenteDeCaixa({
             <dt>Subtotal</dt>
             <dd>{moeda(subtotal)}</dd>
           </dl>
+          {modalidade === "ENTREGA" && (
+            <dl className="flex justify-between text-sm">
+              <dt>Frete de entrega</dt>
+              <dd className="tabular-nums">{moeda(freteCentavos)}</dd>
+            </dl>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Campo
               rotulo="Desconto (R$)"
@@ -915,6 +1061,11 @@ export function FrenteDeCaixa({
               rotulo="Taxa adicional (R$)"
               inputMode="decimal"
               value={taxa}
+              ajuda={
+                modalidade === "ENTREGA"
+                  ? "O frete já está na linha de entrega acima."
+                  : undefined
+              }
               disabled={ocupado || incerta || pagamentos.length > 0}
               onChange={(e) => setTaxa(e.target.value)}
             />

@@ -9,6 +9,7 @@ import { Icone } from "@/design-system/icones";
 import { PainelLateral } from "@/design-system/painel-lateral";
 import { cancelarVendaAcao } from "../acoes";
 import { listarPedidosAcao, moverPedidoAcao } from "../acoes-pedidos";
+import { atribuirEntregadorAcao } from "../acoes-entregas";
 import type {
   DestinoPedido,
   PedidoPdv,
@@ -109,6 +110,8 @@ export function GestaoPedidos({
   podeVender,
   podeOperar,
   podeCancelar,
+  podeEntrega,
+  entregadores,
   novaVenda,
   instante,
 }: {
@@ -117,6 +120,8 @@ export function GestaoPedidos({
   podeVender: boolean;
   podeOperar: boolean;
   podeCancelar: boolean;
+  podeEntrega: boolean;
+  entregadores: { id: string; nome: string }[];
   novaVenda?: string;
   instante: string;
 }) {
@@ -155,7 +160,7 @@ export function GestaoPedidos({
     quadro.pedidos.find((p) => p.id === selecionadoId) ?? null;
   const filtro = busca.trim().toLocaleLowerCase("pt-BR");
   const filtrados = quadro.pedidos.filter((p) =>
-    `${identificacao(p)} ${p.numero} ${p.venda.cliente ?? ""}`
+    `${identificacao(p)} ${p.numero} ${p.venda.cliente ?? ""} ${p.entrega?.destinatario ?? ""} ${p.entregadorNome ?? ""}`
       .toLocaleLowerCase("pt-BR")
       .includes(filtro),
   );
@@ -297,6 +302,33 @@ export function GestaoPedidos({
     } catch {
       setErroCancelamento(
         "Não foi possível confirmar o cancelamento. Consulte o quadro antes de repetir a operação.",
+      );
+    } finally {
+      alterando.current = false;
+      setMutando(false);
+      void atualizar();
+    }
+  }
+  async function atribuir(p: PedidoPdv, entregadorId: string | null) {
+    if (alterando.current || !podeEntrega) return;
+    alterando.current = true;
+    epoca.current++;
+    setMutando(true);
+    setErro("");
+    try {
+      const resposta = await atribuirEntregadorAcao({
+        pedidoId: p.id,
+        versaoPedido: p.versao,
+        entregadorId,
+      });
+      if (resposta.erro) {
+        setErro(resposta.erro);
+        return;
+      }
+      setAviso(resposta.ok ?? "Entregador atualizado.");
+    } catch {
+      setErro(
+        "A confirmação da atribuição não chegou. Atualize o quadro para conferir antes de repetir.",
       );
     } finally {
       alterando.current = false;
@@ -536,6 +568,9 @@ export function GestaoPedidos({
               pedido={selecionado}
               podeOperar={podeOperar}
               podeCancelar={podeCancelar}
+              podeEntrega={podeEntrega}
+              entregadores={entregadores}
+              aoAtribuir={atribuir}
               pendente={mutando}
               aoMover={mover}
               aoFechar={() => setSelecionadoId(null)}
@@ -562,6 +597,9 @@ export function GestaoPedidos({
             pedido={selecionado}
             podeOperar={podeOperar}
             podeCancelar={podeCancelar}
+            podeEntrega={podeEntrega}
+            entregadores={entregadores}
+            aoAtribuir={atribuir}
             pendente={mutando}
             aoMover={mover}
           />
@@ -620,6 +658,9 @@ function DetalhesPedido({
   pedido: p,
   podeOperar,
   podeCancelar,
+  podeEntrega,
+  entregadores,
+  aoAtribuir,
   pendente,
   aoMover,
   aoFechar,
@@ -627,6 +668,9 @@ function DetalhesPedido({
   pedido: PedidoPdv;
   podeOperar: boolean;
   podeCancelar: boolean;
+  podeEntrega: boolean;
+  entregadores: { id: string; nome: string }[];
+  aoAtribuir: (p: PedidoPdv, entregadorId: string | null) => Promise<void>;
   pendente: boolean;
   aoMover: (p: PedidoPdv, destino: StatusPedido) => Promise<void>;
   aoFechar?: () => void;
@@ -654,6 +698,86 @@ function DetalhesPedido({
       </header>
       <span className={styles.etapa}>{nomes[p.status]}</span>
       <BotoesImpressao vendaId={p.vendaId} />
+      {p.venda.modalidade === "ENTREGA" && (
+        <section className={styles.secao}>
+          <h3>Entrega</h3>
+          {p.entrega ? (
+            <>
+              <p>
+                <strong>{p.entrega.destinatario}</strong>
+              </p>
+              {p.entrega.telefone && <p>Telefone: {p.entrega.telefone}</p>}
+              <p>
+                {p.entrega.endereco.logradouro}, {p.entrega.endereco.numero}
+              </p>
+              {p.entrega.endereco.complemento && (
+                <p>{p.entrega.endereco.complemento}</p>
+              )}
+              <p>
+                {p.entrega.endereco.bairro} · {p.entrega.endereco.cidade}/
+                {p.entrega.endereco.uf}
+              </p>
+              {p.entrega.endereco.cep && <p>CEP: {p.entrega.endereco.cep}</p>}
+              {p.entrega.endereco.referencia && (
+                <p>Referência: {p.entrega.endereco.referencia}</p>
+              )}
+              <p>
+                {p.entrega.areaNome ?? "Frete manual"} ·{" "}
+                {moeda(p.venda.freteCentavos ?? 0)}
+              </p>
+              <p>
+                Previsão: {data(p.entrega.previstoEm)} ·{" "}
+                {p.entrega.prazoMinutos} min
+              </p>
+            </>
+          ) : (
+            <p>
+              {!podeEntrega
+                ? "Seu perfil precisa de permissão de entrega para consultar o endereço."
+                : p.temEnderecoEntrega
+                  ? "Dados da entrega indisponíveis. Consulte o responsável pela operação."
+                  : "Pedido anterior ao cadastro de endereços. Confira a entrega com o responsável."}
+            </p>
+          )}
+          {podeEntrega &&
+          (p.status === "COZINHA" || p.status === "AGUARDANDO_COLETA") ? (
+            <label className="text-ink-2 mt-3 block text-sm font-semibold">
+              Entregador
+              <select
+                className="border-line-2 bg-surface text-ink mt-1 h-10 w-full rounded-md border px-2 font-normal"
+                value={p.entregadorId ?? ""}
+                disabled={pendente}
+                onChange={(e) => void aoAtribuir(p, e.target.value || null)}
+              >
+                <option value="">Sem entregador</option>
+                {p.entregadorId &&
+                  !entregadores.some((e) => e.id === p.entregadorId) && (
+                    <option value={p.entregadorId}>
+                      {p.entregadorNome} (indisponível)
+                    </option>
+                  )}
+                {entregadores.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+              {!entregadores.length && (
+                <Link
+                  href="/pdv/entregas/entregadores"
+                  className="text-accent mt-2 inline-block text-xs underline"
+                >
+                  Cadastrar entregador
+                </Link>
+              )}
+            </label>
+          ) : (
+            <p className="mt-3">
+              Entregador: {p.entregadorNome ?? "Não atribuído"}
+            </p>
+          )}
+        </section>
+      )}
       <section className={styles.secao}>
         <h3>Cliente</h3>
         <p>{p.venda.cliente ?? "Não identificado"}</p>
@@ -712,6 +836,11 @@ function DetalhesPedido({
         <span>Total</span>
         <span>{moeda(p.venda.totalCentavos)}</span>
       </div>
+      {(p.venda.freteCentavos ?? 0) > 0 && (
+        <p className="text-ink-3 text-xs">
+          Inclui frete de {moeda(p.venda.freteCentavos ?? 0)}.
+        </p>
+      )}
       <div className={styles.acoes}>
         {seguinte && (
           <Botao

@@ -1,3 +1,5 @@
+import type { EntregaSnapshot } from "./entrega-types";
+
 export type TipoImpressaoPdv = "COMPROVANTE" | "COZINHA";
 
 export type ItemImpressaoPdv = {
@@ -32,6 +34,11 @@ export type DocumentoImpressaoPdv =
       subtotalCentavos: number;
       descontoCentavos: number;
       taxaCentavos: number;
+      freteCentavos: number;
+      entrega?: Pick<
+        EntregaSnapshot,
+        "destinatario" | "telefone" | "endereco" | "areaNome" | "previstoEm"
+      >;
       totalCentavos: number;
       trocoCentavos: number;
       pagamentos: {

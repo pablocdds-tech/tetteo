@@ -3,12 +3,22 @@ import type { ConteudoCarrinho } from "../carrinho-types";
 import type { ProdutoPdv } from "../types";
 import { calcularPrecoItem } from "./venda";
 import { ErroPdv } from "./erro";
+import { esquemaEnderecoEntrega, esquemaTelefoneEntrega } from "./entrega";
 
 const identificador = z.string().trim().min(1).max(100);
 export const esquemaConteudoCarrinho = z
   .object({
     clienteId: identificador.optional(),
     modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
+    entrega: z
+      .object({
+        destinatario: z.string().trim().min(2).max(160),
+        telefone: esquemaTelefoneEntrega,
+        endereco: esquemaEnderecoEntrega,
+        areaId: z.string().uuid().optional(),
+      })
+      .strict()
+      .optional(),
     observacao: z.string().trim().max(500),
     itens: z
       .array(

@@ -22,7 +22,7 @@ Após a mudança de direção solicitada pelo usuário, o visual passou a acompa
 
 1. Abra `/pdv/caixa`, selecione local e informe o saldo inicial. Existe um caixa aberto por unidade nesta primeira versão.
 2. Em `/pdv`, use **Novo pedido** para abrir `/pdv/novo-pedido`. Escolha categorias ou busque nome/código. Enter no código exato adiciona o produto (ou abre suas opções). Ctrl+B foca a busca e Ctrl+P abre pagamento.
-3. Escolha complementos, quantidades, cliente opcional do CRM, retirada/balcão/entrega e observação. Entrega é classificação operacional; endereço, cálculo de frete e despacho automático não estão implementados.
+3. Escolha complementos, quantidades, cliente opcional do CRM, retirada/balcão/entrega e observação. Para entrega, informe destinatário, endereço e prazo, escolha uma área cadastrada ou justifique o frete manual. Frete e taxa adicional são separados no total.
 4. Registre pagamentos conferidos. Pagamentos podem ser divididos; excedente só gera troco em dinheiro. Desconto exige permissão própria.
 5. Conclua a venda. Preços, total, permissões, caixa e estoque são verificados no servidor, na mesma transação da auditoria.
 6. A venda concluída cria o pedido **Na cozinha** e retorna à gestão. Acompanhe o kanban em `/pdv` e o histórico financeiro em `/pdv/vendas`. Cancelamentos exigem justificativa e permissão. Caixa já fechado não pode ser alterado por cancelamento tardio.
@@ -40,13 +40,27 @@ O quadro atualiza a cada 15 segundos enquanto visível, ao voltar à janela ou p
 
 Somente vendas novas após a implantação geram a fila operacional. A migração não cria pedidos para vendas antigas nem presume que foram entregues: elas permanecem no histórico financeiro. O quadro não recebe pedidos do Cardápio Web automaticamente.
 
+## Delivery — endereço, áreas e entregadores
+
+As áreas são configuradas em `/pdv/entregas/areas`, com nome, cidade, UF, bairros, frete e prazo em minutos. Uma área sem bairros específicos atende qualquer bairro da cidade informada; não há cálculo por distância. O caixa seleciona explicitamente a área. O servidor confere atividade, versão, cidade/UF, bairro, frete e prazo antes de concluir. Alterações no cadastro exigem atualizar e conferir a cotação; nunca mudam uma venda já gravada. O frete manual exige justificativa, inclusive quando gratuito.
+
+Em **Endereço e entrega**, o operador informa destinatário, telefone opcional, logradouro/número, bairro/cidade/UF e, quando necessários, complemento, CEP e referência. Os dados são copiados para o pedido na mesma transação da venda/estoque. A previsão é calculada no servidor a partir da conclusão e do prazo informado; é uma estimativa, sem confirmação por mapa ou contato externo. Novas vendas de entrega exigem esses dados. Vendas antigas permanecem sem endereço fabricado e suas retentativas idempotentes continuam válidas.
+
+O atendimento salvo preserva destinatário/endereço e vínculo da área somente para o próprio operador. Não guarda o frete, a versão da cotação ou o prazo: ao retomar, é preciso conferir a área e os valores atuais. Frete manual precisa ser informado e justificado novamente. Alterar entrega/modalidade remove os pagamentos preenchidos para que o operador confira o novo total. Em confirmação de venda incerta, a retentativa mantém o payload original completo.
+
+Entregadores são cadastrados em `/pdv/entregas/entregadores`, com nome, telefone opcional e atividade. No detalhe do kanban, é possível atribuir/remover um entregador enquanto o pedido está na cozinha ou aguardando coleta. A atribuição confere unidade, atividade e versão, incrementa a versão do pedido e registra o histórico sem movimentar caixa/estoque. Não é possível reatribuir depois da saída ou em pedido finalizado/cancelado. Para novas entregas com endereço, a saída exige entregador ativo e permissões de operação e entrega. Pedidos legados sem endereço mantêm o acompanhamento anterior.
+
+`pdv.entrega` permite consultar os endereços e gerenciar entregadores/atribuições. `pdv.operar` continua necessária para avançar estados; `pdv.configurar` administra áreas. A captura no caixa usa `pdv.vender`; não concede leitura de endereços de outros pedidos. O comprovante só recebe endereço/telefone com `pdv.entrega`; a cozinha não recebe esses campos. O CSV não exporta contatos ou endereços. Os novos campos estruturados de entrega não são copiados para a auditoria.
+
+Há limite explícito de 200 áreas e 200 entregadores por unidade, sem exclusão física: use atividade para pausar e preservar o histórico. Neste incremento não há polígonos/círculos no mapa, geocodificação/consulta automática de CEP, rota, rastreamento público, link de entregador, integração logística ou acerto financeiro de motoboy. O cardápio público e os pedidos de plataformas externas continuam separados.
+
 ## Impressão e reimpressão
 
 Os detalhes do quadro e do histórico oferecem **Imprimir pedido** e **Versão para cozinha**. Abrem uma prévia autenticada em outra aba, fora da navegação lateral, em `/pdv/imprimir/[vendaId]`. A via padrão é um comprovante não fiscal com itens, complementos, observações, subtotal, desconto, taxa, total, pagamentos registrados, troco e operador. A via de cozinha não envia preços ou pagamentos ao navegador; mostra itens/opções por unidade, quantidade, observações e situação do pedido. Vendas canceladas têm destaque e motivo.
 
 A prévia é preparada para bobina de 80 mm. O operador escolhe impressora/papel no diálogo do navegador; também pode usar A4 ou salvar PDF. Botão e Ctrl+P registram a solicitação antes de abrir esse diálogo. Repetir uma tentativa cuja resposta se perdeu não duplica seu registro. Uma nova solicitação da mesma via é auditada como reimpressão. O navegador não informa se saiu papel: a auditoria registra solicitação, sem afirmar emissão física.
 
-O nome congelado do cliente só aparece nessas vias para quem possui `crm.ver`; endereços/telefones não são buscados. Cada leitura e solicitação verifica sessão, `pdv.ver`, organização e unidade ativa. Abrir a prévia não gera uma solicitação de impressão. Impressão automática, agente QzTray, setores/impressoras, múltiplas vias e resumo impresso de caixa permanecem pendentes.
+O nome congelado do cliente do CRM só aparece nessas vias para quem possui `crm.ver`; dados atuais de contato não são buscados. O comprovante de entrega pode incluir destinatário/endereço/telefone congelados no pedido quando o leitor possui `pdv.entrega`; a cozinha nunca recebe esses campos. Cada leitura e solicitação verifica sessão, `pdv.ver`, organização e unidade ativa. Abrir a prévia não gera uma solicitação de impressão. Impressão automática, agente QzTray, setores/impressoras, múltiplas vias e resumo impresso de caixa permanecem pendentes.
 
 ## Histórico e exportação
 
@@ -70,7 +84,7 @@ O navegador avisa antes de recarregar uma página com itens, e os links da inter
 
 “Sem impedimento de cadastro” não garante saldo suficiente para todas as combinações de complementos. O diagnóstico separa bloqueios de cadastro, alertas de estoque e avisos; a venda continua validando a combinação e o estoque dentro da transação.
 
-Esta versão não contempla entrega com endereço/roteirização, agendamento de produção, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
+Esta versão não contempla roteirização, agendamento de produção, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
 
 O histórico de caixas ainda consulta os 30 últimos fechamentos. O seletor de clientes no atendimento traz até 500 clientes ativos, somente para quem possui `crm.ver`. Nesta entrega as vendas aparecem no histórico próprio do PDV; não alimentam automaticamente os relatórios antigos de Saipos/Analytics, os lançamentos do Financeiro ou as métricas de campanhas do CRM.
 
@@ -83,6 +97,6 @@ O histórico de caixas ainda consulta os 30 últimos fechamentos. O seletor de c
 
 ## Permissões e validação
 
-`pdv.ver`, `pdv.vender`, `pdv.operar`, `pdv.caixa`, `pdv.desconto`, `pdv.cancelar`, `pdv.configurar`. O diretor já tem `*`; nenhum outro perfil recebe permissões automaticamente. Autorizações são aplicadas no servidor em cada ação. Permissão de avançar pedidos não concede permissão de cancelar vendas.
+`pdv.ver`, `pdv.vender`, `pdv.operar`, `pdv.entrega`, `pdv.caixa`, `pdv.desconto`, `pdv.cancelar`, `pdv.configurar`. O diretor já tem `*`; nenhum outro perfil recebe permissões automaticamente. Autorizações são aplicadas no servidor em cada ação. Permissão de avançar pedidos não concede permissão de cancelar vendas ou consultar endereços.
 
 Schema em `prisma/schema/pdv.prisma`, migração aditiva em `prisma/schema/migrations`. Produção usa somente `prisma migrate deploy`. Nunca use banco de produção em testes. Antes de publicar: `npm run check`, `npm run build` e integração PDV em PostgreSQL local exclusivo com `_test` no nome.

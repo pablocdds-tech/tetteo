@@ -19,6 +19,16 @@ export const manifestoPdv: ManifestoDoApp = {
     { rota: "/pdv/vendas", nome: "Histórico de pedidos" },
     { rota: "/pdv/caixa", nome: "Caixa" },
     {
+      rota: "/pdv/entregas/areas",
+      nome: "Áreas de entrega",
+      permissao: "pdv.configurar",
+    },
+    {
+      rota: "/pdv/entregas/entregadores",
+      nome: "Entregadores",
+      permissao: "pdv.entrega",
+    },
+    {
       rota: "/pdv/catalogo",
       nome: "Catálogo do PDV",
       permissao: "pdv.configurar",
