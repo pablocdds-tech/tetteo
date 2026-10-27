@@ -9,6 +9,8 @@
  */
 
 export type TipoDeMovimento =
+  | "VENDA"
+  | "ESTORNO_VENDA"
   | "ENTRADA"
   | "PERDA"
   | "QUEBRA"
@@ -31,7 +33,7 @@ export type TipoDeMovimento =
  * total da unidade encolher a cada vez que alguém desce caixa do depósito.
  */
 export function efeitoNoSaldo(tipo: TipoDeMovimento): -1 | 0 | 1 {
-  if (tipo === "ENTRADA") return 1;
+  if (tipo === "ENTRADA" || tipo === "ESTORNO_VENDA") return 1;
   if (tipo === "AJUSTE") return 0; // o ajuste GRAVA um valor, não soma nem subtrai
   return -1;
 }
@@ -47,6 +49,8 @@ export function ehSaidaReal(tipo: TipoDeMovimento) {
 }
 
 export const ROTULO_MOVIMENTO: Record<TipoDeMovimento, string> = {
+  VENDA: "Venda no PDV",
+  ESTORNO_VENDA: "Estorno de venda no PDV",
   ENTRADA: "Entrada por nota",
   PERDA: "Perda",
   QUEBRA: "Quebra",

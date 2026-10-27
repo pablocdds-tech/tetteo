@@ -1,4 +1,5 @@
 import { manifestoCrm } from "@/modules/crm/manifest";
+import { manifestoPdv } from "@/modules/pdv/manifest";
 import { manifestoAnalytics } from "@/modules/analytics/manifest";
 import { PERMISSOES_CONFIGURACOES } from "@/core/configuracoes/permissoes";
 import type { ManifestoDoApp } from "@/core/registry/tipos";
@@ -30,6 +31,7 @@ import { manifestoFinanceiro } from "@/modules/financeiro/manifest";
  * abre o painel lê o caminho do dinheiro.
  */
 export const APPS_REGISTRADOS: ManifestoDoApp[] = [
+  manifestoPdv,
   manifestoAnalytics,
 
   manifestoCrm,

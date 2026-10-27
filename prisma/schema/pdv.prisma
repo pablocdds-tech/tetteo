@@ -1,0 +1,80 @@
+// PDV online. Valores monetários em centavos inteiros; snapshots preservam a venda.
+model PdvProduto {
+  id String @id @default(uuid())
+  organizacaoId String
+  fichaId String
+  codigo String?
+  grupos Json @default("[]")
+  atualizadoEm DateTime @updatedAt
+  @@unique([organizacaoId, fichaId])
+  @@unique([organizacaoId, codigo])
+  @@map("pdv_produto")
+}
+
+model PdvCaixa {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  localEstoqueId String
+  abertoPorId String
+  operador String
+  abertoEm DateTime @default(now())
+  fechadoEm DateTime?
+  fechadoPorId String?
+  saldoInicialCentavos Int
+  valorContadoCentavos Int?
+  saldoFechamentoCentavos Int?
+  observacao String @default("")
+  vendas PdvVenda[]
+  movimentos PdvMovimentoCaixa[]
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, abertoEm])
+  @@map("pdv_caixa")
+}
+
+model PdvMovimentoCaixa {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  caixaId String
+  caixa PdvCaixa @relation(fields: [organizacaoId, unidadeId, caixaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  tipo String
+  valorCentavos Int
+  motivo String
+  usuarioId String
+  criadoEm DateTime @default(now())
+  @@index([caixaId, criadoEm])
+  @@map("pdv_movimento_caixa")
+}
+
+model PdvVenda {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  caixaId String
+  caixa PdvCaixa @relation(fields: [organizacaoId, unidadeId, caixaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  chave String
+  payloadHash String
+  usuarioId String
+  operador String
+  clienteId String?
+  cliente String?
+  modalidade String
+  observacao String @default("")
+  status String @default("CONCLUIDA")
+  subtotalCentavos Int
+  descontoCentavos Int
+  taxaCentavos Int
+  totalCentavos Int
+  trocoCentavos Int
+  itens Json
+  pagamentos Json
+  consumo Json
+  criadaEm DateTime @default(now())
+  canceladaEm DateTime?
+  canceladaPorId String?
+  motivoCancelamento String?
+  @@unique([organizacaoId, unidadeId, chave])
+  @@index([organizacaoId, unidadeId, criadaEm])
+  @@map("pdv_venda")
+}

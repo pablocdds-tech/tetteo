@@ -389,6 +389,10 @@ model ContagemItem {
 
 /// O que aconteceu com a mercadoria.
 enum TipoDeMovimento {
+  /// Consumo da receita por venda no PDV.
+  VENDA
+  /// Reposição do consumo congelado de uma venda cancelada.
+  ESTORNO_VENDA
   /// Chegou por nota de entrada.
   ENTRADA
   /// Foi para o lixo: vencido, estragado, queimado.

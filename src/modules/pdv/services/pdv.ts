@@ -1,0 +1,648 @@
+import { createHash } from "node:crypto";
+import { ErroPdv } from "../schemas/erro";
+import { Prisma } from "@prisma/client";
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
+import { ExigeUnidade, SemPermissao } from "@/lib/erros";
+import { db } from "@/server/db";
+import type {
+  CaixaPdv,
+  DadosPdv,
+  GrupoComplemento,
+  ItemVendaPdv,
+  PagamentoPdv,
+  ProdutoPdv,
+  VendaPdv,
+} from "../types";
+import { calcularConsumo, type ConsumoPdv } from "../schemas/consumo";
+import {
+  calcularVenda,
+  esquemaAbrir,
+  esquemaCancelar,
+  esquemaComplementos,
+  esquemaFechar,
+  esquemaFinalizar,
+  esquemaGrupo,
+  esquemaMovimento,
+} from "../schemas/venda";
+
+type Transacao = Prisma.TransactionClient;
+type Escopo = { organizacaoId: string; unidadeId: string };
+const json = (valor: unknown) =>
+  JSON.parse(JSON.stringify(valor)) as Prisma.InputJsonValue;
+
+export async function exigirEscopo(
+  contexto: ContextoSessao,
+  permissao = "pdv.ver",
+): Promise<Escopo> {
+  if (!pode(contexto, "pdv.ver") || !pode(contexto, permissao))
+    throw new SemPermissao("acessar esta operação do PDV");
+  const unidade = contexto.unidadeAtiva;
+  if (!unidade) throw new ExigeUnidade();
+  if (!contexto.unidadesVisiveis.some((u) => u.id === unidade.id))
+    throw new SemPermissao("acessar esta unidade");
+  const existe = await db.unidade.findFirst({
+    where: {
+      id: unidade.id,
+      organizacaoId: contexto.organizacao.id,
+      ativa: true,
+      excluidoEm: null,
+    },
+    select: { id: true },
+  });
+  if (!existe) throw new SemPermissao("acessar esta unidade");
+  return { organizacaoId: contexto.organizacao.id, unidadeId: unidade.id };
+}
+async function travarUnidade(tx: Transacao, escopo: Escopo) {
+  // Uma mesma trava serializa abertura, venda, fechamento, sangria e cancelamento.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pdv:${escopo.organizacaoId}:${escopo.unidadeId}`},0))`;
+}
+async function auditar(
+  tx: Transacao,
+  ctx: ContextoSessao,
+  escopo: Escopo,
+  entidade: string,
+  id: string,
+  acao: "CRIOU" | "ALTEROU",
+  antes: unknown,
+  depois: unknown,
+) {
+  await tx.auditoria.create({
+    data: {
+      ...escopo,
+      usuarioId: ctx.usuario.id,
+      entidade,
+      entidadeId: id,
+      acao,
+      valoresAntes: antes === null ? Prisma.JsonNull : json(antes),
+      valoresDepois: json(depois),
+    },
+  });
+}
+function gruposValidos(valor: Prisma.JsonValue): GrupoComplemento[] {
+  if (!Array.isArray(valor))
+    throw new ErroPdv("Configuração de complementos inválida.");
+  return valor.map((g) => esquemaGrupo.parse(g));
+}
+async function catalogo(
+  tx: Transacao,
+  organizacaoId: string,
+): Promise<ProdutoPdv[]> {
+  const [fichas, configuracoes] = await Promise.all([
+    tx.fichaTecnica.findMany({
+      where: {
+        organizacaoId,
+        tipo: "PRATO",
+        ativo: true,
+        excluidoEm: null,
+        precoVenda: { not: null },
+      },
+      select: { id: true, nome: true, categoria: true, precoVenda: true },
+      orderBy: [{ categoria: "asc" }, { nome: "asc" }],
+    }),
+    tx.pdvProduto.findMany({ where: { organizacaoId } }),
+  ]);
+  const configs = new Map(configuracoes.map((c) => [c.fichaId, c]));
+  return fichas.map((f) => {
+    const config = configs.get(f.id);
+    return {
+      id: f.id,
+      nome: f.nome,
+      categoria: f.categoria || "Sem categoria",
+      precoCentavos: Number(f.precoVenda!.mul(100).toFixed(0)),
+      codigo: config?.codigo ?? "",
+      grupos: config ? gruposValidos(config.grupos) : [],
+    };
+  });
+}
+const caixaInclude = {
+  movimentos: { orderBy: { criadoEm: "desc" as const } },
+  vendas: {
+    where: { status: "CONCLUIDA" },
+    select: { pagamentos: true, trocoCentavos: true },
+  },
+} satisfies Prisma.PdvCaixaInclude;
+type CaixaBanco = Prisma.PdvCaixaGetPayload<{ include: typeof caixaInclude }>;
+function saldoCaixa(caixa: CaixaBanco) {
+  const dinheiro = caixa.vendas.reduce(
+    (s, v) =>
+      s +
+      (v.pagamentos as PagamentoPdv[])
+        .filter((p) => p.forma === "DINHEIRO")
+        .reduce((s, p) => s + p.valorCentavos, 0) -
+      v.trocoCentavos,
+    0,
+  );
+  return (
+    caixa.saldoInicialCentavos +
+    dinheiro +
+    caixa.movimentos.reduce(
+      (s, m) => s + (m.tipo === "SANGRIA" ? -m.valorCentavos : m.valorCentavos),
+      0,
+    )
+  );
+}
+function serializarCaixa(c: CaixaBanco): CaixaPdv {
+  const saldo = c.saldoFechamentoCentavos ?? saldoCaixa(c);
+  return {
+    id: c.id,
+    abertoEm: c.abertoEm.toISOString(),
+    fechadoEm: c.fechadoEm?.toISOString() ?? null,
+    operador: c.operador,
+    localEstoqueId: c.localEstoqueId,
+    saldoInicialCentavos: c.saldoInicialCentavos,
+    saldoEsperadoCentavos: saldo,
+    valorContadoCentavos: c.valorContadoCentavos,
+    diferencaCentavos:
+      c.valorContadoCentavos === null ? null : c.valorContadoCentavos - saldo,
+    movimentos: c.movimentos.map((m) => ({
+      id: m.id,
+      tipo: m.tipo,
+      valorCentavos: m.valorCentavos,
+      motivo: m.motivo,
+      criadoEm: m.criadoEm.toISOString(),
+    })),
+  };
+}
+function serializarVenda(v: Prisma.PdvVendaGetPayload<object>): VendaPdv {
+  return {
+    id: v.id,
+    criadaEm: v.criadaEm.toISOString(),
+    cliente: v.cliente,
+    modalidade: v.modalidade,
+    status: v.status as VendaPdv["status"],
+    totalCentavos: v.totalCentavos,
+    subtotalCentavos: v.subtotalCentavos,
+    descontoCentavos: v.descontoCentavos,
+    taxaCentavos: v.taxaCentavos,
+    trocoCentavos: v.trocoCentavos,
+    observacao: v.observacao,
+    operador: v.operador,
+    itens: v.itens as ItemVendaPdv[],
+    pagamentos: v.pagamentos as PagamentoPdv[],
+    motivoCancelamento: v.motivoCancelamento,
+  };
+}
+export async function carregarPdv(ctx: ContextoSessao): Promise<DadosPdv> {
+  const escopo = await exigirEscopo(ctx);
+  const [produtos, caixas, vendas, clientes, locais] = await Promise.all([
+    catalogo(db, escopo.organizacaoId),
+    db.pdvCaixa.findMany({
+      where: escopo,
+      include: caixaInclude,
+      orderBy: { abertoEm: "desc" },
+      take: 31,
+    }),
+    db.pdvVenda.findMany({
+      where: escopo,
+      orderBy: { criadaEm: "desc" },
+      take: 100,
+    }),
+    pode(ctx, "crm.ver")
+      ? db.crmContact.findMany({
+          where: {
+            storeId: escopo.unidadeId,
+            active: true,
+            mergedIntoId: null,
+          },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+          take: 500,
+        })
+      : Promise.resolve([]),
+    db.localEstoque.findMany({
+      where: { unidadeId: escopo.unidadeId, ativo: true },
+      select: { id: true, nome: true },
+      orderBy: { nome: "asc" },
+    }),
+  ]);
+  return {
+    produtos,
+    caixa: caixas.find((c) => !c.fechadoEm)
+      ? serializarCaixa(caixas.find((c) => !c.fechadoEm)!)
+      : null,
+    caixasAnteriores: caixas.filter((c) => c.fechadoEm).map(serializarCaixa),
+    vendas: vendas.map(serializarVenda),
+    clientes: clientes.map((c) => ({ id: c.id, nome: c.name })),
+    locais,
+  };
+}
+export async function abrirCaixa(ctx: ContextoSessao, entrada: unknown) {
+  const escopo = await exigirEscopo(ctx, "pdv.caixa");
+  const dados = esquemaAbrir.parse(entrada);
+  return db.$transaction(async (tx) => {
+    await travarUnidade(tx, escopo);
+    if (await tx.pdvCaixa.findFirst({ where: { ...escopo, fechadoEm: null } }))
+      throw new ErroPdv("Já existe um caixa aberto nesta unidade.");
+    if (
+      !(await tx.localEstoque.findFirst({
+        where: {
+          id: dados.localEstoqueId,
+          unidadeId: escopo.unidadeId,
+          ativo: true,
+        },
+      }))
+    )
+      throw new ErroPdv("Escolha um local de estoque ativo desta unidade.");
+    const caixa = await tx.pdvCaixa.create({
+      data: {
+        ...escopo,
+        ...dados,
+        abertoPorId: ctx.usuario.id,
+        operador: ctx.usuario.nome,
+      },
+    });
+    await auditar(tx, ctx, escopo, "PdvCaixa", caixa.id, "CRIOU", null, {
+      saldoInicialCentavos: dados.saldoInicialCentavos,
+      localEstoqueId: dados.localEstoqueId,
+    });
+    return caixa.id;
+  });
+}
+async function caixaAberto(tx: Transacao, escopo: Escopo, id: string) {
+  const caixa = await tx.pdvCaixa.findFirst({
+    where: { ...escopo, id },
+    include: caixaInclude,
+  });
+  if (!caixa || caixa.fechadoEm)
+    throw new ErroPdv(
+      "O caixa não está aberto nesta unidade. Atualize a tela.",
+    );
+  return caixa;
+}
+export async function movimentarCaixa(ctx: ContextoSessao, entrada: unknown) {
+  const escopo = await exigirEscopo(ctx, "pdv.caixa");
+  const dados = esquemaMovimento.parse(entrada);
+  await db.$transaction(async (tx) => {
+    await travarUnidade(tx, escopo);
+    const caixa = await caixaAberto(tx, escopo, dados.caixaId);
+    if (dados.tipo === "SANGRIA" && dados.valorCentavos > saldoCaixa(caixa))
+      throw new ErroPdv("A sangria supera o saldo esperado em dinheiro.");
+    const movimento = await tx.pdvMovimentoCaixa.create({
+      data: { ...escopo, ...dados, usuarioId: ctx.usuario.id },
+    });
+    await auditar(
+      tx,
+      ctx,
+      escopo,
+      "PdvMovimentoCaixa",
+      movimento.id,
+      "CRIOU",
+      null,
+      dados,
+    );
+  });
+}
+export async function fecharCaixa(ctx: ContextoSessao, entrada: unknown) {
+  const escopo = await exigirEscopo(ctx, "pdv.caixa");
+  const dados = esquemaFechar.parse(entrada);
+  await db.$transaction(async (tx) => {
+    await travarUnidade(tx, escopo);
+    const caixa = await caixaAberto(tx, escopo, dados.caixaId);
+    const saldo = saldoCaixa(caixa);
+    await tx.pdvCaixa.update({
+      where: { id: caixa.id },
+      data: {
+        fechadoEm: new Date(),
+        fechadoPorId: ctx.usuario.id,
+        valorContadoCentavos: dados.valorContadoCentavos,
+        saldoFechamentoCentavos: saldo,
+        observacao: dados.observacao,
+      },
+    });
+    await auditar(
+      tx,
+      ctx,
+      escopo,
+      "PdvCaixa",
+      caixa.id,
+      "ALTEROU",
+      { fechadoEm: null },
+      {
+        saldoEsperadoCentavos: saldo,
+        valorContadoCentavos: dados.valorContadoCentavos,
+        diferencaCentavos: dados.valorContadoCentavos - saldo,
+      },
+    );
+  });
+}
+export async function salvarComplementos(
+  ctx: ContextoSessao,
+  entrada: unknown,
+) {
+  const escopo = await exigirEscopo(ctx, "pdv.configurar");
+  const dados = esquemaComplementos.parse(entrada);
+  await db.$transaction(async (tx) => {
+    const ficha = await tx.fichaTecnica.findFirst({
+      where: {
+        id: dados.produtoId,
+        organizacaoId: escopo.organizacaoId,
+        tipo: "PRATO",
+        ativo: true,
+        excluidoEm: null,
+      },
+    });
+    if (!ficha) throw new ErroPdv("Produto não encontrado nesta organização.");
+    const referencias = [
+      ...new Set(
+        dados.grupos.flatMap((g) =>
+          g.opcoes.flatMap((o) => (o.fichaId ? [o.fichaId] : [])),
+        ),
+      ),
+    ];
+    if (
+      referencias.length !==
+      (await tx.fichaTecnica.count({
+        where: {
+          id: { in: referencias },
+          organizacaoId: escopo.organizacaoId,
+          ativo: true,
+          excluidoEm: null,
+        },
+      }))
+    )
+      throw new ErroPdv("Ficha de complemento indisponível nesta organização.");
+    const antes = await tx.pdvProduto.findUnique({
+      where: {
+        organizacaoId_fichaId: {
+          organizacaoId: escopo.organizacaoId,
+          fichaId: ficha.id,
+        },
+      },
+    });
+    const config = await tx.pdvProduto.upsert({
+      where: {
+        organizacaoId_fichaId: {
+          organizacaoId: escopo.organizacaoId,
+          fichaId: ficha.id,
+        },
+      },
+      create: {
+        organizacaoId: escopo.organizacaoId,
+        fichaId: ficha.id,
+        codigo: dados.codigo || null,
+        grupos: json(dados.grupos),
+      },
+      update: { codigo: dados.codigo || null, grupos: json(dados.grupos) },
+    });
+    await auditar(
+      tx,
+      ctx,
+      escopo,
+      "PdvProduto",
+      config.id,
+      antes ? "ALTEROU" : "CRIOU",
+      antes ? { codigo: antes.codigo, grupos: antes.grupos } : null,
+      { codigo: config.codigo, grupos: dados.grupos },
+    );
+  });
+}
+
+export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
+  const escopo = await exigirEscopo(ctx, "pdv.vender");
+  const dados = esquemaFinalizar.parse(entrada);
+  if (dados.descontoCentavos > 0 && !pode(ctx, "pdv.desconto"))
+    throw new SemPermissao("conceder descontos");
+  if (dados.clienteId && !pode(ctx, "crm.ver"))
+    throw new SemPermissao("consultar clientes do CRM");
+  const payloadHash = createHash("sha256")
+    .update(JSON.stringify(dados))
+    .digest("hex");
+  return db.$transaction(
+    async (tx) => {
+      await travarUnidade(tx, escopo);
+      const anterior = await tx.pdvVenda.findUnique({
+        where: {
+          organizacaoId_unidadeId_chave: { ...escopo, chave: dados.chave },
+        },
+      });
+      if (anterior) {
+        if (anterior.payloadHash !== payloadHash)
+          throw new ErroPdv(
+            "Esta tentativa pertence a outro carrinho. Atualize a tela.",
+          );
+        return anterior.id;
+      }
+      const caixa = await caixaAberto(tx, escopo, dados.caixaId);
+      const produtos = await catalogo(tx, escopo.organizacaoId);
+      const resumo = calcularVenda(
+        produtos,
+        dados.itens,
+        dados.descontoCentavos,
+        dados.taxaCentavos,
+        dados.pagamentos,
+      );
+      const cliente = dados.clienteId
+        ? await tx.crmContact.findFirst({
+            where: {
+              id: dados.clienteId,
+              storeId: escopo.unidadeId,
+              active: true,
+              mergedIntoId: null,
+            },
+            select: { id: true, name: true },
+          })
+        : null;
+      if (dados.clienteId && !cliente)
+        throw new ErroPdv("Cliente indisponível nesta unidade.");
+      if (
+        !(await tx.localEstoque.findFirst({
+          where: {
+            id: caixa.localEstoqueId,
+            unidadeId: escopo.unidadeId,
+            ativo: true,
+          },
+        }))
+      )
+        throw new ErroPdv("O local de estoque do caixa não está ativo.");
+      const [fichas, insumos] = await Promise.all([
+        tx.fichaTecnica.findMany({
+          where: {
+            organizacaoId: escopo.organizacaoId,
+            ativo: true,
+            excluidoEm: null,
+          },
+          include: { itens: true },
+        }),
+        tx.insumo.findMany({
+          where: {
+            organizacaoId: escopo.organizacaoId,
+            ativo: true,
+            excluidoEm: null,
+          },
+        }),
+      ]);
+      const receitas = fichas.map((f) => ({
+        id: f.id,
+        nome: f.nome,
+        rendimento: Number(f.rendimento),
+        unidadeRendimento: f.unidadeRendimento,
+        itens: f.itens.map((i) => ({
+          insumoId: i.insumoId,
+          subFichaId: i.subFichaId,
+          quantidade: Number(i.quantidade),
+          unidade: i.unidade,
+          perdaPercentual: Number(i.perdaPercentual),
+        })),
+      }));
+      const ingredientes = insumos.map((i) => ({
+        id: i.id,
+        nome: i.nome,
+        unidadeMedida: i.unidadeMedida,
+        custoUnitario: i.custoMedio.toString(),
+      }));
+      const entradas = dados.itens.flatMap((item) => {
+        const produto = produtos.find((p) => p.id === item.produtoId)!;
+        const configuradas = produto.grupos.flatMap((g) => {
+          const opcoes = g.opcoes.filter((o) => item.opcoes.includes(o.id));
+          return opcoes
+            .filter((o) => o.fichaId)
+            .map((o) => ({
+              fichaId: o.fichaId!,
+              quantidade:
+                item.quantidade / (g.calculo === "MEDIA" ? opcoes.length : 1),
+            }));
+        });
+        const bases = [
+          { fichaId: item.produtoId, quantidade: item.quantidade },
+          ...configuradas,
+        ];
+        if (!calcularConsumo(bases, receitas, ingredientes).length)
+          throw new ErroPdv(
+            `Cadastre os ingredientes da ficha ${produto.nome} antes de vender.`,
+          );
+        return bases;
+      });
+      const consumo = calcularConsumo(entradas, receitas, ingredientes);
+      const venda = await tx.pdvVenda.create({
+        data: {
+          ...escopo,
+          caixaId: caixa.id,
+          chave: dados.chave,
+          payloadHash,
+          usuarioId: ctx.usuario.id,
+          operador: ctx.usuario.nome,
+          clienteId: cliente?.id,
+          cliente: cliente?.name,
+          modalidade: dados.modalidade,
+          observacao: dados.observacao,
+          subtotalCentavos: resumo.subtotalCentavos,
+          descontoCentavos: dados.descontoCentavos,
+          taxaCentavos: dados.taxaCentavos,
+          totalCentavos: resumo.totalCentavos,
+          trocoCentavos: resumo.trocoCentavos,
+          itens: json(resumo.itens),
+          pagamentos: json(dados.pagamentos),
+          consumo: json(consumo),
+        },
+      });
+      // Ordem estável reduz deadlocks com outras rotinas que atualizam as posições.
+      for (const c of [...consumo].sort((a, b) =>
+        a.insumoId.localeCompare(b.insumoId),
+      )) {
+        const alteradas = await tx.posicaoEstoque.updateMany({
+          where: {
+            unidadeId: escopo.unidadeId,
+            localId: caixa.localEstoqueId,
+            insumoId: c.insumoId,
+            quantidade: { gte: new Prisma.Decimal(c.quantidade) },
+          },
+          data: { quantidade: { decrement: new Prisma.Decimal(c.quantidade) } },
+        });
+        if (alteradas.count !== 1)
+          throw new ErroPdv(
+            `Estoque insuficiente de ${c.nome} no local do caixa.`,
+          );
+        await tx.movimentoEstoque.create({
+          data: {
+            unidadeId: escopo.unidadeId,
+            localId: caixa.localEstoqueId,
+            insumoId: c.insumoId,
+            tipo: "VENDA",
+            quantidade: c.quantidade,
+            custoUnitario: c.custoUnitario,
+            motivo: `PDV ${venda.id}`,
+            registradoPorId: ctx.usuario.id,
+          },
+        });
+      }
+      await auditar(tx, ctx, escopo, "PdvVenda", venda.id, "CRIOU", null, {
+        totalCentavos: venda.totalCentavos,
+        caixaId: caixa.id,
+        itens: resumo.itens,
+      });
+      return venda.id;
+    },
+    { timeout: 20_000 },
+  );
+}
+export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
+  const escopo = await exigirEscopo(ctx, "pdv.cancelar");
+  const dados = esquemaCancelar.parse(entrada);
+  await db.$transaction(
+    async (tx) => {
+      await travarUnidade(tx, escopo);
+      const venda = await tx.pdvVenda.findFirst({
+        where: { ...escopo, id: dados.vendaId },
+        include: { caixa: true },
+      });
+      if (!venda) throw new ErroPdv("Venda não encontrada nesta unidade.");
+      if (venda.status === "CANCELADA") return;
+      if (venda.caixa.fechadoEm)
+        throw new ErroPdv(
+          "O caixa desta venda já foi fechado. O cancelamento exige um fluxo de devolução posterior.",
+        );
+      const consumo = venda.consumo as ConsumoPdv[];
+      for (const c of consumo) {
+        await tx.posicaoEstoque.upsert({
+          where: {
+            localId_insumoId: {
+              localId: venda.caixa.localEstoqueId,
+              insumoId: c.insumoId,
+            },
+          },
+          update: {
+            quantidade: { increment: new Prisma.Decimal(c.quantidade) },
+          },
+          create: {
+            unidadeId: escopo.unidadeId,
+            localId: venda.caixa.localEstoqueId,
+            insumoId: c.insumoId,
+            quantidade: c.quantidade,
+          },
+        });
+        await tx.movimentoEstoque.create({
+          data: {
+            unidadeId: escopo.unidadeId,
+            localId: venda.caixa.localEstoqueId,
+            insumoId: c.insumoId,
+            tipo: "ESTORNO_VENDA",
+            quantidade: c.quantidade,
+            custoUnitario: c.custoUnitario,
+            motivo: `Cancelamento PDV ${venda.id}: ${dados.motivo}`,
+            registradoPorId: ctx.usuario.id,
+          },
+        });
+      }
+      await tx.pdvVenda.update({
+        where: { id: venda.id },
+        data: {
+          status: "CANCELADA",
+          canceladaEm: new Date(),
+          canceladaPorId: ctx.usuario.id,
+          motivoCancelamento: dados.motivo,
+        },
+      });
+      await auditar(
+        tx,
+        ctx,
+        escopo,
+        "PdvVenda",
+        venda.id,
+        "ALTEROU",
+        { status: venda.status },
+        { status: "CANCELADA", motivo: dados.motivo },
+      );
+    },
+    { timeout: 20_000 },
+  );
+}

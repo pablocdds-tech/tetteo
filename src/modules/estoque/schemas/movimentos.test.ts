@@ -51,6 +51,21 @@ test("o ajuste grava um valor — não soma nem subtrai", () => {
   assert.equal(efeitoNoSaldo("AJUSTE"), 0);
 });
 
+test("venda baixa o estoque e estorno repõe sem virar perda", () => {
+  assert.equal(efeitoNoSaldo("VENDA"), -1);
+  assert.equal(efeitoNoSaldo("ESTORNO_VENDA"), 1);
+  assert.equal(ehSaidaReal("VENDA"), false);
+  assert.equal(ehSaidaReal("ESTORNO_VENDA"), false);
+  const resumo = resumirPerdas([
+    mov({ tipo: "VENDA", quantidade: 8 }),
+    mov({ tipo: "ESTORNO_VENDA", quantidade: 2 }),
+    mov({ tipo: "PERDA", quantidade: 1 }),
+  ]);
+  assert.equal(resumo.total, 32);
+  assert.equal(resumo.porTipo.length, 1);
+  assert.equal(resumo.porTipo[0].chave, "Perda");
+});
+
 test("item NÃO contado fica fora do ajuste", () => {
   // Em branco é "não olhei". Tratar como zero mandaria o estoque inteiro para
   // o ajuste quando alguém contasse só a praça.

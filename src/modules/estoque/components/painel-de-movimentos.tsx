@@ -27,6 +27,8 @@ const data = new Intl.DateTimeFormat("pt-BR", {
 });
 
 const COR: Record<TipoDeMovimento, string> = {
+  VENDA: "bg-accent-sub text-accent",
+  ESTORNO_VENDA: "bg-ok-sub text-ok",
   ENTRADA: "bg-ok-sub text-ok",
   PERDA: "bg-bad-sub text-bad",
   QUEBRA: "bg-bad-sub text-bad",
