@@ -171,6 +171,74 @@ credenciais do ambiente correto, testes reais na loja de homologação, cadastro
 das URLs pela Saipos e aprovação de cada módulo. Só depois habilitar produção.
 O código publicado com flags falsas permanece aguardando configuração.
 
+## Produção da Vitaliano: verificação em 27/10/2026
+
+Destino confirmado: Vitaliano Pizzaria - Nova Betania, loja Saipos **20437**,
+unidade Vitaliano NB do Tetteo. A API de Dados já possui esse vínculo ativo.
+As operações de Pedidos permanecem na loja de testes **92002**, sem misturar
+vendas de teste com as vendas importadas da unidade real.
+
+No Developer deste parceiro, somente o ambiente Homologação está disponível.
+A tela exige homologação de cada módulo antes da produção. No PDV da loja
+20437, a busca por “Vitaliano” em Canais de venda e Integrações não retornou
+resultados. Portanto, ainda não há código de loja do canal de produção a
+configurar. Não reutilizar o vínculo, secret ou idPartner da homologação.
+
+Evidência concluída: pedido `tetteo-hml-20261027-1625` / `HML1625`, venda nº 1,
+TAKEOUT, consumidor não identificado, R$ 1,00 fictício em Dinheiro. O Tetteo
+registrou RECEBIDO e os eventos reais CONFIRMED, DISPATCHED e CONCLUDED,
+uma ocorrência de cada evento, após a operação no PDV. Esse teste valida o
+caminho de criação e retorno por webhook; não equivale à aprovação formal.
+O contrato aceito informou `payment_types[].change_for: 0` explicitamente.
+
+### Pendências para a liberação
+
+1. Iniciar o processo oficial de homologação e obter a matriz de evidências
+   exigida pela Saipos. O caso validado não cobre todos os critérios de
+   Takeout/Balcão; ainda há cenários de agendamento, repetição, identificação,
+   pagamentos, descontos e acréscimos a demonstrar. Os demais módulos
+   selecionados também precisam de suas próprias evidências.
+2. Obter da Saipos a aprovação e as credenciais de produção. O suporte informa
+   o idPartner da integração com a loja; não presumir que seja o de testes.
+3. Disponibilizar e ativar o canal na loja 20437. Conferir CÓD. LOJA, pagamentos,
+   códigos PDV e regras de confirmação no cadastro desse canal.
+4. Cadastrar o webhook no ambiente de produção do Developer. Usar uma chave de
+   capacidade exclusiva de produção, entregue privadamente, e confirmar a
+   proteção dos logs antes de cadastrar. A URL cadastrada atualmente é de HML.
+5. Somente com esses dados, atualizar no Dokploy o ambiente para `producao`,
+   o secret/idPartner/cod_store corretos e a chave do callback. Preservar a
+   chave de cifragem existente e o escopo da unidade Vitaliano NB. Registrar
+   a aprovação formal antes de definir `SAIPOS_PRODUCTION_APPROVED=true`.
+6. Conferir autenticação e consultas da loja real. A validação de um pedido
+   operacional e seu retorno por webhook deve ser acompanhada no PDV.
+
+Não foi emitido pedido na loja real durante esta verificação. O ambiente
+operacional não foi trocado para produção porque ainda faltam liberação e
+credenciais correspondentes. O serviço atual aceita somente um canal/unidade
+de operações; a troca para produção substitui a configuração ativa de HML.
+
+### Texto preparado para abrir o chamado
+
+> Solicito iniciar a homologação da API de Pedidos da integração Vitaliano
+> com o Tetteo e orientar a ativação na loja 20437, Vitaliano Pizzaria - Nova
+> Betania. O parceiro está cadastrado no Saipos Developer e a loja de testes
+> é 92002. Validamos o pedido HML1625 (TAKEOUT, venda nº 1) com os eventos reais
+> CONFIRMED, DISPATCHED e CONCLUDED recebidos e persistidos pelo webhook.
+> Precisamos da matriz de homologação aplicável, validação das evidências e,
+> após aprovação, liberação do canal na loja real, credenciais de produção e
+> orientação para cadastrar o webhook de produção. O canal ainda não aparece
+> na busca da loja real e o Developer só disponibiliza Homologação. Não estamos
+> declarando os demais cenários ou módulos como homologados.
+
+O chamado acima está preparado, **não enviado**. Não anexar credenciais nem
+a URL privada completa do webhook a documentação ou evidências públicas.
+
+Fontes oficiais verificadas nesta etapa:
+
+- [Processo de homologação e oficialização](https://saipos-docs-order-api.readme.io/reference/introducao)
+- [Critérios por módulo](https://saipos-docs-order-api.readme.io/reference/criterios-de-homologacao)
+- [Portal indicado para abrir a solicitação](https://intercom.help/parceiros-saipos/pt-BR)
+
 Fontes oficiais consultadas em 26/10/2026:
 
 - https://saipos-data-api.readme.io/reference/consultar-itens-venda
