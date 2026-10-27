@@ -8,7 +8,7 @@ const identificador = z.string().trim().min(1).max(100);
 export const esquemaConteudoCarrinho = z
   .object({
     clienteId: identificador.optional(),
-    modalidade: z.enum(["RETIRADA", "BALCAO"]),
+    modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
     observacao: z.string().trim().max(500),
     itens: z
       .array(

@@ -2,7 +2,7 @@ import type { ItemCarrinho, ProdutoPdv } from "./types";
 
 export type ConteudoCarrinho = {
   clienteId?: string;
-  modalidade: "RETIRADA" | "BALCAO";
+  modalidade: "RETIRADA" | "BALCAO" | "ENTREGA";
   observacao: string;
   itens: ItemCarrinho[];
 };

@@ -5,16 +5,17 @@ export const manifestoPdv: ManifestoDoApp = {
   nome: "PDV",
   subtitulo: "Vendas & caixa",
   icone: "caixa",
-  cor: { fundo: "#0066cc", frente: "#ffffff" },
+  cor: { fundo: "#8b2fd0", frente: "#ffffff" },
   area: "operacao",
   rota: "/pdv",
   navegacao: [
+    { rota: "/pdv", nome: "Gestão de pedidos" },
+    { rota: "/pdv/novo-pedido", nome: "Novo pedido", permissao: "pdv.vender" },
     {
       rota: "/pdv/preparacao",
       nome: "Preparar operação",
       permissao: "pdv.configurar",
     },
-    { rota: "/pdv", nome: "Frente de caixa" },
     { rota: "/pdv/vendas", nome: "Vendas" },
     { rota: "/pdv/caixa", nome: "Caixa" },
     {

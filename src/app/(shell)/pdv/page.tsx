@@ -1,28 +1,51 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { obterContexto, pode } from "@/core/sessao/contexto";
-import { FrenteDeCaixa } from "@/modules/pdv/components/frente-de-caixa";
-import { carregarPdv } from "@/modules/pdv/services/pdv";
-import { listarCarrinhos } from "@/modules/pdv/services/carrinhos";
+import { GestaoPedidos } from "@/modules/pdv/components/gestao-pedidos";
+import { listarPedidos } from "@/modules/pdv/services/pedidos";
+import {
+  esquemaListaPedidos,
+  periodoPedidos,
+} from "@/modules/pdv/schemas/pedido";
+import { ErroPdv } from "@/modules/pdv/schemas/erro";
 
-export default async function PaginaPdv() {
+export default async function PaginaGestaoPedidos({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    dia?: string | string[];
+    novaVenda?: string | string[];
+  }>;
+}) {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
   if (!contexto.unidadeAtiva) return null;
-  const [dados, carrinhos] = await Promise.all([
-    carregarPdv(contexto),
-    pode(contexto, "pdv.vender")
-      ? listarCarrinhos(contexto)
-      : Promise.resolve([]),
-  ]);
+  const consulta = await searchParams;
+  if (Array.isArray(consulta.dia) || Array.isArray(consulta.novaVenda))
+    notFound();
+  if (
+    !esquemaListaPedidos.safeParse({ dia: consulta.dia }).success ||
+    (consulta.novaVenda?.length ?? 0) > 100
+  )
+    notFound();
+  if (consulta.dia) {
+    try {
+      periodoPedidos(consulta.dia);
+    } catch (erro) {
+      if (erro instanceof ErroPdv) notFound();
+      throw erro;
+    }
+  }
+  const quadro = await listarPedidos(contexto, { dia: consulta.dia });
   return (
-    <FrenteDeCaixa
-      key={contexto.unidadeAtiva.id}
-      dados={dados}
+    <GestaoPedidos
+      key={`${contexto.unidadeAtiva.id}:${quadro.dia}`}
+      inicial={quadro}
       unidade={contexto.unidadeAtiva.nome}
       podeVender={pode(contexto, "pdv.vender")}
-      podeDesconto={pode(contexto, "pdv.desconto")}
-      podeConfigurar={pode(contexto, "pdv.configurar")}
-      carrinhos={carrinhos}
+      podeOperar={pode(contexto, "pdv.operar")}
+      podeCancelar={pode(contexto, "pdv.cancelar")}
+      novaVenda={consulta.novaVenda}
+      instante={new Date().toISOString()}
     />
   );
 }

@@ -112,10 +112,20 @@ export const esquemaFechar = z.object({
   valorContadoCentavos: centavos,
   observacao: z.string().trim().max(500),
 });
-export const esquemaCancelar = z.object({
-  vendaId: identificador,
-  motivo: z.string().trim().min(3).max(300),
-});
+export const esquemaCancelar = z
+  .object({
+    vendaId: identificador,
+    motivo: z.string().trim().min(3).max(300),
+    pedidoId: identificador.optional(),
+    versaoPedido: z.number().int().min(1).max(2_000_000_000).optional(),
+  })
+  .superRefine((dados, ctx) => {
+    if ((dados.pedidoId === undefined) !== (dados.versaoPedido === undefined))
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe a identificação e a versão do pedido.",
+      });
+  });
 
 export function calcularPrecoItem(
   produto: ProdutoPdv,

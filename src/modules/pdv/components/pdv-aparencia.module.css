@@ -1,0 +1,28 @@
+.aparencia {
+  /* Direção solicitada: controles roxos da referência, escopados ao PDV. */
+  --accent: #8b2fd0;
+  --accent-ink: #ffffff;
+  --accent-sub: #f2e7fb;
+  --pdv-coluna: var(--paper);
+  color: var(--ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  .aparencia {
+    --accent: #d2a8f4;
+    --accent-ink: #281336;
+    --accent-sub: #362344;
+  }
+}
+
+:global(:root[data-theme="dark"]) .aparencia {
+  --accent: #d2a8f4;
+  --accent-ink: #281336;
+  --accent-sub: #362344;
+}
+
+:global(:root[data-theme="light"]) .aparencia {
+  --accent: #8b2fd0;
+  --accent-ink: #ffffff;
+  --accent-sub: #f2e7fb;
+}

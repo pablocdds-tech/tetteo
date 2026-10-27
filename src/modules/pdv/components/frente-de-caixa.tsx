@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 import { Icone } from "@/design-system/icones";
@@ -11,6 +11,7 @@ import { finalizarVendaAcao } from "../acoes";
 import { CarrinhosSalvos } from "./carrinhos-salvos";
 import type { ResumoCarrinho, RetomadaCarrinho } from "../carrinho-types";
 import { calcularPrecoItem } from "../schemas/venda";
+import styles from "./novo-pedido.module.css";
 import type {
   DadosPdv,
   ItemCarrinho,
@@ -74,6 +75,7 @@ export function FrenteDeCaixa({
 }) {
   const router = useRouter();
   const buscaRef = useRef<HTMLInputElement>(null);
+  const checkoutRef = useRef<HTMLDialogElement>(null);
   const trava = useRef(false);
   const chaveVenda = useRef<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -81,9 +83,9 @@ export function FrenteDeCaixa({
   const [itens, setItens] = useState<Linha[]>([]);
   const [produto, setProduto] = useState<ProdutoPdv | null>(null);
   const [cliente, setCliente] = useState("");
-  const [modalidade, setModalidade] = useState<"RETIRADA" | "BALCAO">(
-    "RETIRADA",
-  );
+  const [modalidade, setModalidade] = useState<
+    "RETIRADA" | "BALCAO" | "ENTREGA"
+  >("RETIRADA");
   const [observacao, setObservacao] = useState("");
   const [pagamento, setPagamento] = useState(false);
   const [desconto, setDesconto] = useState("0");
@@ -155,9 +157,28 @@ export function FrenteDeCaixa({
     !temItensInvalidos;
 
   useEffect(() => {
+    const dialogo = checkoutRef.current;
+    if (!dialogo) return;
+    if (!dialogo.open) dialogo.showModal();
+    buscaRef.current?.focus();
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = anterior;
+      if (dialogo.open) dialogo.close();
+    };
+  }, []);
+
+  useEffect(() => {
     const atualizar = () => setOnline(navigator.onLine);
     const atalhos = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || document.querySelector("dialog[open]")) return;
+      if (
+        !e.ctrlKey ||
+        [...document.querySelectorAll("dialog[open]")].some(
+          (dialogo) => dialogo !== checkoutRef.current,
+        )
+      )
+        return;
       if (e.key.toLowerCase() === "b") {
         e.preventDefault();
         buscaRef.current?.focus();
@@ -379,7 +400,11 @@ export function FrenteDeCaixa({
       setPagamento(false);
       setIncerta(false);
       chaveVenda.current = null;
-      router.refresh();
+      router.push(
+        resultado.vendaId
+          ? `/pdv?novaVenda=${encodeURIComponent(resultado.vendaId)}`
+          : "/pdv",
+      );
     } catch {
       setIncerta(true);
       setErro(
@@ -392,13 +417,32 @@ export function FrenteDeCaixa({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <dialog
+      ref={checkoutRef}
+      aria-labelledby="novo-pedido-titulo"
+      className={styles.checkout}
+      onCancel={(evento) => {
+        if (evento.target !== evento.currentTarget) return;
+        evento.preventDefault();
+        if (ocupado || incerta) return;
+        if (
+          !itens.length ||
+          window.confirm(
+            "Há itens neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
+          )
+        )
+          router.push("/pdv");
+      }}
+    >
+      <header className={styles.topo}>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Frente de caixa
+          <h1
+            id="novo-pedido-titulo"
+            className="text-lg font-semibold tracking-tight"
+          >
+            Novo pedido
           </h1>
-          <p className="text-ink-3 mt-1 text-sm">
+          <p className="text-ink-3 text-xs">
             {unidade} ·{" "}
             {dados.caixa
               ? `Caixa aberto por ${dados.caixa.operador}`
@@ -414,33 +458,41 @@ export function FrenteDeCaixa({
           <Link href="/pdv/caixa" className={estiloDeBotao("secundario")}>
             Gerenciar caixa
           </Link>
+          <Link href="/pdv" className={styles.voltar}>
+            <span>Voltar à gestão</span>
+            <Icone nome="fechar" tamanho={18} />
+          </Link>
         </div>
       </header>
-      <CarrinhosSalvos
-        carrinhos={carrinhos}
-        conteudo={{
-          clienteId: cliente || undefined,
-          modalidade,
-          observacao,
-          itens: itens.map(({ produtoId, quantidade, opcoes, observacao }) => ({
-            produtoId,
-            quantidade,
-            opcoes,
+      <div className={styles.atendimentos}>
+        <CarrinhosSalvos
+          carrinhos={carrinhos}
+          conteudo={{
+            clienteId: cliente || undefined,
+            modalidade,
             observacao,
-          })),
-        }}
-        atual={rascunho}
-        bloqueado={ocupado || incerta}
-        podeVender={podeVender}
-        temPagamentos={pagamentos.length > 0}
-        online={online}
-        aoSalvar={() => {
-          limparAtendimento();
-          setAviso("Atendimento salvo. Você já pode iniciar outra venda.");
-        }}
-        aoRetomar={retomarAtendimento}
-        aoBloquear={setOcupado}
-      />
+            itens: itens.map(
+              ({ produtoId, quantidade, opcoes, observacao }) => ({
+                produtoId,
+                quantidade,
+                opcoes,
+                observacao,
+              }),
+            ),
+          }}
+          atual={rascunho}
+          bloqueado={ocupado || incerta}
+          podeVender={podeVender}
+          temPagamentos={pagamentos.length > 0}
+          online={online}
+          aoSalvar={() => {
+            limparAtendimento();
+            setAviso("Atendimento salvo. Você já pode iniciar outra venda.");
+          }}
+          aoRetomar={retomarAtendimento}
+          aoBloquear={setOcupado}
+        />
+      </div>
       {rascunho && (
         <p className="text-ink-2 text-sm">
           Atendimento em edição: <strong>{rascunho.nome}</strong>. Salve
@@ -489,28 +541,16 @@ export function FrenteDeCaixa({
           {erro}
         </p>
       )}
-      <div
-        style={
-          {
-            "--reserva-pdv": `${240 + (rascunho ? 40 : 0) + (!dados.caixa ? 64 : 0) + (aviso ? 64 : 0) + (erro ? 64 : 0) + (!online ? 64 : 0) + (temItensInvalidos ? 64 : 0)}px`,
-          } as CSSProperties
-        }
-        className="border-line bg-surface grid min-h-[540px] overflow-hidden rounded-xl border xl:h-[calc(100dvh-var(--reserva-pdv))] xl:min-h-[400px] xl:grid-cols-[180px_minmax(0,1fr)_340px] 2xl:grid-cols-[200px_minmax(0,1fr)_380px]"
-      >
-        <nav
-          aria-label="Categorias de produtos"
-          className="border-line bg-surface flex overflow-x-auto border-b xl:flex-col xl:border-r xl:border-b-0"
-        >
-          <h2 className="text-ink-3 hidden px-4 py-5 text-sm font-semibold xl:block">
-            Categorias
-          </h2>
+      <div className={styles.workspace}>
+        <nav aria-label="Categorias de produtos" className={styles.categorias}>
+          <h2 className={styles.tituloCategorias}>Categorias</h2>
           {[null, ...categorias].map((c) => (
             <button
               key={c ?? "todas"}
               type="button"
               aria-pressed={categoria === c}
               onClick={() => setCategoria(c)}
-              className={`focus-visible:outline-accent shrink-0 px-4 py-4 text-left text-sm transition-colors ${categoria === c ? "bg-accent-sub text-accent font-semibold" : "hover:bg-surface-2 text-ink-2"}`}
+              className={`${styles.categoria} ${categoria === c ? styles.categoriaAtiva : ""}`}
             >
               {c ?? "Todos os produtos"}
               <span className="ml-2 text-xs" aria-hidden="true">
@@ -522,20 +562,18 @@ export function FrenteDeCaixa({
             </button>
           ))}
         </nav>
-        <section className="bg-paper flex min-h-0 min-w-0 flex-col overflow-y-auto">
-          <div className="border-line bg-surface border-b p-4">
-            <label
-              htmlFor="pdv-busca"
-              className="text-ink-2 mb-2 block text-sm font-semibold"
-            >
+        <section className={styles.catalogo} aria-label="Produtos disponíveis">
+          <div className={styles.busca}>
+            <Icone nome="lupa" tamanho={20} />
+            <label htmlFor="pdv-busca" className="sr-only">
               Buscar produto{" "}
               <span className="text-ink-3 font-normal">Ctrl + B</span>
             </label>
             <input
               id="pdv-busca"
               ref={buscaRef}
-              className="border-line-2 bg-surface focus:outline-accent h-11 w-full rounded-md border px-3"
-              placeholder="Nome ou código de barras / PDV"
+              className={styles.campoBusca}
+              placeholder="Encontre produtos por nome ou código PDV (Ctrl + B)"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               onKeyDown={(e) => {
@@ -552,31 +590,24 @@ export function FrenteDeCaixa({
             />
           </div>
           {produtos.length ? (
-            <div className="grid content-start gap-3 p-4 sm:grid-cols-2 2xl:grid-cols-3">
+            <div className={styles.produtos}>
               {produtos.map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   disabled={incerta || ocupado}
                   onClick={() => abrirProduto(p)}
-                  className="border-line bg-surface hover:border-accent focus-visible:outline-accent flex min-h-28 items-start gap-3 rounded-lg border p-4 text-left transition-colors disabled:opacity-50"
+                  className={styles.produto}
                 >
-                  <span className="bg-accent-sub text-accent mt-1 grid size-10 shrink-0 place-items-center rounded-lg">
-                    <Icone nome="prato" tamanho={22} />
+                  <span className={styles.miniatura}>
+                    <Icone nome="prato" tamanho={30} />
                   </span>
-                  <span className="flex min-w-0 flex-1 flex-col gap-2">
-                    <span className="text-sm leading-5 font-semibold">
-                      {p.nome}
-                    </span>
+                  <span className={styles.produtoTexto}>
+                    <span className={styles.produtoNome}>{p.nome}</span>
                     <span className="text-ink-2 text-sm">
                       {p.grupos.length ? "A partir de " : ""}
                       {moeda(precoMinimo(p))}
                     </span>
-                    {p.grupos.length > 0 && (
-                      <span className="text-ink-3 text-xs">
-                        Escolher opções
-                      </span>
-                    )}
                   </span>
                 </button>
               ))}
@@ -605,19 +636,20 @@ export function FrenteDeCaixa({
             </div>
           )}
         </section>
-        <aside className="border-line bg-surface flex min-h-0 flex-col border-t xl:border-t-0 xl:border-l">
-          <div className="border-line space-y-3 border-b p-4">
-            <h2 className="font-semibold">Novo pedido</h2>
-            <label className="text-ink-2 block text-sm">
-              Cliente (opcional)
+        <aside className={styles.pedido}>
+          <div className={styles.dadosPedido}>
+            <h2 className="sr-only">Dados do pedido</h2>
+            <label className={styles.seletor}>
+              <span className="sr-only">Cliente (opcional)</span>
+              <Icone nome="pessoa" tamanho={18} />
               <select
                 aria-label="Cliente"
-                className="border-line-2 bg-surface mt-1 h-11 w-full rounded-md border px-2"
+                className={styles.campoSeletor}
                 value={cliente}
                 disabled={incerta || ocupado}
                 onChange={(e) => setCliente(e.target.value)}
               >
-                <option value="">Consumidor não identificado</option>
+                <option value="">Pesquisar cliente...</option>
                 {cliente && !dados.clientes.some((c) => c.id === cliente) && (
                   <option value={cliente}>
                     Cliente vinculado ao atendimento salvo
@@ -630,11 +662,15 @@ export function FrenteDeCaixa({
                 ))}
               </select>
             </label>
-            <label className="text-ink-2 block text-sm">
-              Atendimento
+            <label className={styles.seletor}>
+              <span className="sr-only">Atendimento</span>
+              <Icone
+                nome={modalidade === "ENTREGA" ? "entrega" : "pessoas"}
+                tamanho={18}
+              />
               <select
                 aria-label="Atendimento"
-                className="border-line-2 bg-surface mt-1 h-11 w-full rounded-md border px-2"
+                className={styles.campoSeletor}
                 value={modalidade}
                 disabled={incerta || ocupado}
                 onChange={(e) =>
@@ -643,11 +679,24 @@ export function FrenteDeCaixa({
               >
                 <option value="RETIRADA">Retirada</option>
                 <option value="BALCAO">Balcão</option>
+                <option value="ENTREGA">Entrega (acompanhar pedido)</option>
               </select>
             </label>
-            <details className="text-ink-2 text-sm">
-              <summary className="cursor-pointer py-1">
-                Observação do pedido
+            {modalidade === "ENTREGA" && (
+              <p className="text-ink-3 text-xs">
+                A entrega será acompanhada na gestão de pedidos. Endereço e
+                frete não são calculados automaticamente.
+              </p>
+            )}
+            <div className={styles.agora}>
+              <Icone nome="relogio" tamanho={18} />
+              <span>Pedido para agora</span>
+            </div>
+            <details className={styles.observacao}>
+              <summary>
+                <Icone nome="lista-conferida" tamanho={18} />
+                <span>Observação do pedido</span>
+                <Icone nome="seta-baixo" tamanho={16} />
               </summary>
               <label className="sr-only" htmlFor="pdv-observacao">
                 Observação do pedido
@@ -664,7 +713,7 @@ export function FrenteDeCaixa({
               />
             </details>
           </div>
-          <div className="flex items-center justify-between px-4 pt-4">
+          <div className={styles.tituloCarrinho}>
             <h3 className="text-sm font-semibold">
               Carrinho{" "}
               <span className="text-ink-3">
@@ -688,11 +737,11 @@ export function FrenteDeCaixa({
               </button>
             )}
           </div>
-          <div className="max-h-[480px] min-h-24 flex-1 space-y-2 overflow-y-auto p-4 xl:max-h-none xl:min-h-0">
+          <div className={styles.itens}>
             {!itens.length && (
-              <div className="text-ink-3 flex h-full min-h-24 flex-col items-center justify-center gap-3">
-                <Icone nome="carrinho" tamanho={40} />
-                <p className="text-sm">Escolha um produto para começar</p>
+              <div className={styles.carrinhoVazio}>
+                <Icone nome="caixa" tamanho={72} />
+                <p>Carrinho vazio</p>
               </div>
             )}
             {itens.map((item) => {
@@ -701,10 +750,7 @@ export function FrenteDeCaixa({
               const preco = cotacao.preco;
               const nome = p?.nome ?? "Produto indisponível";
               return (
-                <article
-                  className="bg-surface-2 rounded-lg p-3"
-                  key={item.chave}
-                >
+                <article className={styles.item} key={item.chave}>
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="text-sm font-semibold">{nome}</h4>
                     <button
@@ -789,13 +835,13 @@ export function FrenteDeCaixa({
               );
             })}
           </div>
-          <footer className="border-line space-y-3 border-t p-4">
+          <footer className={styles.rodape}>
             <div className="flex justify-between text-sm">
               <span className="text-ink-3">Subtotal</span>
               <strong className="tabular-nums">{moeda(subtotal)}</strong>
             </div>
             <Botao
-              className="w-full justify-between"
+              className={styles.pagar}
               disabled={!podeAbrirPagamento}
               onClick={() => {
                 setErro("");
@@ -991,7 +1037,7 @@ export function FrenteDeCaixa({
           )}
         </div>
       </PainelLateral>
-    </div>
+    </dialog>
   );
 }
 

@@ -19,6 +19,20 @@ const produto: ProdutoPdv = {
   precoCentavos: 900,
   grupos: [],
 };
+
+test("atendimento salvo mantém a modalidade entrega para o acompanhamento do pedido", () => {
+  const salvo = esquemaSalvarCarrinho.parse({
+    id: randomUUID(),
+    versao: 0,
+    nome: "Entrega",
+    conteudo: { ...conteudo, modalidade: "ENTREGA" },
+  });
+  assert.equal(salvo.conteudo.modalidade, "ENTREGA");
+  assert.equal(
+    atualizarConteudoCarrinho(salvo.conteudo, [produto]).conteudo.modalidade,
+    "ENTREGA",
+  );
+});
 test("rascunho recusa pagamentos e preços em vez de persistir dados de cobrança", () => {
   const base = { id: randomUUID(), versao: 0, nome: "Balcão", conteudo };
   assert.equal(esquemaSalvarCarrinho.safeParse(base).success, true);

@@ -1,5 +1,11 @@
 # Design do Tetteo
 
+## PDV — referência operacional em 27/10/2026
+
+Por solicitação explícita do usuário, o PDV passou a seguir de perto a disposição visual do Cardápio Web: superfícies claras do sistema, bordas finas, cartões compactos, gestão de pedidos com detalhe à direita e novo pedido em janela ampla de três colunas. A marca continua Tetteo. O quadro tem as cinco etapas escolhidas pelo usuário; não reproduz integralmente todos os estados da plataforma de referência.
+
+O roxo fica escopado a `pdv-aparencia.module.css`, sem trocar o acento global dos demais módulos. Pares claros: `#8b2fd0`/`#ffffff` (6,15:1) e sobre `#f2e7fb` (5,15:1). Pares escuros: `#d2a8f4`/`#281336` (8,61:1) e sobre `#362344` (7,19:1). O layout conserva foco visível, navegação por teclado, movimento reduzido e alternativa por botões ao arraste do kanban. No celular, o detalhe abre em diálogo nativo com o fundo inerte.
+
 Este documento é a fonte da verdade visual do sistema. Ele registra o que foi
 decidido, **e principalmente por quê** — para que ninguém, daqui a seis meses,
 reabra uma decisão por engano ou desfaça uma trava de acessibilidade achando que

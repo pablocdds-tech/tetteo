@@ -562,6 +562,35 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           consumo: json(consumo),
         },
       });
+      // O número é apenas visual; autorização e rotas continuam usando id aleatório.
+      // A trava da unidade já adquirida serializa a sequência junto da venda.
+      const ultimoPedido = await tx.pdvPedido.aggregate({
+        where: escopo,
+        _max: { numero: true },
+      });
+      const pedido = await tx.pdvPedido.create({
+        data: {
+          ...escopo,
+          vendaId: venda.id,
+          numero: (ultimoPedido._max.numero ?? 0) + 1,
+          criadoEm: venda.criadaEm,
+          eventos: {
+            create: {
+              de: null,
+              para: "COZINHA",
+              versao: 1,
+              usuarioId: ctx.usuario.id,
+              operador: ctx.usuario.nome,
+            },
+          },
+        },
+      });
+      await auditar(tx, ctx, escopo, "PdvPedido", pedido.id, "CRIOU", null, {
+        vendaId: venda.id,
+        numero: pedido.numero,
+        status: "COZINHA",
+        versao: 1,
+      });
       if (carrinho) {
         await tx.pdvCarrinho.update({
           where: { id: carrinho.id },
@@ -638,7 +667,31 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
         include: { caixa: true },
       });
       if (!venda) throw new ErroPdv("Venda não encontrada nesta unidade.");
-      if (venda.status === "CANCELADA") return;
+      const pedido = await tx.pdvPedido.findFirst({
+        where: { ...escopo, vendaId: venda.id },
+      });
+      if (dados.pedidoId && (!pedido || pedido.id !== dados.pedidoId))
+        throw new ErroPdv("Pedido indisponível para esta venda e unidade.");
+      if (venda.status === "CANCELADA") {
+        if (
+          dados.pedidoId &&
+          (pedido!.status !== "CANCELADO" ||
+            (pedido!.versao !== dados.versaoPedido &&
+              pedido!.versao !== dados.versaoPedido! + 1))
+        )
+          throw new ErroPdv(
+            "Este pedido mudou em outra tela. Atualize o quadro antes de continuar.",
+          );
+        return;
+      }
+      if (dados.pedidoId && pedido!.versao !== dados.versaoPedido)
+        throw new ErroPdv(
+          "Este pedido mudou em outra tela. Atualize o quadro antes de cancelar.",
+        );
+      if (pedido?.status === "CANCELADO")
+        throw new ErroPdv(
+          "A situação financeira deste pedido precisa de conferência antes de cancelar.",
+        );
       if (venda.caixa.fechadoEm)
         throw new ErroPdv(
           "O caixa desta venda já foi fechado. O cancelamento exige um fluxo de devolução posterior.",
@@ -684,6 +737,40 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
           motivoCancelamento: dados.motivo,
         },
       });
+      if (pedido) {
+        await tx.pdvPedido.update({
+          where: { id: pedido.id },
+          data: {
+            status: "CANCELADO",
+            versao: { increment: 1 },
+            canceladoEm: new Date(),
+            eventos: {
+              create: {
+                de: pedido.status,
+                para: "CANCELADO",
+                versao: pedido.versao + 1,
+                usuarioId: ctx.usuario.id,
+                operador: ctx.usuario.nome,
+                observacao: dados.motivo,
+              },
+            },
+          },
+        });
+        await auditar(
+          tx,
+          ctx,
+          escopo,
+          "PdvPedido",
+          pedido.id,
+          "ALTEROU",
+          { status: pedido.status, versao: pedido.versao },
+          {
+            status: "CANCELADO",
+            versao: pedido.versao + 1,
+            motivo: dados.motivo,
+          },
+        );
+      }
       await auditar(
         tx,
         ctx,

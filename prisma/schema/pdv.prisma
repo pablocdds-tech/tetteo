@@ -75,6 +75,7 @@ model PdvVenda {
   canceladaPorId String?
   motivoCancelamento String?
   @@unique([organizacaoId, unidadeId, chave])
+  @@unique([organizacaoId, unidadeId, id], map: "pdv_venda_escopo_id_key")
   @@index([organizacaoId, unidadeId, criadaEm])
   @@map("pdv_venda")
 }
@@ -97,4 +98,45 @@ model PdvCarrinho {
   concluidoEm DateTime?
   @@index([organizacaoId, unidadeId, usuarioId, status, atualizadoEm], map: "pdv_carrinho_operador_estado_data_idx")
   @@map("pdv_carrinho")
+}
+
+// Situação operacional, independente da situação financeira da venda.
+model PdvPedido {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  vendaId String @unique
+  numero Int
+  status String @default("COZINHA")
+  versao Int @default(1)
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  prontoEm DateTime?
+  saiuEntregaEm DateTime?
+  entregueEm DateTime?
+  canceladoEm DateTime?
+  eventos PdvPedidoEvento[]
+  @@unique([organizacaoId, unidadeId, id])
+  @@unique([organizacaoId, unidadeId, numero])
+  @@index([organizacaoId, unidadeId, status, criadoEm], map: "pdv_pedido_unidade_status_data_idx")
+  @@index([organizacaoId, unidadeId, entregueEm])
+  @@index([organizacaoId, unidadeId, canceladoEm])
+  @@map("pdv_pedido")
+}
+
+model PdvPedidoEvento {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  pedidoId String
+  pedido PdvPedido @relation(fields: [organizacaoId, unidadeId, pedidoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  de String?
+  para String
+  versao Int
+  usuarioId String?
+  operador String
+  observacao String @default("")
+  criadoEm DateTime @default(now())
+  @@unique([pedidoId, versao])
+  @@map("pdv_pedido_evento")
 }

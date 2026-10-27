@@ -6,7 +6,7 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 
 1. **Preparar a operação.** Diagnosticar produtos sem preço/receita, complementos, insumos indisponíveis, locais e saldos. Cada pendência deve apontar onde corrigir, sem inventar preços, receitas ou estoque. O diagnóstico deve diferenciar configuração, saldo e avisos; a venda continua fazendo a verificação definitiva.
 2. **Guardar atendimentos.** Salvar, listar, retomar e descartar carrinhos por operador e unidade; não reservar estoque nem registrar pagamentos. Revalidar catálogo e preços ao retomar. Resolver concorrência de abas e consumir o rascunho na mesma transação da venda.
-3. **Encaminhar para a cozinha.** Separar venda/pagamento do estado de produção; criar fila recebido → em preparo → pronto → entregue, tempos, responsáveis e atualização entre dispositivos. Definir setores e como cancelamentos aparecem na produção.
+3. **Encaminhar para a cozinha.** Implementado o quadro escolhido pelo usuário: na cozinha → aguardando coleta → saiu para entrega → entregue, com cancelados em coluna própria. O andamento é separado do pagamento; pedidos de retirada/balcão passam de coleta diretamente a entregue. Setores de produção e integração com impressoras permanecem como evolução.
 4. **Imprimir e reimprimir.** Gerar pedido para cozinha e comprovante não fiscal com identificação, itens, opções, observações, valores e operador. Registrar reimpressão; impressão pelo navegador primeiro, configuração de impressoras e roteamento por setor depois.
 5. **Integrar a gestão.** Publicar fatos de venda/cancelamento com idempotência e definir consumidores em Financeiro, Analytics e CRM, sem imports entre módulos. Distinguir dinheiro recebido, cartão/Pix registrados e liquidação real para evitar dupla contagem com Saipos.
 6. **Tratar exceções.** Devolução parcial, troca e devolução após caixa fechado, com estoque e compensações financeiras auditadas. Preservar o fechamento original; nunca reescrever o passado.
@@ -16,7 +16,7 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 
 ## Entrega iniciada
 
-As etapas 1 e 2 foram implementadas nesta entrega. As etapas seguintes permanecem planejadas; não estão implementadas por este plano.
+As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. As etapas 4 a 9 permanecem planejadas, com modalidade entrega já disponível para acompanhamento manual de estados.
 
 - Preparação em `/pdv/preparacao`, acessível a quem tem `pdv.ver` e `pdv.configurar`.
 - Atendimentos salvos na frente de caixa; cada operador vê somente os próprios na unidade ativa.
@@ -26,6 +26,14 @@ As etapas 1 e 2 foram implementadas nesta entrega. As etapas seguintes permanece
 ## Validação e publicação por etapa
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
+
+### Gestão de pedidos e aproximação visual
+
+- Referência visual obtida na aba autenticada do Cardápio Web em 27/10/2026, incluindo gestão, opções de layout e novo pedido. O quadro de cinco colunas segue a escolha do usuário; não houve alteração de pedidos ou preferências na plataforma de referência.
+- `npm run check`: 631 testes aprovados, sem erros de tipos, lint ou formatação. `npm run build` aprovado; permanecem os avisos anteriores de CRM/arquivos.
+- Domínio e integração PostgreSQL local: sequência por modalidade, permissão operacional separada, concorrência, retry, cancelamento sincronizado e com versão antes do estorno, rollback, legado fora da cozinha, contagens corretas com 702 pedidos e limites explícitos. Regressões de vendas/carrinhos também passaram.
+- Playwright: quadro desktop e mobile de 390×844 sem overflow do documento; busca, escolha de colunas, detalhe, avanço por botão/arraste e cancelamento com motivo. Uma venda fictícia de entrega foi registrada pelo novo checkout, retornou selecionada ao quadro e percorreu cozinha → coleta → saiu para entrega → entregue. Nenhum teste criou pedidos de produção.
+- O novo checkout é um diálogo nativo, mantendo foco e fundo inerte, atalhos, carrinhos salvos e proteção de dados pendentes. A modalidade entrega permite acompanhamento manual; endereço, atribuição de entregador, rotas e confirmação bancária continuam fora desta etapa.
 
 ### Resultados das regras de preparação e carrinhos
 

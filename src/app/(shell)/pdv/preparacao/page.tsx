@@ -48,6 +48,10 @@ export default async function PaginaPreparacaoPdv({
       permissoes={[
         { nome: "Vender", concedida: pode(contexto, "pdv.vender") },
         {
+          nome: "Avançar pedidos na cozinha, coleta e entrega",
+          concedida: pode(contexto, "pdv.operar"),
+        },
+        {
           nome: "Abrir, movimentar e fechar caixa",
           concedida: pode(contexto, "pdv.caixa"),
         },

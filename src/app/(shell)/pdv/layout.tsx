@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { obterContexto, pode } from "@/core/sessao/contexto";
+import styles from "@/modules/pdv/components/pdv-aparencia.module.css";
 
 export default async function LayoutPdv({
   children,
@@ -18,5 +19,5 @@ export default async function LayoutPdv({
         </p>
       </div>
     );
-  return children;
+  return <div className={styles.aparencia}>{children}</div>;
 }
