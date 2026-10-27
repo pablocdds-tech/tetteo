@@ -39,6 +39,18 @@ describe("a exceção do assistente privado no proxy", () => {
     assert.equal(exigeLogin("/api/compras/tick"), false);
     assert.equal(exigeLogin("/api/arquivos/1"), true);
   });
+  test("Cardápio Web libera apenas callback e webhook exatos", () => {
+    assert.equal(exigeLogin("/api/cardapioweb/webhook"), false);
+    assert.equal(exigeLogin("/api/cardapioweb/callback"), false);
+    for (const caminho of [
+      "/api/cardapioweb",
+      "/api/cardapioweb/webhook/admin",
+      "/api/cardapioweb/webhook-vizinho",
+      "/api/cardapioweb/callback/admin",
+      "/configuracoes/integracoes/cardapioweb",
+    ])
+      assert.equal(exigeLogin(caminho), true);
+  });
   test("Saipos libera só o prefixo de máquina; operadores e vizinhos exigem sessão", () => {
     assert.equal(exigeLogin("/api/saipos/maquina/oauth/token"), false);
     assert.equal(

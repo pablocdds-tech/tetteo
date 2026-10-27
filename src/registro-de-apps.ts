@@ -207,6 +207,11 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
         nome: "Saipos",
         permissao: "*",
       },
+      {
+        rota: "/configuracoes/integracoes/cardapioweb",
+        nome: "Cardápio Web",
+        permissao: "configuracoes.cardapioweb",
+      },
     ],
     permissaoParaVer: "configuracoes.ver",
     permissoes: [...PERMISSOES_CONFIGURACOES],

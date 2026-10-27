@@ -69,6 +69,17 @@ export default async function PaginaConfiguracoes() {
 
       <section className="mt-10">
         <h2 className="font-semibold">Integrações</h2>
+        {pode(contexto, "configuracoes.cardapioweb") && (
+          <Link
+            href="/configuracoes/integracoes/cardapioweb"
+            className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"
+          >
+            <p className="font-semibold">Cardápio Web</p>
+            <p className="text-ink-3 mt-1 text-sm">
+              Conectar a loja e conferir pedidos e cardápio por unidade.
+            </p>
+          </Link>
+        )}
         <Link
           href="/configuracoes/integracoes/saipos"
           className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"

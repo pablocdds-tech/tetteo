@@ -1,0 +1,135 @@
+/// Conexão externa de consulta; não é uma segunda loja nem uma venda do PDV.
+model CardapioWebConexao {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  unidade Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  ambiente String
+  clientId String
+  merchantId Int
+  merchantNome String
+  estado String @default("ATIVA")
+  accessCifrado String?
+  refreshCifrado String?
+  expiraEm DateTime
+  escopos String
+  revisao Int @default(1)
+  pedidos Json?
+  catalogo Json?
+  consultadaEm DateTime?
+  tentativaEm DateTime?
+  ocupadaAte DateTime?
+  ultimoErro String?
+  conectadaEm DateTime @default(now())
+  desconectadaEm DateTime?
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  @@unique([organizacaoId, unidadeId, ambiente, clientId])
+  @@unique([ambiente, clientId, merchantId])
+  @@map("cardapioweb_conexao")
+}
+
+/// Estado OAuth de uso único, ligado ao usuário, unidade e navegador.
+model CardapioWebAutorizacao {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  unidade Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  usuarioId String
+  ambiente String
+  clientId String
+  redirectUri String
+  stateHash String @unique
+  verifierCifrado String?
+  expiraEm DateTime
+  consumidaEm DateTime?
+  confirmadaEm DateTime?
+  cancelando Boolean @default(false)
+  merchantId Int?
+  merchantNome String?
+  accessCifrado String?
+  refreshCifrado String?
+  tokenExpiraEm DateTime?
+  escopos String?
+  criadoEm DateTime @default(now())
+  @@index([organizacaoId, unidadeId, usuarioId, expiraEm])
+  @@map("cardapioweb_autorizacao")
+}
+
+/// Integração legada existente: tokens nunca são devolvidos nas consultas da tela.
+model CardapioWebRecebimento {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  unidade Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  ambiente String
+  merchantId Int
+  merchantNome String
+  ativo Boolean @default(false)
+  apiKeyCifrada String?
+  webhookTokenHash String?
+  apiPendenteCifrada String?
+  webhookPendenteHash String?
+  pendentePorId String?
+  pendenteAte DateTime?
+  revisao Int @default(1)
+  ultimoEventoEm DateTime?
+  ultimaReconciliacaoEm DateTime?
+  tentativaReconciliacaoEm DateTime?
+  cursor DateTime?
+  concessaoDono String?
+  concessaoAte DateTime?
+  ultimoErro String?
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  eventos CardapioWebEvento[]
+  pedidos CardapioWebPedido[]
+  @@unique([ambiente, merchantId])
+  @@unique([organizacaoId, unidadeId, id])
+  @@index([organizacaoId, unidadeId, ambiente])
+  @@map("cardapioweb_recebimento")
+}
+
+/// Inbox durável. Somente campos operacionais são recebidos, sem cliente/endereço.
+model CardapioWebEvento {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  recebimentoId String
+  recebimento CardapioWebRecebimento @relation(fields: [organizacaoId, unidadeId, recebimentoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  eventId String
+  origem String @default("WEBHOOK")
+  tipo String
+  orderId Int
+  statusInformado String
+  ocorridoEm DateTime
+  recebidoEm DateTime @default(now())
+  estado String @default("PENDENTE")
+  tentativas Int @default(0)
+  proximaTentativaEm DateTime @default(now())
+  processadoEm DateTime?
+  ultimoErro String?
+  @@unique([recebimentoId, eventId])
+  @@index([recebimentoId, estado, proximaTentativaEm])
+  @@map("cardapioweb_evento")
+}
+
+model CardapioWebPedido {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  recebimentoId String
+  recebimento CardapioWebRecebimento @relation(fields: [organizacaoId, unidadeId, recebimentoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  orderId Int
+  displayId String?
+  estado String
+  modalidade String
+  canal String
+  totalCentavos BigInt
+  criadoNoProvedorEm DateTime
+  atualizadoNoProvedorEm DateTime
+  conferidoEm DateTime @default(now())
+  @@unique([recebimentoId, orderId])
+  @@index([organizacaoId, unidadeId, atualizadoNoProvedorEm])
+  @@map("cardapioweb_pedido")
+}

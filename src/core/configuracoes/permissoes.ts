@@ -29,6 +29,10 @@ export const PERMISSOES_CONFIGURACOES = [
     chave: "configuracoes.integracoes",
     descricao: "Ver e revogar as conexões de IA",
   },
+  {
+    chave: "configuracoes.cardapioweb",
+    descricao: "Conectar lojas e consultar pedidos e catálogo Cardápio Web",
+  },
 ] as const;
 
 export type GrupoDePermissoes = {

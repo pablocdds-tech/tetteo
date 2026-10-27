@@ -1,6 +1,13 @@
 export async function register() {
   if (
     process.env.NEXT_RUNTIME === "nodejs" &&
+    process.env.NEXT_PHASE !== "phase-production-build"
+  ) {
+    const { iniciarWorkerCw } = await import("./connectors/cardapioweb/worker");
+    iniciarWorkerCw();
+  }
+  if (
+    process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.SAIPOS_SYNC_ENABLED === "true"
   ) {
     const { iniciarRelogioSaipos } =

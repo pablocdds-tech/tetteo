@@ -49,9 +49,12 @@ export default auth;
  *                      rota nova sob `api/assistente-privado/` no futuro (uma
  *                      listagem, por exemplo) NÃO herda a exceção — precisa
  *                      da sua própria entrada aqui, ou fica atrás do login.
+ * `api/cardapioweb/callback` — valida sessão, state e cookie na própria rota.
+ * `api/cardapioweb/webhook` — valida token e vínculo da loja antes de gravar.
+ *                      As exceções são exatas; outros caminhos exigem login.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|api/cardapioweb/(?:callback|webhook)$|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
   ],
 };
