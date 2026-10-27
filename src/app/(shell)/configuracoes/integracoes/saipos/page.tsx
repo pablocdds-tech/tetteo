@@ -3,7 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { obterContexto } from "@/core/sessao/contexto";
 import { db } from "@/server/db";
 import { escopoOperacao } from "@/connectors/saipos/operacao-repositorio";
-import { configOperacao } from "@/connectors/saipos/operacao-config";
+import {
+  configOperacao,
+  configWebhookPedido,
+} from "@/connectors/saipos/operacao-config";
 import { produtosVendidos } from "@/connectors/saipos/detalhes";
 import { horarioBrasilia, diaDeslocado } from "@/connectors/saipos/tempo";
 import { PainelOperacao } from "./painel";
@@ -34,6 +37,12 @@ export default async function Saipos() {
   };
   const pedidos = configurada("pedidos"),
     logistica = configurada("logistica");
+  let webhook = false;
+  try {
+    webhook = configWebhookPedido().unidadeId === scope.unidadeId;
+  } catch {
+    // Configuração incompleta não disponibiliza o recebimento de eventos.
+  }
   const ambiente =
     process.env.SAIPOS_OPERATIONS_ENVIRONMENT === "producao"
       ? "producao"
@@ -106,6 +115,12 @@ export default async function Saipos() {
               "Pedidos no PDV",
               pedidos
                 ? "Configuração presente; valide no PDV"
+                : "Aguarda configuração",
+            ],
+            [
+              "Webhook de pedidos",
+              webhook
+                ? "Recebimento configurado; valide um evento na Saipos"
                 : "Aguarda configuração",
             ],
             [

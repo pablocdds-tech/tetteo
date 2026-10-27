@@ -1,5 +1,9 @@
 import { db } from "@/server/db";
-import { configOperacao, ambienteOperacao } from "./operacao-config";
+import {
+  configOperacao,
+  configWebhookPedido,
+  ambienteOperacao,
+} from "./operacao-config";
 import { comandoPedido, FalhaPedidos, PedidosSaipos } from "./pedidos";
 import { reservar, concluir, type EscopoSaipos } from "./operacao-repositorio";
 import { z } from "zod";
@@ -104,7 +108,7 @@ export async function registrarEventoPedido(scope: EscopoSaipos, raw: unknown) {
       order_id: z.string().min(1).max(100),
     })
     .parse(raw);
-  const c = configOperacao("pedidos");
+  const c = configWebhookPedido();
   if (event.cod_store !== c.codStore || scope.unidadeId !== c.unidadeId)
     throw new Error("Loja inválida.");
   const original = await db.saiposOperacao.findFirst({

@@ -56,6 +56,20 @@ export function configOperacao(tipo: "pedidos" | "logistica") {
     partnerId: "",
   };
 }
+// Receber eventos não deve habilitar comandos de escrita no PDV.
+export function configWebhookPedido() {
+  const unidadeId = process.env.SAIPOS_OPERATIONS_UNIDADE_ID;
+  const codStore = process.env.SAIPOS_ORDER_STORE_CODE;
+  const ambiente = ambienteOperacao();
+  if (
+    !unidadeId ||
+    !codStore ||
+    !/^[a-f0-9]{64}$/i.test(process.env.SAIPOS_OPERATIONS_KEY ?? "") ||
+    !/^[a-f0-9]{64}$/i.test(process.env.SAIPOS_ORDER_WEBHOOK_KEY ?? "")
+  )
+    throw new Error("Webhook de Pedidos aguarda configuração no servidor.");
+  return { unidadeId, codStore, ambiente };
+}
 export const textoId = z
   .string()
   .trim()

@@ -8,7 +8,7 @@ import {
   validarToken,
   lerCorpo,
 } from "./operacao-seguranca";
-import { configOperacao } from "./operacao-config";
+import { configOperacao, configWebhookPedido } from "./operacao-config";
 import { comandoPedido, PedidosSaipos, FalhaPedidos } from "./pedidos";
 import { SaiposClient } from "./client";
 import {
@@ -16,6 +16,38 @@ import {
   itensVendaSaipos,
   historicosVendaSaipos,
 } from "./detalhes";
+
+test("callback autenticado funciona sem liberar envio de pedidos e falha sem chave", () => {
+  const vars = {
+    SAIPOS_OPERATIONS_UNIDADE_ID: "unidade-teste",
+    SAIPOS_OPERATIONS_ENVIRONMENT: "homologacao",
+    SAIPOS_OPERATIONS_KEY: "ab".repeat(32),
+    SAIPOS_ORDER_WEBHOOK_KEY: "cd".repeat(32),
+    SAIPOS_ORDER_STORE_CODE: "loja-teste",
+    SAIPOS_ORDER_ENABLED: "false",
+  };
+  const old = Object.fromEntries(
+    Object.keys(vars).map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, vars);
+  try {
+    assert.deepEqual(configWebhookPedido(), {
+      unidadeId: "unidade-teste",
+      codStore: "loja-teste",
+      ambiente: "homologacao",
+    });
+    assert.throws(() => configOperacao("pedidos"));
+    delete process.env.SAIPOS_ORDER_WEBHOOK_KEY;
+    assert.throws(() => configWebhookPedido());
+    process.env.SAIPOS_ORDER_WEBHOOK_KEY = "fraca";
+    assert.throws(() => configWebhookPedido());
+  } finally {
+    for (const [key, value] of Object.entries(old)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
 
 test("payload cifrado fica vinculado à unidade e tokens não cruzam merchants/ambientes", () => {
   const old = process.env.SAIPOS_OPERATIONS_KEY;

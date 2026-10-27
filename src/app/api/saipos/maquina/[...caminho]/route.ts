@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { configOperacao } from "@/connectors/saipos/operacao-config";
+import {
+  configOperacao,
+  configWebhookPedido,
+} from "@/connectors/saipos/operacao-config";
 import {
   emitirToken,
   igual,
@@ -44,7 +47,7 @@ export async function POST(
         !igual(path.slice("pedidos/eventos/".length), key)
       )
         return json({ error: "Não autorizado." }, 401);
-      const c = configOperacao("pedidos");
+      const c = configWebhookPedido();
       await registrarEventoPedido(
         await escopoMaquina(c.unidadeId),
         JSON.parse(await lerCorpo(request, 8192)),

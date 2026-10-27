@@ -89,6 +89,11 @@ download automático de URLs arbitrárias nem alteração do cardápio local.
 
 ### Eventos recebidos
 
+O recebimento é configurado independentemente do envio: exige unidade, ambiente,
+chave de cifragem, código da loja e chave do webhook. Não exige secret/partnerId
+nem `SAIPOS_ORDER_ENABLED=true`. Assim, cadastrar o callback não libera comandos
+de escrita no PDV. Pedidos desconhecidos continuam recusados.
+
 URL: `https://SEU_DOMINIO/api/saipos/maquina/pedidos/eventos/CHAVE`.
 `CHAVE` é o segredo aleatório de 64 hex `SAIPOS_ORDER_WEBHOOK_KEY`, cadastrado
 privadamente no Developer. Tratar a URL como credencial, nunca em commit,

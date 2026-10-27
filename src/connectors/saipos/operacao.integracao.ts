@@ -28,6 +28,7 @@ Object.assign(process.env, {
   SAIPOS_ORDER_PARTNER_ID: "test-partner-integration",
   SAIPOS_ORDER_SECRET: "test-secret",
   SAIPOS_ORDER_STORE_CODE: "test-store",
+  SAIPOS_ORDER_WEBHOOK_KEY: "cd".repeat(32),
   SAIPOS_LOGISTICS_ENABLED: "true",
   SAIPOS_LOGISTICS_CLIENT_ID: "test-client",
   SAIPOS_LOGISTICS_CLIENT_SECRET: "test-secret-for-logistics-123456789012",
