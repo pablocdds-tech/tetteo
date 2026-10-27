@@ -20,6 +20,11 @@ export default async function PaginaNovoPedidoPdv() {
       key={contexto.unidadeAtiva.id}
       dados={dados}
       unidade={contexto.unidadeAtiva.nome}
+      unidadeId={contexto.unidadeAtiva.id}
+      podeVerClientes={pode(contexto, "crm.ver")}
+      podeEditarClientes={
+        pode(contexto, "crm.ver") && pode(contexto, "crm.editar")
+      }
       podeVender={pode(contexto, "pdv.vender")}
       podeDesconto={pode(contexto, "pdv.desconto")}
       podeConfigurar={pode(contexto, "pdv.configurar")}

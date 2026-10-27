@@ -18,7 +18,7 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 
 As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. A exploração seção por seção levou à impressão manual da etapa 4 e ao histórico de vendas da etapa 7. Os demais fluxos continuam pendentes, com modalidade entrega disponível para acompanhamento manual de estados.
 
-O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Após Delivery, foi implementado pedido com pagamento pendente e recebimento posterior. Próximas prioridades: cliente no atendimento, agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
+O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Após Delivery e pagamento pendente, foram integrados busca/cadastro de clientes e endereços do CRM no atendimento. Próximas prioridades: agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
 
 - Preparação em `/pdv/preparacao`, acessível a quem tem `pdv.ver` e `pdv.configurar`.
 - Atendimentos salvos na frente de caixa; cada operador vê somente os próprios na unidade ativa.
@@ -28,6 +28,16 @@ O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-refere
 ## Validação e publicação por etapa
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
+
+### Seção clientes e endereços no atendimento
+
+- Busca de nome/telefone paginada no servidor, cadastro rápido no CRM com duplicata explícita, cliente salvo consultado por ID. O novo pedido mantém a disposição compacta da referência, com busca no topo do carrinho e formulário simples de nome/telefone.
+- Carteira de até vinte endereços ativos por cliente, nome, principal único, edição versionada e desativação. Seleção preenche o pedido e exige conferir frete/prazo; não reescreve snapshots anteriores. Persistência e permissões continuam pertencendo ao CRM, sem cadastro concorrente ou consentimento de marketing automático.
+- Migração aditiva `20261027210000_crm_enderecos_atendimento`; operação idempotente por chave/ator/hash e auditoria sem cópia dos valores pessoais. Produção aplica pelo `prisma migrate deploy` normal. O banco local de teste preserva o baseline histórico documentado, com SQL aditivo desta migração aplicado em transação com proteção de host/porta/nome.
+- `npm run check`: 652 testes aprovados, sem erros de tipos, lint ou formatação; permanecem os cinco avisos anteriores do CRM. Três testes de domínio novos, duas integrações novas de cadastro/router e regressões de vendas, carrinhos, pedidos, delivery, recebimentos e CRM passaram no PostgreSQL local `_test`. Para a regressão antiga do CRM, foi completada somente a migração aditiva Saipos já existente e ausente nesse baseline local; nenhuma produção foi usada em teste.
+- Playwright com dados fictícios: busca por nome/telefone, duplicata com seleção explícita, perda de resposta após cadastrar e repetição com um único cliente, dois endereços, troca do principal, edição e desativação. Seleção antiga detectou a versão alterada antes de preencher o pedido. Retomada consultou o cliente por ID e preservou endereço; a venda/impressão manteve o número anterior enquanto o CRM já mostrava o novo. Conferência direta no banco confirmou um cadastro, uma baixa e ausência de consentimento/identidade automática.
+- Telas de busca/cadastro/endereços/entrega conferidas em 390×844 sem overflow do documento. Corrigidos o foco ao retornar do formulário à lista e o botão de gerenciar endereços para não submeter o formulário da entrega. Nenhum pedido de produção ou impressão física foi criado.
+- `npm run build` aprovado, mantendo os três avisos anteriores de rastreamento de arquivos em `server/arquivos.ts`.
 
 ### Seção pedido e recebimento separados
 

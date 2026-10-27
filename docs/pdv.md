@@ -52,6 +52,20 @@ Recebimento, cancelamento e fechamento usam a mesma trava por unidade. A versão
 
 Comprovante e cozinha destacam **AGUARDANDO PAGAMENTO**; somente o comprovante inclui o valor a receber. Histórico e CSV distinguem pendentes de pagamentos registrados. Os totais do histórico continuam usando a data de criação do pedido; data e operador reais do recebimento aparecem separadamente quando disponíveis.
 
+## Clientes e endereços no atendimento
+
+O campo **Buscar cliente**, no topo do carrinho, consulta nome ou telefone no CRM da unidade ativa. Digite pelo menos dois caracteres; a pesquisa usa páginas de vinte resultados no servidor, sem restringir a busca aos primeiros 500 clientes. O atendimento salvo retoma o cliente pelo ID, sem substituir seu endereço ou cotação por dados atuais do cadastro.
+
+**Novo cliente** abre cadastro rápido de nome e telefone sem sair do pedido. Exige `crm.ver` e `crm.editar`; consulta e seleção exigem `crm.ver`. O telefone segue a normalização e a unicidade do CRM. Uma duplicata ativa oferece **Usar cliente existente**, por escolha explícita, sem sobrescrever o cadastro. Contatos inativos ou fundidos não são selecionáveis. Criar contato não habilita marketing, não verifica posse do telefone e não registra consentimento ou identidade verificada.
+
+Na entrega, escolha um endereço do cliente ou abra **Escolher ou salvar endereço do cliente**. É possível nomear endereços, salvar o endereço válido em revisão, editar, marcar um principal e desativar; não há exclusão física. Cada cliente pode ter vinte endereços ativos. Alterações conferem a versão e a unidade; somente um endereço ativo pode ser principal. Desativar/fundir o contato esconde os endereços antigos, sem transferi-los automaticamente para outra pessoa.
+
+Selecionar um endereço preenche destinatário, telefone e endereço e pede nova conferência de frete/prazo. A área ou o frete anterior não são reaproveitados silenciosamente. Trocar cliente com uma entrega já preenchida permite escolher entre revisar os dados ou manter explicitamente a entrega atual. O pedido só muda ao confirmar o formulário. Editar o cadastro não altera vendas já gravadas, impressões anteriores ou o conteúdo congelado de um atendimento salvo.
+
+O navegador usa `/api/crm/atendimento/clientes`, API do módulo proprietário do cadastro. O PDV não mantém outra base de pessoas nem escreve nas tabelas do CRM. A API conserva sessão, unidade ativa, permissões, origem autorizada, limites e resposta privada sem cache. Esses acessos não executam sincronização externa do Saipos. A auditoria guarda referências/campos alterados; o histórico de pedidos e a cozinha mantêm as restrições anteriores de dados pessoais.
+
+Criação/edição usa chave, ator e hash na mesma transação, evitando duplicação após resposta perdida. A tela conserva a tentativa e bloqueia saída/edição enquanto a confirmação é incerta. Se o servidor confirma que a própria operação foi registrada, mas o cadastro mudou depois, a interface libera uma nova consulta sem repetir a escrita.
+
 ## Delivery — endereço, áreas e entregadores
 
 As áreas são configuradas em `/pdv/entregas/areas`, com nome, cidade, UF, bairros, frete e prazo em minutos. Uma área sem bairros específicos atende qualquer bairro da cidade informada; não há cálculo por distância. O caixa seleciona explicitamente a área. O servidor confere atividade, versão, cidade/UF, bairro, frete e prazo antes de concluir. Alterações no cadastro exigem atualizar e conferir a cotação; nunca mudam uma venda já gravada. O frete manual exige justificativa, inclusive quando gratuito.
@@ -98,7 +112,7 @@ O navegador avisa antes de recarregar uma página com itens, e os links da inter
 
 Esta versão não contempla roteirização, agendamento de produção, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
 
-O histórico de caixas ainda consulta os 30 últimos fechamentos. O seletor de clientes no atendimento traz até 500 clientes ativos, somente para quem possui `crm.ver`. Nesta entrega as vendas aparecem no histórico próprio do PDV; não alimentam automaticamente os relatórios antigos de Saipos/Analytics, os lançamentos do Financeiro ou as métricas de campanhas do CRM.
+O histórico de caixas ainda consulta os 30 últimos fechamentos. A busca de clientes é paginada no CRM e exige `crm.ver`. Nesta entrega as vendas aparecem no histórico próprio do PDV; não alimentam automaticamente os relatórios antigos de Saipos/Analytics, os lançamentos do Financeiro ou as métricas de campanhas do CRM.
 
 ## Verificações executadas
 

@@ -150,43 +150,30 @@ function serializarCaixa(c: CaixaBanco): CaixaPdv {
 }
 export async function carregarPdv(ctx: ContextoSessao): Promise<DadosPdv> {
   const escopo = await exigirEscopo(ctx);
-  const [produtos, caixas, vendas, clientes, locais, areasEntrega] =
-    await Promise.all([
-      catalogo(db, escopo.organizacaoId),
-      db.pdvCaixa.findMany({
-        where: escopo,
-        include: caixaInclude,
-        orderBy: { abertoEm: "desc" },
-        take: 31,
-      }),
-      db.pdvVenda.findMany({
-        where: escopo,
-        orderBy: { criadaEm: "desc" },
-        take: 100,
-      }),
-      pode(ctx, "crm.ver")
-        ? db.crmContact.findMany({
-            where: {
-              storeId: escopo.unidadeId,
-              active: true,
-              mergedIntoId: null,
-            },
-            select: { id: true, name: true },
-            orderBy: { name: "asc" },
-            take: 500,
-          })
-        : Promise.resolve([]),
-      db.localEstoque.findMany({
-        where: { unidadeId: escopo.unidadeId, ativo: true },
-        select: { id: true, nome: true },
-        orderBy: { nome: "asc" },
-      }),
-      pode(ctx, "pdv.vender") ||
-      pode(ctx, "pdv.entrega") ||
-      pode(ctx, "pdv.configurar")
-        ? listarAreasEntrega(ctx)
-        : Promise.resolve([]),
-    ]);
+  const [produtos, caixas, vendas, locais, areasEntrega] = await Promise.all([
+    catalogo(db, escopo.organizacaoId),
+    db.pdvCaixa.findMany({
+      where: escopo,
+      include: caixaInclude,
+      orderBy: { abertoEm: "desc" },
+      take: 31,
+    }),
+    db.pdvVenda.findMany({
+      where: escopo,
+      orderBy: { criadaEm: "desc" },
+      take: 100,
+    }),
+    db.localEstoque.findMany({
+      where: { unidadeId: escopo.unidadeId, ativo: true },
+      select: { id: true, nome: true },
+      orderBy: { nome: "asc" },
+    }),
+    pode(ctx, "pdv.vender") ||
+    pode(ctx, "pdv.entrega") ||
+    pode(ctx, "pdv.configurar")
+      ? listarAreasEntrega(ctx)
+      : Promise.resolve([]),
+  ]);
   return {
     produtos,
     areasEntrega,
@@ -195,7 +182,7 @@ export async function carregarPdv(ctx: ContextoSessao): Promise<DadosPdv> {
       : null,
     caixasAnteriores: caixas.filter((c) => c.fechadoEm).map(serializarCaixa),
     vendas: vendas.map((v) => serializarVendaPdv(v, pode(ctx, "crm.ver"))),
-    clientes: clientes.map((c) => ({ id: c.id, nome: c.name })),
+    clientes: [],
     locais,
   };
 }

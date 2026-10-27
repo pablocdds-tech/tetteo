@@ -3,6 +3,7 @@ import { obterContexto, pode } from "@/core/sessao/contexto";
 import { permitirTentativa } from "@/core/auth/limites";
 import { crmUser } from "@/modules/crm/services/scope";
 import contactRoutes from "@/modules/crm/services/routes";
+import atendimentoRoutes from "@/modules/crm/services/atendimento-routes";
 import campaignRoutes from "@/modules/crm/services/campaign-routes";
 import { advanceCrmJobs } from "@/modules/crm/services/jobs";
 import { syncSaiposLinks } from "@/modules/crm/services/saipos-links";
@@ -83,7 +84,8 @@ async function handle(
       caminho.at(-1) === "result"
     )
       await advanceCrmJobs(ctx.unidadeAtiva.id);
-    else if (!writing) await syncSaiposLinks(ctx.unidadeAtiva.id);
+    else if (!writing && caminho[0] !== "atendimento")
+      await syncSaiposLinks(ctx.unidadeAtiva.id);
     const req = {
       user,
       query,
@@ -94,6 +96,7 @@ async function handle(
       header: (name: string) => request.headers.get(name) ?? undefined,
     };
     return (
+      (await atendimentoRoutes.dispatch(req)) ??
       (await contactRoutes.dispatch(req)) ??
       (await campaignRoutes.dispatch(req)) ??
       respond({ error: "Operação do CRM não encontrada." }, 404)

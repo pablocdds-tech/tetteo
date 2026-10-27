@@ -10,6 +10,12 @@ import { PainelLateral } from "@/design-system/painel-lateral";
 import { finalizarVendaAcao } from "../acoes";
 import { CarrinhosSalvos } from "./carrinhos-salvos";
 import { DadosEntrega } from "./dados-entrega";
+import { ClienteAtendimento } from "./cliente-atendimento";
+import type {
+  ClienteAtendimentoPdv,
+  EnderecoClientePdv,
+  SeedEntregaCliente,
+} from "../cliente-types";
 import type { EntregaEntrada } from "../entrega-types";
 import { conferirAreaEntrega, esquemaEntregaEntrada } from "../schemas/entrega";
 import type { ResumoCarrinho, RetomadaCarrinho } from "../carrinho-types";
@@ -65,6 +71,9 @@ function centavos(texto: string) {
 export function FrenteDeCaixa({
   dados,
   unidade,
+  unidadeId,
+  podeVerClientes,
+  podeEditarClientes,
   podeVender,
   podeDesconto,
   podeConfigurar,
@@ -72,6 +81,9 @@ export function FrenteDeCaixa({
 }: {
   dados: DadosPdv;
   unidade: string;
+  unidadeId: string;
+  podeVerClientes: boolean;
+  podeEditarClientes: boolean;
   podeVender: boolean;
   podeDesconto: boolean;
   podeConfigurar: boolean;
@@ -88,6 +100,11 @@ export function FrenteDeCaixa({
   const [itens, setItens] = useState<Linha[]>([]);
   const [produto, setProduto] = useState<ProdutoPdv | null>(null);
   const [cliente, setCliente] = useState("");
+  const [clienteSelecionado, setClienteSelecionado] =
+    useState<ClienteAtendimentoPdv | null>(null);
+  const [seedEntrega, setSeedEntrega] = useState<SeedEntregaCliente | null>(
+    null,
+  );
   const [modalidade, setModalidade] = useState<
     "RETIRADA" | "BALCAO" | "ENTREGA"
   >("RETIRADA");
@@ -283,6 +300,8 @@ export function FrenteDeCaixa({
     setItens([]);
     setPagamentos([]);
     setCliente("");
+    setClienteSelecionado(null);
+    setSeedEntrega(null);
     setObservacao("");
     setDesconto("0");
     setTaxa("0");
@@ -339,6 +358,53 @@ export function FrenteDeCaixa({
         ...retomada.avisos,
       ].join(" "),
     );
+  }
+
+  function abrirEntrega() {
+    if (ocupado || incerta) return;
+    if (!entrega && clienteSelecionado)
+      setSeedEntrega({
+        destinatario: clienteSelecionado.nome,
+        telefone: clienteSelecionado.telefone ?? "",
+      });
+    setEditarEntrega(true);
+  }
+  function selecionarCliente(escolhido: ClienteAtendimentoPdv | null) {
+    if (ocupado || incerta) return;
+    setCliente(escolhido?.id ?? "");
+    setClienteSelecionado(escolhido);
+    setSeedEntrega(null);
+    if (entrega) {
+      const substituir = window.confirm(
+        "Substituir os dados da entrega pelos dados do cliente escolhido? Confirme para revisar destinatário e endereço. Cancelar mantém explicitamente a entrega atual.",
+      );
+      if (substituir) {
+        setSeedEntrega({
+          destinatario: escolhido?.nome ?? "",
+          telefone: escolhido?.telefone ?? "",
+        });
+        if (modalidade === "ENTREGA") setEditarEntrega(true);
+      }
+    }
+  }
+  function escolherEnderecoCliente(
+    escolhido: ClienteAtendimentoPdv,
+    endereco: EnderecoClientePdv,
+  ) {
+    if (ocupado || incerta) return;
+    if (
+      entrega &&
+      !window.confirm(
+        "Usar este endereço no pedido? A entrega atual só será substituída após confirmar os dados e o frete.",
+      )
+    )
+      return;
+    setSeedEntrega({
+      destinatario: escolhido.nome,
+      telefone: escolhido.telefone ?? "",
+      endereco: structuredClone(endereco.endereco),
+    });
+    setEditarEntrega(true);
   }
 
   function abrirProduto(p: ProdutoPdv) {
@@ -481,6 +547,8 @@ export function FrenteDeCaixa({
       setCatalogoRetomado(null);
       setPagamentos([]);
       setCliente("");
+      setClienteSelecionado(null);
+      setSeedEntrega(null);
       setObservacao("");
       setEntrega(null);
       setEntregaConferida(false);
@@ -744,29 +812,18 @@ export function FrenteDeCaixa({
             className={`${styles.dadosPedido} ${modalidade === "ENTREGA" ? "min-[900px]:max-h-[35dvh] min-[900px]:overflow-y-auto" : ""}`}
           >
             <h2 className="sr-only">Dados do pedido</h2>
-            <label className={styles.seletor}>
-              <span className="sr-only">Cliente (opcional)</span>
-              <Icone nome="pessoa" tamanho={18} />
-              <select
-                aria-label="Cliente"
-                className={styles.campoSeletor}
-                value={cliente}
-                disabled={incerta || ocupado}
-                onChange={(e) => setCliente(e.target.value)}
-              >
-                <option value="">Pesquisar cliente...</option>
-                {cliente && !dados.clientes.some((c) => c.id === cliente) && (
-                  <option value={cliente}>
-                    Cliente vinculado ao atendimento salvo
-                  </option>
-                )}
-                {dados.clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {podeVerClientes && (
+              <ClienteAtendimento
+                unidadeId={unidadeId}
+                clienteId={cliente}
+                podeEditar={podeEditarClientes}
+                bloqueado={incerta || ocupado}
+                mostrarEnderecos={modalidade === "ENTREGA"}
+                aoCarregar={setClienteSelecionado}
+                aoSelecionar={selecionarCliente}
+                aoEscolherEndereco={escolherEnderecoCliente}
+              />
+            )}
             <label className={styles.seletor}>
               <span className="sr-only">Atendimento</span>
               <Icone
@@ -783,7 +840,7 @@ export function FrenteDeCaixa({
                   setModalidade(escolhida);
                   setPagamentos([]);
                   if (escolhida === "ENTREGA" && !entregaConferida)
-                    setEditarEntrega(true);
+                    abrirEntrega();
                 }}
               >
                 <option value="RETIRADA">Retirada</option>
@@ -797,7 +854,7 @@ export function FrenteDeCaixa({
                   type="button"
                   className={`${styles.seletor} py-2 text-left`}
                   disabled={ocupado || incerta}
-                  onClick={() => setEditarEntrega(true)}
+                  onClick={abrirEntrega}
                 >
                   <Icone nome="entrega" tamanho={18} />
                   <span className="min-w-0 flex-1">
@@ -996,11 +1053,19 @@ export function FrenteDeCaixa({
       {editarEntrega && (
         <DadosEntrega
           entrega={entrega}
+          seedEntrega={seedEntrega ?? undefined}
+          unidadeId={unidadeId}
+          cliente={podeVerClientes ? clienteSelecionado : null}
+          podeEditarClientes={podeEditarClientes}
           areas={areasEntrega}
           bloqueado={ocupado || incerta}
-          aoFechar={() => setEditarEntrega(false)}
+          aoFechar={() => {
+            setEditarEntrega(false);
+            setSeedEntrega(null);
+          }}
           aoConfirmar={(confirmada) => {
             setEntrega(confirmada);
+            setSeedEntrega(null);
             setEntregaConferida(true);
             setPagamentos([]);
             setEditarEntrega(false);

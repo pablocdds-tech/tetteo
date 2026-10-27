@@ -52,10 +52,50 @@ model CrmContact {
   consents       CrmConsent[]
   snapshot       CrmSegmentSnapshot?
   assignments    CrmAssignment[]
+  enderecosAtendimento CrmEnderecoAtendimento[]
+  operacoesAtendimento CrmAtendimentoOperacao[]
 
   @@unique([storeId, phone])
   @@unique([storeId, id])
   @@index([storeId, createdAt])
+}
+
+// Endereço pertence ao CRM; PDV copia o endereço escolhido para seu snapshot.
+model CrmEnderecoAtendimento {
+  id String @id @default(uuid())
+  storeId String
+  contactId String
+  contact CrmContact @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  rotulo String
+  principal Boolean @default(false)
+  ativo Boolean @default(true)
+  versao Int @default(1)
+  endereco Json
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  operacoes CrmAtendimentoOperacao[]
+  @@unique([storeId, contactId, id], map: "crm_endereco_atendimento_escopo_key")
+  @@index([storeId, contactId, ativo], map: "crm_endereco_atendimento_cliente_idx")
+  @@map("crm_endereco_atendimento")
+}
+
+// Guarda somente referências e hash, nunca uma cópia do cadastro/endereço.
+model CrmAtendimentoOperacao {
+  id String @id @default(uuid())
+  storeId String
+  chave String
+  actorId String
+  tipo String
+  payloadHash String
+  contactId String
+  contact CrmContact @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  enderecoId String?
+  endereco CrmEnderecoAtendimento? @relation(fields: [storeId, contactId, enderecoId], references: [storeId, contactId, id], onDelete: Restrict)
+  versaoEndereco Int?
+  contatoAtualizadoEm DateTime?
+  criadoEm DateTime @default(now())
+  @@unique([storeId, chave], map: "crm_atendimento_operacao_chave_key")
+  @@map("crm_atendimento_operacao")
 }
 
 model CrmActivity {
