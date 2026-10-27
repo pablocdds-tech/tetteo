@@ -49,6 +49,7 @@ export type FinalizarEntrada = {
   descontoCentavos: number;
   taxaCentavos: number;
   pagamentos: PagamentoPdv[];
+  pagamentoPendente?: boolean;
 };
 export type ItemVendaPdv = ItemCarrinho & {
   nome: string;
@@ -79,7 +80,7 @@ export type VendaPdv = {
   criadaEm: string;
   cliente: string | null;
   modalidade: string;
-  status: "CONCLUIDA" | "CANCELADA";
+  status: "PENDENTE" | "CONCLUIDA" | "CANCELADA";
   totalCentavos: number;
   subtotalCentavos: number;
   descontoCentavos: number;
@@ -92,6 +93,10 @@ export type VendaPdv = {
   motivoCancelamento: string | null;
   freteCentavos?: number;
   entrega?: EntregaSnapshot | null;
+  versaoFinanceira?: number;
+  recebidoEm?: string | null;
+  recebidoPor?: string | null;
+  caixaRecebimentoId?: string | null;
 };
 export type DadosPdv = {
   produtos: ProdutoPdv[];

@@ -19,7 +19,7 @@ type DocumentoBase = {
   cliente?: string;
   modalidade: string;
   observacao: string;
-  statusVenda: "CONCLUIDA" | "CANCELADA";
+  statusVenda: "PENDENTE" | "CONCLUIDA" | "CANCELADA";
   motivoCancelamento: string | null;
 };
 

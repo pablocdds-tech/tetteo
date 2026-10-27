@@ -293,7 +293,7 @@ export async function atribuirEntregador(
         "Somente pedidos de entrega podem receber um entregador.",
       );
     if (
-      venda.status !== "CONCLUIDA" ||
+      venda.status === "CANCELADA" ||
       !["COZINHA", "AGUARDANDO_COLETA"].includes(pedido.status)
     )
       throw new ErroPdv(

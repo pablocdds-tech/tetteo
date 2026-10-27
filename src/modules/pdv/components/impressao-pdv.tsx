@@ -19,7 +19,8 @@ const status: Record<string, string> = {
   SAIU_ENTREGA: "Saiu para entrega",
   ENTREGUE: "Entregue",
   CANCELADO: "Cancelado",
-  CONCLUIDA: "Concluída",
+  PENDENTE: "Aguardando pagamento",
+  CONCLUIDA: "Pagamento registrado",
   CANCELADA: "Cancelada",
 };
 const formas: Record<string, string> = {
@@ -181,6 +182,9 @@ export function ImpressaoPdv({ inicial }: { inicial: DocumentoImpressaoPdv }) {
           documento.pedido?.status === "CANCELADO") && (
           <div className={styles.cancelado}>PEDIDO CANCELADO</div>
         )}
+        {documento.statusVenda === "PENDENTE" && (
+          <div className={styles.cancelado}>AGUARDANDO PAGAMENTO</div>
+        )}
         <dl className={styles.dados}>
           <div>
             <dt>Data</dt>
@@ -322,7 +326,18 @@ export function ImpressaoPdv({ inicial }: { inicial: DocumentoImpressaoPdv }) {
               </div>
             </dl>
             <section className={styles.pagamentos}>
-              <h3>Pagamentos registrados</h3>
+              <h3>
+                {documento.statusVenda === "PENDENTE"
+                  ? "Pagamento pendente"
+                  : "Pagamentos registrados"}
+              </h3>
+              {documento.statusVenda === "PENDENTE" && (
+                <p>Valor a receber: {moeda(documento.totalCentavos)}</p>
+              )}
+              {documento.statusVenda === "CANCELADA" &&
+                !documento.pagamentos.length && (
+                  <p>Nenhum pagamento havia sido registrado.</p>
+                )}
               <dl>
                 {documento.pagamentos.map((pagamento, indice) => (
                   <div key={indice}>
@@ -330,12 +345,16 @@ export function ImpressaoPdv({ inicial }: { inicial: DocumentoImpressaoPdv }) {
                     <dd>{moeda(pagamento.valorCentavos)}</dd>
                   </div>
                 ))}
-                <div>
-                  <dt>Troco em dinheiro</dt>
-                  <dd>{moeda(documento.trocoCentavos)}</dd>
-                </div>
+                {documento.pagamentos.length > 0 && (
+                  <div>
+                    <dt>Troco em dinheiro</dt>
+                    <dd>{moeda(documento.trocoCentavos)}</dd>
+                  </div>
+                )}
               </dl>
-              <small>Valores informados pelo operador.</small>
+              {documento.pagamentos.length > 0 && (
+                <small>Valores informados pelo operador.</small>
+              )}
             </section>
           </>
         )}

@@ -73,6 +73,7 @@ export const esquemaFinalizar = z
       .max(100),
     descontoCentavos: centavos,
     taxaCentavos: centavos,
+    pagamentoPendente: z.boolean().optional(),
     pagamentos: z
       .array(
         z.object({
@@ -83,10 +84,21 @@ export const esquemaFinalizar = z
           ),
         }),
       )
-      .min(1)
+      .min(0)
       .max(20),
   })
   .superRefine((dados, ctx) => {
+    if (dados.pagamentoPendente === true && dados.pagamentos.length !== 0)
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Pedido com pagamento pendente não pode conter pagamentos registrados.",
+      });
+    if (dados.pagamentoPendente !== true && dados.pagamentos.length === 0)
+      ctx.addIssue({
+        code: "custom",
+        message: "Registre os pagamentos ou escolha pagamento pendente.",
+      });
     if (
       (dados.carrinhoId === undefined) !==
       (dados.versaoCarrinho === undefined)
@@ -120,6 +132,7 @@ export const esquemaCancelar = z
     motivo: z.string().trim().min(3).max(300),
     pedidoId: identificador.optional(),
     versaoPedido: z.number().int().min(1).max(2_000_000_000).optional(),
+    versaoFinanceira: z.number().int().min(1).max(2_000_000_000).optional(),
   })
   .superRefine((dados, ctx) => {
     if ((dados.pedidoId === undefined) !== (dados.versaoPedido === undefined))
@@ -155,12 +168,11 @@ export function calcularPrecoItem(
     throw new ErroPdv("Preço fora do limite permitido.");
   return preco;
 }
-export function calcularVenda(
+export function calcularPedido(
   produtos: ProdutoPdv[],
   itens: ItemCarrinho[],
   descontoCentavos: number,
   taxaCentavos: number,
-  pagamentos: PagamentoPdv[],
 ) {
   const linhas: ItemVendaPdv[] = itens.map((item) => {
     const produto = produtos.find((p) => p.id === item.produtoId);
@@ -191,6 +203,30 @@ export function calcularVenda(
     throw new ErroPdv(
       "O total da venda precisa ser maior que zero e estar dentro do limite.",
     );
+  return { itens: linhas, subtotalCentavos, totalCentavos };
+}
+export function conferirPagamentos(
+  totalCentavos: number,
+  pagamentos: PagamentoPdv[],
+) {
+  if (
+    !Number.isSafeInteger(totalCentavos) ||
+    totalCentavos <= 0 ||
+    totalCentavos > 100_000_000
+  )
+    throw new ErroPdv("Total inválido para registrar o pagamento.");
+  if (
+    pagamentos.length < 1 ||
+    pagamentos.length > 20 ||
+    pagamentos.some(
+      (p) =>
+        !["DINHEIRO", "PIX", "CREDITO", "DEBITO"].includes(p.forma) ||
+        !Number.isSafeInteger(p.valorCentavos) ||
+        p.valorCentavos <= 0 ||
+        p.valorCentavos > 100_000_000,
+    )
+  )
+    throw new ErroPdv("Confira os valores e as formas dos pagamentos.");
   const pago = pagamentos.reduce((s, p) => s + p.valorCentavos, 0);
   const semDinheiro = pagamentos
     .filter((p) => p.forma !== "DINHEIRO")
@@ -199,10 +235,20 @@ export function calcularVenda(
     throw new ErroPdv("Troco só é permitido em dinheiro.");
   if (pago < totalCentavos)
     throw new ErroPdv("Ainda falta registrar parte do pagamento.");
-  return {
-    itens: linhas,
-    subtotalCentavos,
-    totalCentavos,
-    trocoCentavos: pago - totalCentavos,
-  };
+  return { trocoCentavos: pago - totalCentavos };
+}
+export function calcularVenda(
+  produtos: ProdutoPdv[],
+  itens: ItemCarrinho[],
+  descontoCentavos: number,
+  taxaCentavos: number,
+  pagamentos: PagamentoPdv[],
+) {
+  const resumo = calcularPedido(
+    produtos,
+    itens,
+    descontoCentavos,
+    taxaCentavos,
+  );
+  return { ...resumo, ...conferirPagamentos(resumo.totalCentavos, pagamentos) };
 }

@@ -23,9 +23,9 @@ Após a mudança de direção solicitada pelo usuário, o visual passou a acompa
 1. Abra `/pdv/caixa`, selecione local e informe o saldo inicial. Existe um caixa aberto por unidade nesta primeira versão.
 2. Em `/pdv`, use **Novo pedido** para abrir `/pdv/novo-pedido`. Escolha categorias ou busque nome/código. Enter no código exato adiciona o produto (ou abre suas opções). Ctrl+B foca a busca e Ctrl+P abre pagamento.
 3. Escolha complementos, quantidades, cliente opcional do CRM, retirada/balcão/entrega e observação. Para entrega, informe destinatário, endereço e prazo, escolha uma área cadastrada ou justifique o frete manual. Frete e taxa adicional são separados no total.
-4. Registre pagamentos conferidos. Pagamentos podem ser divididos; excedente só gera troco em dinheiro. Desconto exige permissão própria.
-5. Conclua a venda. Preços, total, permissões, caixa e estoque são verificados no servidor, na mesma transação da auditoria.
-6. A venda concluída cria o pedido **Na cozinha** e retorna à gestão. Acompanhe o kanban em `/pdv` e o histórico financeiro em `/pdv/vendas`. Cancelamentos exigem justificativa e permissão. Caixa já fechado não pode ser alterado por cancelamento tardio.
+4. Registre pagamentos conferidos ou confirme **Enviar à cozinha e cobrar depois**, sem pagamentos preenchidos. Pagamentos podem ser divididos; excedente só gera troco em dinheiro. Desconto exige permissão própria.
+5. Confirme o pedido. Preços, total, permissões, caixa e estoque são verificados no servidor, na mesma transação da auditoria. A baixa de estoque ocorre neste momento, inclusive quando o pagamento fica pendente.
+6. O pedido entra **Na cozinha** e retorna à gestão. Acompanhe o kanban em `/pdv` e o histórico financeiro em `/pdv/vendas`. Cancelamentos exigem justificativa e permissão; recebimentos e devoluções não reescrevem caixas já fechados.
 7. Registre sangria/suprimento com motivo e feche contando o dinheiro físico. O sistema registra esperado, contado e diferença.
 
 ## Gestão de pedidos
@@ -34,17 +34,29 @@ O quadro tem cinco colunas: **Na cozinha**, **Aguardando coleta**, **Saiu para e
 
 O estado operacional (`PdvPedido`) é separado da situação financeira (`PdvVenda`). Avançar uma etapa não registra pagamento nem movimenta estoque. Cada alteração confere organização, unidade, permissão `pdv.operar` e versão do pedido, com histórico auditado e horários em São Paulo. Uma requisição repetida não cria outro pedido nem repete o evento.
 
-O cancelamento usa o mesmo fluxo financeiro autorizado por `pdv.cancelar`: preserva a venda, estorna seu consumo original e sincroniza a coluna Cancelado na mesma transação. A versão é conferida antes do estorno; alterações concorrentes são recusadas. Pagamento é devolvido manualmente. Se os insumos já foram fisicamente consumidos, o responsável deve registrar a perda no Estoque; o estorno contábil não recupera ingredientes reais.
+O cancelamento usa o mesmo fluxo financeiro autorizado por `pdv.cancelar`: preserva a venda, estorna seu consumo original e sincroniza a coluna Cancelado na mesma transação. As versões operacional e financeira são conferidas antes do estorno; alterações concorrentes são recusadas. Sem pagamento, é possível cancelar após fechar o caixa de origem, sem devolução de dinheiro. Com pagamento, o caixa do recebimento precisa estar aberto e a devolução é manual. Se os insumos já foram fisicamente consumidos, o responsável deve registrar a perda no Estoque; o estorno contábil não recupera ingredientes reais.
 
-O quadro atualiza a cada 15 segundos enquanto visível, ao voltar à janela ou pelo botão Atualizar, sem sobrepor consultas. Respostas anteriores a uma mudança local não podem regredir o cartão. A busca por número/cliente filtra os cartões carregados. Pedidos ativos de qualquer dia continuam visíveis; entregues/cancelados seguem o dia selecionado no fuso `America/Sao_Paulo`. Os limites de 500 ativos e 200 finalizados são informados com contagens completas e aviso quando atingidos.
+O quadro atualiza a cada 15 segundos enquanto visível, ao voltar à janela ou pelo botão Atualizar, sem sobrepor consultas. Respostas anteriores a uma mudança local não podem regredir o cartão. A busca por número/cliente filtra os cartões carregados. Pedidos ativos e entregues ainda não pagos continuam visíveis em qualquer dia; demais entregues/cancelados seguem o dia selecionado no fuso `America/Sao_Paulo`. Os limites de 500 ativos e 200 finalizados são informados com contagens completas e aviso quando atingidos.
 
 Somente vendas novas após a implantação geram a fila operacional. A migração não cria pedidos para vendas antigas nem presume que foram entregues: elas permanecem no histórico financeiro. O quadro não recebe pedidos do Cardápio Web automaticamente.
+
+## Pedido com pagamento pendente
+
+O estado financeiro **Aguardando pagamento** é uma indicação no cartão, sem criar uma sexta coluna. O pedido pode avançar até entregue antes da cobrança. Criá-lo exige caixa aberto para definir o local da baixa, e consome o atendimento salvo na mesma transação. Não reserva estoque para baixar depois: o consumo original fica congelado junto dos preços, desconto, taxa e frete.
+
+No detalhe do quadro ou histórico, **Receber pagamento** exige `pdv.ver` e `pdv.vender`. O operador quita todo o total congelado em uma operação, podendo dividir entre dinheiro, Pix, crédito e débito. Não há parcelas de cobrança ou depósitos progressivos nesta etapa. O recebimento usa o caixa atualmente aberto na unidade, mesmo se o caixa de origem já fechou ou utilizava outro local. Não consulta preços/receitas atuais e não baixa estoque novamente.
+
+O caixa de origem e o caixa de recebimento são guardados separadamente. Fechar o primeiro não perde a pendência; o dinheiro só entra nos totais do segundo. Registros pagos anteriores à migração, sem metadados de recebimento, permanecem contabilizados no caixa original uma única vez, sem inventar data ou operador de recebimento. O fechamento gravado não é alterado.
+
+Recebimento, cancelamento e fechamento usam a mesma trava por unidade. A versão financeira evita aceitar uma tela anterior à cobrança; a chave, o payload e o operador identificam retentativas, inclusive depois de fechar caixa ou cancelar. A interface mantém a tentativa inteira e bloqueia edição/saída quando a resposta é incerta. O evento de pagamento incrementa a versão do pedido sem mudar sua coluna.
+
+Comprovante e cozinha destacam **AGUARDANDO PAGAMENTO**; somente o comprovante inclui o valor a receber. Histórico e CSV distinguem pendentes de pagamentos registrados. Os totais do histórico continuam usando a data de criação do pedido; data e operador reais do recebimento aparecem separadamente quando disponíveis.
 
 ## Delivery — endereço, áreas e entregadores
 
 As áreas são configuradas em `/pdv/entregas/areas`, com nome, cidade, UF, bairros, frete e prazo em minutos. Uma área sem bairros específicos atende qualquer bairro da cidade informada; não há cálculo por distância. O caixa seleciona explicitamente a área. O servidor confere atividade, versão, cidade/UF, bairro, frete e prazo antes de concluir. Alterações no cadastro exigem atualizar e conferir a cotação; nunca mudam uma venda já gravada. O frete manual exige justificativa, inclusive quando gratuito.
 
-Em **Endereço e entrega**, o operador informa destinatário, telefone opcional, logradouro/número, bairro/cidade/UF e, quando necessários, complemento, CEP e referência. Os dados são copiados para o pedido na mesma transação da venda/estoque. A previsão é calculada no servidor a partir da conclusão e do prazo informado; é uma estimativa, sem confirmação por mapa ou contato externo. Novas vendas de entrega exigem esses dados. Vendas antigas permanecem sem endereço fabricado e suas retentativas idempotentes continuam válidas.
+Em **Endereço e entrega**, o operador informa destinatário, telefone opcional, logradouro/número, bairro/cidade/UF e, quando necessários, complemento, CEP e referência. Os dados são copiados para o pedido na mesma transação da venda/estoque. A previsão é calculada no servidor a partir da criação do pedido e do prazo informado; é uma estimativa, sem confirmação por mapa ou contato externo. Novas vendas de entrega exigem esses dados. Vendas antigas permanecem sem endereço fabricado e suas retentativas idempotentes continuam válidas.
 
 O atendimento salvo preserva destinatário/endereço e vínculo da área somente para o próprio operador. Não guarda o frete, a versão da cotação ou o prazo: ao retomar, é preciso conferir a área e os valores atuais. Frete manual precisa ser informado e justificado novamente. Alterar entrega/modalidade remove os pagamentos preenchidos para que o operador confira o novo total. Em confirmação de venda incerta, a retentativa mantém o payload original completo.
 
@@ -64,7 +76,7 @@ O nome congelado do cliente do CRM só aparece nessas vias para quem possui `crm
 
 ## Histórico e exportação
 
-`/pdv/vendas` consulta vendas no servidor por período de criação (dias de São Paulo), situação financeira, modalidade, forma de pagamento, operador e busca por número, identificação, operador ou cliente autorizado. O padrão é o dia atual, com páginas de dez registros. Vendas antigas continuam consultáveis ao escolher o período; totais de concluídas/canceladas consideram **todo o filtro**, não apenas a página.
+`/pdv/vendas` consulta vendas no servidor por período de criação (dias de São Paulo), situação financeira, modalidade, forma de pagamento, operador e busca por número, identificação, operador ou cliente autorizado. O padrão é o dia atual, com páginas de dez registros. Vendas antigas continuam consultáveis ao escolher o período; totais de pendentes, pagamentos registrados e canceladas consideram **todo o filtro**, não apenas a página. Pendentes não integram o total de pagamentos registrados.
 
 A exportação CSV aplica o mesmo filtro e não depende da página. Até 5.000 vendas podem ser exportadas por arquivo; acima disso, o sistema exige refinar o filtro, sem baixar uma parte silenciosamente. Exportações são auditadas e células de texto são protegidas contra interpretação como fórmula de planilha. Cliente só integra resultados, busca e CSV para quem tem `crm.ver`; o arquivo não inclui telefone/endereço ou dados de contato atuais do CRM.
 

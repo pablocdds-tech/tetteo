@@ -8,17 +8,17 @@ import type {
   CaixaPdv,
   DadosPdv,
   GrupoComplemento,
-  ItemVendaPdv,
   PagamentoPdv,
   ProdutoPdv,
-  VendaPdv,
 } from "../types";
 import { calcularConsumo, type ConsumoPdv } from "../schemas/consumo";
 import { exigirEscopo } from "./escopo";
 export { exigirEscopo } from "./escopo";
 import { listarAreasEntrega, prepararEntrega } from "./entregas";
+import { serializarVendaPdv } from "./venda-dto";
 import {
-  calcularVenda,
+  calcularPedido,
+  conferirPagamentos,
   esquemaAbrir,
   esquemaCancelar,
   esquemaComplementos,
@@ -98,13 +98,17 @@ export async function catalogo(
 const caixaInclude = {
   movimentos: { orderBy: { criadoEm: "desc" as const } },
   vendas: {
+    where: { status: "CONCLUIDA", caixaRecebimentoId: null },
+    select: { pagamentos: true, trocoCentavos: true },
+  },
+  vendasRecebidas: {
     where: { status: "CONCLUIDA" },
     select: { pagamentos: true, trocoCentavos: true },
   },
 } satisfies Prisma.PdvCaixaInclude;
 type CaixaBanco = Prisma.PdvCaixaGetPayload<{ include: typeof caixaInclude }>;
 function saldoCaixa(caixa: CaixaBanco) {
-  const dinheiro = caixa.vendas.reduce(
+  const dinheiro = [...caixa.vendas, ...caixa.vendasRecebidas].reduce(
     (s, v) =>
       s +
       (v.pagamentos as PagamentoPdv[])
@@ -142,26 +146,6 @@ function serializarCaixa(c: CaixaBanco): CaixaPdv {
       motivo: m.motivo,
       criadoEm: m.criadoEm.toISOString(),
     })),
-  };
-}
-function serializarVenda(v: Prisma.PdvVendaGetPayload<object>): VendaPdv {
-  return {
-    id: v.id,
-    criadaEm: v.criadaEm.toISOString(),
-    cliente: v.cliente,
-    modalidade: v.modalidade,
-    status: v.status as VendaPdv["status"],
-    totalCentavos: v.totalCentavos,
-    subtotalCentavos: v.subtotalCentavos,
-    descontoCentavos: v.descontoCentavos,
-    taxaCentavos: v.taxaCentavos,
-    freteCentavos: v.freteCentavos,
-    trocoCentavos: v.trocoCentavos,
-    observacao: v.observacao,
-    operador: v.operador,
-    itens: v.itens as ItemVendaPdv[],
-    pagamentos: v.pagamentos as PagamentoPdv[],
-    motivoCancelamento: v.motivoCancelamento,
   };
 }
 export async function carregarPdv(ctx: ContextoSessao): Promise<DadosPdv> {
@@ -210,7 +194,7 @@ export async function carregarPdv(ctx: ContextoSessao): Promise<DadosPdv> {
       ? serializarCaixa(caixas.find((c) => !c.fechadoEm)!)
       : null,
     caixasAnteriores: caixas.filter((c) => c.fechadoEm).map(serializarCaixa),
-    vendas: vendas.map(serializarVenda),
+    vendas: vendas.map((v) => serializarVendaPdv(v, pode(ctx, "crm.ver"))),
     clientes: clientes.map((c) => ({ id: c.id, nome: c.name })),
     locais,
   };
@@ -452,13 +436,21 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
       }
       const caixa = await caixaAberto(tx, escopo, dados.caixaId);
       const produtos = await catalogo(tx, escopo.organizacaoId);
-      const resumo = calcularVenda(
+      const pedidoCalculado = calcularPedido(
         produtos,
         dados.itens,
         dados.descontoCentavos,
         dados.taxaCentavos + freteCentavos,
-        dados.pagamentos,
       );
+      const resumo = {
+        ...pedidoCalculado,
+        ...(dados.pagamentoPendente === true
+          ? { trocoCentavos: 0 }
+          : conferirPagamentos(
+              pedidoCalculado.totalCentavos,
+              dados.pagamentos,
+            )),
+      };
       const cliente = dados.clienteId
         ? await tx.crmContact.findFirst({
             where: {
@@ -549,6 +541,17 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           payloadHash,
           usuarioId: ctx.usuario.id,
           operador: ctx.usuario.nome,
+          status: dados.pagamentoPendente === true ? "PENDENTE" : "CONCLUIDA",
+          ...(dados.pagamentoPendente === true
+            ? {}
+            : {
+                caixaRecebimentoId: caixa.id,
+                recebidoEm: new Date(),
+                recebidoPorId: ctx.usuario.id,
+                recebidoPorNome: ctx.usuario.nome,
+                recebimentoChave: dados.chave,
+                recebimentoHash: payloadHash,
+              }),
           clienteId: cliente?.id,
           cliente: cliente?.name,
           modalidade: dados.modalidade,
@@ -651,6 +654,9 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
       }
       await auditar(tx, ctx, escopo, "PdvVenda", venda.id, "CRIOU", null, {
         totalCentavos: venda.totalCentavos,
+        status: venda.status,
+        versaoFinanceira: venda.versaoFinanceira,
+        caixaRecebimentoId: venda.caixaRecebimentoId,
         caixaId: caixa.id,
         itens: resumo.itens,
       });
@@ -662,20 +668,32 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
 export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
   const escopo = await exigirEscopo(ctx, "pdv.cancelar");
   const dados = esquemaCancelar.parse(entrada);
-  await db.$transaction(
+  return db.$transaction(
     async (tx) => {
       await travarUnidade(tx, escopo);
       const venda = await tx.pdvVenda.findFirst({
         where: { ...escopo, id: dados.vendaId },
-        include: { caixa: true },
+        include: { caixa: true, caixaRecebimento: true },
       });
       if (!venda) throw new ErroPdv("Venda não encontrada nesta unidade.");
+      const devolucaoPagamento =
+        venda.recebidoEm !== null ||
+        venda.recebimentoChave !== null ||
+        (Array.isArray(venda.pagamentos) && venda.pagamentos.length > 0);
       const pedido = await tx.pdvPedido.findFirst({
         where: { ...escopo, vendaId: venda.id },
       });
       if (dados.pedidoId && (!pedido || pedido.id !== dados.pedidoId))
         throw new ErroPdv("Pedido indisponível para esta venda e unidade.");
       if (venda.status === "CANCELADA") {
+        if (
+          dados.versaoFinanceira !== undefined &&
+          venda.versaoFinanceira !== dados.versaoFinanceira &&
+          venda.versaoFinanceira !== dados.versaoFinanceira + 1
+        )
+          throw new ErroPdv(
+            "A situação financeira desta venda mudou. Atualize a venda antes de continuar.",
+          );
         if (
           dados.pedidoId &&
           (pedido!.status !== "CANCELADO" ||
@@ -685,8 +703,15 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
           throw new ErroPdv(
             "Este pedido mudou em outra tela. Atualize o quadro antes de continuar.",
           );
-        return;
+        return { devolucaoPagamento };
       }
+      if (
+        dados.versaoFinanceira !== undefined &&
+        venda.versaoFinanceira !== dados.versaoFinanceira
+      )
+        throw new ErroPdv(
+          "A situação financeira desta venda mudou. Atualize a venda antes de cancelar.",
+        );
       if (dados.pedidoId && pedido!.versao !== dados.versaoPedido)
         throw new ErroPdv(
           "Este pedido mudou em outra tela. Atualize o quadro antes de cancelar.",
@@ -695,9 +720,10 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
         throw new ErroPdv(
           "A situação financeira deste pedido precisa de conferência antes de cancelar.",
         );
-      if (venda.caixa.fechadoEm)
+      const caixaPagamento = venda.caixaRecebimento ?? venda.caixa;
+      if (venda.status === "CONCLUIDA" && caixaPagamento.fechadoEm)
         throw new ErroPdv(
-          "O caixa desta venda já foi fechado. O cancelamento exige um fluxo de devolução posterior.",
+          "O caixa do recebimento desta venda já foi fechado. O cancelamento exige um fluxo de devolução posterior.",
         );
       const consumo = venda.consumo as ConsumoPdv[];
       for (const c of consumo) {
@@ -738,6 +764,7 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
           canceladaEm: new Date(),
           canceladaPorId: ctx.usuario.id,
           motivoCancelamento: dados.motivo,
+          versaoFinanceira: { increment: 1 },
         },
       });
       if (pedido) {
@@ -781,9 +808,15 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
         "PdvVenda",
         venda.id,
         "ALTEROU",
-        { status: venda.status },
-        { status: "CANCELADA", motivo: dados.motivo },
+        { status: venda.status, versaoFinanceira: venda.versaoFinanceira },
+        {
+          status: "CANCELADA",
+          motivo: dados.motivo,
+          versaoFinanceira: venda.versaoFinanceira + 1,
+          devolucaoPagamento,
+        },
       );
+      return { devolucaoPagamento };
     },
     { timeout: 20_000 },
   );

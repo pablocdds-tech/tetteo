@@ -20,7 +20,7 @@ async function executar(
   operacao: (
     ctx: NonNullable<Awaited<ReturnType<typeof obterContexto>>>,
   ) => Promise<unknown>,
-  mensagem: string,
+  mensagem: string | ((resultado: unknown) => string),
   venda = false,
 ): Promise<ResultadoPdv> {
   const ctx = await obterContexto();
@@ -58,7 +58,7 @@ async function executar(
   revalidatePath("/pdv", "layout");
   revalidatePath("/estoque");
   return {
-    ok: mensagem,
+    ok: typeof mensagem === "function" ? mensagem(resultado) : mensagem,
     ...(venda && typeof resultado === "string" ? { vendaId: resultado } : {}),
   };
 }
@@ -92,13 +92,24 @@ export async function finalizarVendaAcao(
 ): Promise<ResultadoPdv> {
   return executar(
     (ctx) => finalizarVenda(ctx, dados),
-    "Venda concluída.",
+    typeof dados === "object" &&
+      dados !== null &&
+      "pagamentoPendente" in dados &&
+      dados.pagamentoPendente === true
+      ? "Pedido enviado para a cozinha. Aguardando pagamento."
+      : "Venda concluída.",
     true,
   );
 }
 export async function cancelarVendaAcao(dados: unknown): Promise<ResultadoPdv> {
   return executar(
     (ctx) => cancelarVenda(ctx, dados),
-    "Venda cancelada e estoque estornado. Faça a devolução do pagamento ao cliente.",
+    (resultado) =>
+      typeof resultado === "object" &&
+      resultado !== null &&
+      "devolucaoPagamento" in resultado &&
+      resultado.devolucaoPagamento
+        ? "Venda cancelada e estoque estornado. Faça a devolução do pagamento ao cliente."
+        : "Pedido cancelado e estoque estornado. Nenhum pagamento havia sido registrado.",
   );
 }

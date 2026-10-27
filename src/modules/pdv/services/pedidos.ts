@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { db } from "@/server/db";
-import type { ItemVendaPdv, PagamentoPdv, VendaPdv } from "../types";
+import { serializarVendaPdv } from "./venda-dto";
 import type { PedidoPdv, QuadroPedidos, StatusPedido } from "../pedido-types";
 import { ErroPdv } from "../schemas/erro";
 import { esquemaEntregaSnapshot } from "../schemas/entrega";
@@ -22,26 +22,6 @@ type PedidoBanco = Prisma.PdvPedidoGetPayload<{
   include: typeof incluirEventos;
 }>;
 type VendaBanco = Prisma.PdvVendaGetPayload<object>;
-function vendaSerializada(v: VendaBanco): VendaPdv {
-  return {
-    id: v.id,
-    criadaEm: v.criadaEm.toISOString(),
-    cliente: v.cliente,
-    modalidade: v.modalidade,
-    status: v.status as VendaPdv["status"],
-    totalCentavos: v.totalCentavos,
-    subtotalCentavos: v.subtotalCentavos,
-    descontoCentavos: v.descontoCentavos,
-    taxaCentavos: v.taxaCentavos,
-    freteCentavos: v.freteCentavos,
-    trocoCentavos: v.trocoCentavos,
-    observacao: v.observacao,
-    operador: v.operador,
-    itens: v.itens as ItemVendaPdv[],
-    pagamentos: v.pagamentos as PagamentoPdv[],
-    motivoCancelamento: v.motivoCancelamento,
-  };
-}
 function serializarPedido(
   p: PedidoBanco,
   v: VendaBanco,
@@ -66,7 +46,7 @@ function serializarPedido(
     temEnderecoEntrega: v.entrega !== null,
     entregadorId: p.entregadorId,
     entregadorNome: p.entregadorNome,
-    venda: vendaSerializada(v),
+    venda: serializarVendaPdv(v, pode(ctx, "crm.ver")),
     historico: p.eventos.map((e) => ({
       id: e.id,
       de: e.de as StatusPedido | null,
@@ -93,6 +73,10 @@ export async function listarPedidos(
   const finalizado: Prisma.PdvPedidoWhereInput = {
     ...escopo,
     OR: [
+      {
+        status: "ENTREGUE",
+        venda: { status: "PENDENTE" },
+      },
       {
         status: "ENTREGUE",
         entregueEm: { gte: periodo.inicio, lt: periodo.fim },
@@ -188,7 +172,7 @@ export async function moverPedido(
       throw new ErroPdv(
         "Este pedido mudou em outra tela. Atualize o quadro antes de continuar.",
       );
-    if (venda.status !== "CONCLUIDA")
+    if (venda.status === "CANCELADA")
       throw new ErroPdv("A venda deste pedido foi cancelada.");
     validarTransicaoPedido(
       pedido.status as StatusPedido,

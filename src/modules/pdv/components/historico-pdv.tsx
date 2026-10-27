@@ -11,6 +11,8 @@ import { exportarHistoricoAcao } from "../acoes-historico";
 import type { HistoricoFiltros, PaginaHistorico } from "../historico-types";
 import type { PagamentoPdv, VendaPdv } from "../types";
 import { BotoesImpressao } from "./botoes-impressao";
+import { EtiquetaPagamento } from "./etiqueta-pagamento";
+import { ReceberPedido } from "./receber-pedido";
 
 const moeda = (valor: number) =>
   (valor / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -36,12 +38,15 @@ function paginaHref(filtros: HistoricoFiltros, pagina: number) {
 export function HistoricoPdv({
   inicial,
   podeCancelar,
+  podeReceber,
 }: {
   inicial: PaginaHistorico;
   podeCancelar: boolean;
+  podeReceber: boolean;
 }) {
   const router = useRouter();
   const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
+  const [recebendoId, setRecebendoId] = useState<string | null>(null);
   const [erroExportacao, setErroExportacao] = useState("");
   const [exportando, iniciarExportacao] = useTransition();
   const [navegando, iniciarNavegacao] = useTransition();
@@ -155,7 +160,8 @@ export function HistoricoPdv({
               defaultValue={filtros.status}
             >
               <option value="TODAS">Todas</option>
-              <option value="CONCLUIDA">Concluídas</option>
+              <option value="PENDENTE">Aguardando pagamento</option>
+              <option value="CONCLUIDA">Pagamento registrado</option>
               <option value="CANCELADA">Canceladas</option>
             </select>
           </label>
@@ -257,13 +263,17 @@ export function HistoricoPdv({
           </p>
         </div>
         <div>
-          <p className="text-ink-3 text-xs">Concluídos</p>
+          <p className="text-ink-3 text-xs">
+            Aguardando pagamento: {resumo.pendentes}
+          </p>
           <p className="mt-1 text-xl font-semibold tabular-nums">
-            {resumo.concluidas}
+            {moeda(resumo.totalPendenteCentavos)}
           </p>
         </div>
         <div>
-          <p className="text-ink-3 text-xs">Total concluído</p>
+          <p className="text-ink-3 text-xs">
+            Pagamento registrado: {resumo.concluidas}
+          </p>
           <p className="mt-1 text-xl font-semibold tabular-nums">
             {moeda(resumo.totalConcluidoCentavos)}
           </p>
@@ -361,13 +371,7 @@ export function HistoricoPdv({
                           : "Retirada"}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`${venda.status === "CANCELADA" ? "bg-bad-sub text-bad" : "bg-ok-sub text-ok"} inline-flex rounded px-2 py-1 text-xs font-semibold`}
-                      >
-                        {venda.status === "CANCELADA"
-                          ? "Cancelada"
-                          : "Concluída"}
-                      </span>
+                      <EtiquetaPagamento venda={venda} />
                     </td>
                   </tr>
                 ))}
@@ -405,11 +409,7 @@ export function HistoricoPdv({
                       {venda.id}
                     </p>
                   </div>
-                  <span
-                    className={`${venda.status === "CANCELADA" ? "bg-bad-sub text-bad" : "bg-ok-sub text-ok"} rounded-full px-2.5 py-1 text-xs font-semibold`}
-                  >
-                    {venda.status === "CANCELADA" ? "Cancelada" : "Concluída"}
-                  </span>
+                  <EtiquetaPagamento venda={venda} />
                   <strong className="min-w-24 text-right tabular-nums">
                     {moeda(venda.totalCentavos)}
                   </strong>
@@ -465,13 +465,26 @@ export function HistoricoPdv({
           )}
         </div>
       </nav>
-      {selecionada && (
+      {selecionada && !recebendoId && (
         <DetalheVenda
           key={selecionada.id}
           venda={selecionada}
           podeCancelar={podeCancelar}
+          podeReceber={podeReceber}
+          aoReceber={() => setRecebendoId(selecionada.id)}
           podeVerClientes={inicial.podeVerClientes}
           aoFechar={() => setSelecionadaId(null)}
+        />
+      )}
+      {recebendoId && (
+        <ReceberPedido
+          key={recebendoId}
+          vendaId={recebendoId}
+          aoReceber={() => setSelecionadaId(null)}
+          aoFechar={() => {
+            setRecebendoId(null);
+            router.refresh();
+          }}
         />
       )}
     </div>
@@ -480,11 +493,15 @@ export function HistoricoPdv({
 function DetalheVenda({
   venda,
   podeCancelar,
+  podeReceber,
+  aoReceber,
   podeVerClientes,
   aoFechar,
 }: {
   venda: VendaPdv;
   podeCancelar: boolean;
+  podeReceber: boolean;
+  aoReceber: () => void;
   podeVerClientes: boolean;
   aoFechar: () => void;
 }) {
@@ -501,6 +518,7 @@ function DetalheVenda({
       try {
         const resultado = await cancelarVendaAcao({
           vendaId: venda.id,
+          versaoFinanceira: venda.versaoFinanceira ?? 1,
           motivo: motivo.trim(),
         });
         if (resultado.erro) setErro(resultado.erro);
@@ -524,7 +542,7 @@ function DetalheVenda({
       titulo="Detalhes da venda"
       apoio={venda.id}
       rodape={
-        podeCancelar && venda.status === "CONCLUIDA" ? (
+        podeCancelar && venda.status !== "CANCELADA" ? (
           cancelando ? (
             <>
               <Botao
@@ -554,6 +572,9 @@ function DetalheVenda({
     >
       <div className="space-y-6">
         <BotoesImpressao vendaId={venda.id} />
+        {podeReceber && venda.status === "PENDENTE" && !cancelando && (
+          <Botao onClick={aoReceber}>Receber pagamento</Botao>
+        )}
         <dl className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <dt className="text-ink-3">Cliente</dt>
@@ -566,7 +587,7 @@ function DetalheVenda({
           <div>
             <dt className="text-ink-3">Situação</dt>
             <dd className="mt-1 font-medium">
-              {venda.status === "CONCLUIDA" ? "Concluída" : "Cancelada"}
+              <EtiquetaPagamento venda={venda} />
             </dd>
           </div>
           <div>
@@ -641,10 +662,27 @@ function DetalheVenda({
           ))}
         </dl>
         <section>
-          <h3 className="font-semibold">Pagamentos registrados</h3>
-          <p className="text-ink-3 mt-1 text-xs">
-            Registro manual do operador.
-          </p>
+          <h3 className="font-semibold">Pagamento</h3>
+          {venda.status === "PENDENTE" ? (
+            <p className="mt-2 text-sm">
+              A receber: <strong>{moeda(venda.totalCentavos)}</strong>. O
+              estoque já foi movimentado ao criar o pedido.
+            </p>
+          ) : venda.pagamentos.length ? (
+            <p className="text-ink-3 mt-1 text-xs">
+              Registro manual do operador.
+            </p>
+          ) : (
+            <p className="text-ink-3 mt-1 text-sm">
+              Cancelado sem pagamento registrado.
+            </p>
+          )}
+          {venda.recebidoEm && (
+            <p className="text-ink-3 mt-2 text-xs">
+              Recebido em {data(venda.recebidoEm)}
+              {venda.recebidoPor ? ` por ${venda.recebidoPor}` : ""}.
+            </p>
+          )}
           <dl className="mt-3 space-y-2 text-sm">
             {venda.pagamentos.map((pagamento, indice) => (
               <div key={indice} className="flex justify-between gap-3">
@@ -684,9 +722,11 @@ function DetalheVenda({
           >
             <h3 className="font-semibold">Cancelar esta venda</h3>
             <p className="text-ink-3 text-sm">
-              O cancelamento preserva o histórico e estorna as movimentações
-              vinculadas à venda. A devolução de dinheiro ou estorno da
-              operadora deve ser realizado separadamente.
+              O cancelamento preserva o histórico e estorna o consumo de
+              estoque.
+              {venda.pagamentos.length
+                ? " A devolução de dinheiro ou estorno da operadora deve ser realizado separadamente."
+                : " Nenhum pagamento foi registrado; não haverá devolução de dinheiro."}
             </p>
             <Campo
               rotulo="Motivo do cancelamento"

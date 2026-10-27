@@ -7,7 +7,7 @@ import type {
   PaginaHistorico,
   VendaHistorico,
 } from "../historico-types";
-import type { ItemVendaPdv, PagamentoPdv, VendaPdv } from "../types";
+import { serializarVendaPdv } from "./venda-dto";
 import { ErroPdv } from "../schemas/erro";
 import {
   analisarHistorico,
@@ -72,23 +72,8 @@ async function serializarVendas(
   });
   const numeros = new Map(pedidos.map((p) => [p.vendaId, p.numero]));
   return vendas.map((v) => ({
-    id: v.id,
+    ...serializarVendaPdv(v, clientes),
     numeroPedido: numeros.get(v.id) ?? null,
-    criadaEm: v.criadaEm.toISOString(),
-    cliente: clientes ? v.cliente : null,
-    modalidade: v.modalidade,
-    status: v.status as VendaPdv["status"],
-    totalCentavos: v.totalCentavos,
-    subtotalCentavos: v.subtotalCentavos,
-    descontoCentavos: v.descontoCentavos,
-    taxaCentavos: v.taxaCentavos,
-    freteCentavos: v.freteCentavos,
-    trocoCentavos: v.trocoCentavos,
-    observacao: v.observacao,
-    operador: v.operador,
-    itens: v.itens as ItemVendaPdv[],
-    pagamentos: v.pagamentos as PagamentoPdv[],
-    motivoCancelamento: v.motivoCancelamento,
   }));
 }
 export async function consultarHistorico(
@@ -128,6 +113,7 @@ export async function consultarHistorico(
       });
       const concluidas = resumos.find((r) => r.status === "CONCLUIDA");
       const canceladas = resumos.find((r) => r.status === "CANCELADA");
+      const pendentes = resumos.find((r) => r.status === "PENDENTE");
       const operadores = [
         ...new Map(
           operadoresBanco.map((o) => [
@@ -143,6 +129,8 @@ export async function consultarHistorico(
         totalPaginas,
         tamanhoPagina: TAMANHO_PAGINA_HISTORICO,
         resumo: {
+          pendentes: pendentes?._count._all ?? 0,
+          totalPendenteCentavos: pendentes?._sum.totalCentavos ?? 0,
           concluidas: concluidas?._count._all ?? 0,
           canceladas: canceladas?._count._all ?? 0,
           totalConcluidoCentavos: concluidas?._sum.totalCentavos ?? 0,
@@ -190,6 +178,8 @@ export async function exportarHistorico(
         "Identificação da venda",
         "Data (São Paulo)",
         "Situação",
+        "Recebido em (São Paulo)",
+        "Recebido por",
         "Modalidade",
         "Operador",
         ...(clientes ? ["Cliente"] : []),
@@ -207,6 +197,8 @@ export async function exportarHistorico(
         v.id,
         data.format(new Date(v.criadaEm)),
         v.status,
+        v.recebidoEm ? data.format(new Date(v.recebidoEm)) : "",
+        v.recebidoPor ?? "",
         v.modalidade,
         v.operador,
         ...(clientes ? [v.cliente ?? ""] : []),

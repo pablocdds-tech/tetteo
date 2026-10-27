@@ -49,9 +49,10 @@ export default async function PaginaVendasPdv({
   }
   return (
     <HistoricoPdv
-      key={`${ctx.organizacao.id}:${ctx.unidadeAtiva.id}:${JSON.stringify(inicial.filtros)}`}
+      key={`${ctx.organizacao.id}:${ctx.unidadeAtiva.id}:${JSON.stringify(filtros)}`}
       inicial={inicial}
       podeCancelar={pode(ctx, "pdv.cancelar")}
+      podeReceber={pode(ctx, "pdv.vender")}
     />
   );
 }

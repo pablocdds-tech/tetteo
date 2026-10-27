@@ -96,6 +96,7 @@ export function FrenteDeCaixa({
   const [editarEntrega, setEditarEntrega] = useState(false);
   const [observacao, setObservacao] = useState("");
   const [pagamento, setPagamento] = useState(false);
+  const [confirmarPendente, setConfirmarPendente] = useState(false);
   const [desconto, setDesconto] = useState("0");
   const [taxa, setTaxa] = useState("0");
   const [forma, setForma] = useState<PagamentoPdv["forma"]>("DINHEIRO");
@@ -278,6 +279,7 @@ export function FrenteDeCaixa({
   }, [podeAbrirPagamento, itens.length, ocupado, incerta, entrega]);
 
   function limparAtendimento() {
+    setConfirmarPendente(false);
     setItens([]);
     setPagamentos([]);
     setCliente("");
@@ -403,7 +405,17 @@ export function FrenteDeCaixa({
     setValor("");
     setErro("");
   }
-  async function finalizar() {
+  async function finalizar(pagamentoPendente = false) {
+    if (
+      !incerta &&
+      pagamentoPendente &&
+      (pagamentos.length > 0 || valor.trim())
+    ) {
+      setErro(
+        "Remova os pagamentos e limpe o valor digitado antes de cobrar depois.",
+      );
+      return;
+    }
     if (
       trava.current ||
       (!dados.caixa && !tentativaVenda.current) ||
@@ -446,7 +458,8 @@ export function FrenteDeCaixa({
         })),
         descontoCentavos,
         taxaCentavos,
-        pagamentos,
+        pagamentos: pagamentoPendente ? [] : pagamentos,
+        pagamentoPendente,
       };
       setValorCongelado(total);
       const resultado = await finalizarVendaAcao(tentativaVenda.current);
@@ -475,6 +488,7 @@ export function FrenteDeCaixa({
       setDesconto("0");
       setTaxa("0");
       setPagamento(false);
+      setConfirmarPendente(false);
       setIncerta(false);
       chaveVenda.current = null;
       tentativaVenda.current = null;
@@ -1004,7 +1018,10 @@ export function FrenteDeCaixa({
       <PainelLateral
         aberto={pagamento}
         aoFechar={() => {
-          if (!ocupado && !incerta) setPagamento(false);
+          if (!ocupado && !incerta) {
+            setPagamento(false);
+            setConfirmarPendente(false);
+          }
         }}
         podeFechar={() => !ocupado && !incerta}
         titulo="Pagamento do pedido"
@@ -1018,16 +1035,22 @@ export function FrenteDeCaixa({
               (!incerta &&
                 (temItensInvalidos ||
                   !!erroEntrega ||
-                  pago < total ||
-                  !pagamentos.length ||
+                  (!confirmarPendente &&
+                    (pago < total || !pagamentos.length)) ||
+                  (confirmarPendente &&
+                    (pagamentos.length > 0 || !!valor.trim())) ||
                   !Number.isSafeInteger(total) ||
                   total < 0 ||
                   descontoCentavos > subtotal))
             }
-            onClick={() => void finalizar()}
+            onClick={() => void finalizar(confirmarPendente)}
           >
-            {incerta ? "Confirmar novamente" : "Concluir venda"} ·{" "}
-            {Number.isFinite(total) ? moeda(total) : "Revise os valores"}
+            {incerta
+              ? "Confirmar novamente"
+              : confirmarPendente
+                ? "Confirmar envio sem pagamento"
+                : "Concluir venda"}{" "}
+            · {Number.isFinite(total) ? moeda(total) : "Revise os valores"}
           </Botao>
         }
       >
@@ -1074,7 +1097,7 @@ export function FrenteDeCaixa({
             <span>Total</span>
             <span>{Number.isFinite(total) ? moeda(total) : "—"}</span>
           </div>
-          <fieldset disabled={ocupado || incerta}>
+          <fieldset disabled={ocupado || incerta || confirmarPendente}>
             <legend className="mb-2 text-sm font-semibold">
               Forma de pagamento
             </legend>
@@ -1169,6 +1192,51 @@ export function FrenteDeCaixa({
               </div>
             )}
           </dl>
+          <section className="border-line space-y-3 border-t pt-4">
+            {confirmarPendente ? (
+              <>
+                <p
+                  role="status"
+                  className="bg-warn-sub text-ink rounded-md p-3 text-sm"
+                >
+                  Estoque será baixado agora; nenhum pagamento será registrado.
+                  O pedido ficará aguardando pagamento.
+                </p>
+                <Botao
+                  peso="secundario"
+                  disabled={ocupado || incerta}
+                  onClick={() => setConfirmarPendente(false)}
+                >
+                  Voltar ao pagamento
+                </Botao>
+              </>
+            ) : (
+              <>
+                <Botao
+                  peso="secundario"
+                  className="w-full"
+                  disabled={
+                    ocupado ||
+                    incerta ||
+                    pagamentos.length > 0 ||
+                    !!valor.trim()
+                  }
+                  onClick={() => {
+                    setConfirmarPendente(true);
+                    setErro("");
+                  }}
+                >
+                  Enviar à cozinha e cobrar depois
+                </Botao>
+                {(pagamentos.length > 0 || !!valor.trim()) && (
+                  <p className="text-ink-3 text-xs">
+                    Para cobrar depois, remova os pagamentos adicionados e limpe
+                    o valor digitado.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
           {erro && (
             <p
               role="alert"

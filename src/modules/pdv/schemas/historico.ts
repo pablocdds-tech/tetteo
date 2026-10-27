@@ -15,7 +15,9 @@ export const esquemaHistorico = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    status: z.enum(["TODAS", "CONCLUIDA", "CANCELADA"]).default("TODAS"),
+    status: z
+      .enum(["TODAS", "PENDENTE", "CONCLUIDA", "CANCELADA"])
+      .default("TODAS"),
     modalidade: z
       .enum(["TODAS", "BALCAO", "RETIRADA", "ENTREGA"])
       .default("TODAS"),

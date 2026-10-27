@@ -29,7 +29,7 @@ const esquemaSnapshot = z.object({
   cliente: z.string().nullable(),
   modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
   observacao: z.string().max(500),
-  status: z.enum(["CONCLUIDA", "CANCELADA"]),
+  status: z.enum(["PENDENTE", "CONCLUIDA", "CANCELADA"]),
   operador: z.string(),
   criadaEm: z.date(),
   motivoCancelamento: z.string().nullable(),

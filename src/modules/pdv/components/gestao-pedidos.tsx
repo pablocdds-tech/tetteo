@@ -18,6 +18,8 @@ import type {
 } from "../pedido-types";
 import styles from "./gestao-pedidos.module.css";
 import { BotoesImpressao } from "./botoes-impressao";
+import { EtiquetaPagamento } from "./etiqueta-pagamento";
+import { ReceberPedido } from "./receber-pedido";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -145,6 +147,7 @@ export function GestaoPedidos({
   const [destinoDrag, setDestinoDrag] = useState<StatusPedido | null>(null);
   const [compacto, setCompacto] = useState(false);
   const [cancelando, setCancelando] = useState<PedidoPdv | null>(null);
+  const [recebendoId, setRecebendoId] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
   const [erroCancelamento, setErroCancelamento] = useState("");
   const lendo = useRef(false);
@@ -292,6 +295,7 @@ export function GestaoPedidos({
         motivo: motivo.trim(),
         pedidoId: cancelando.id,
         versaoPedido: cancelando.versao,
+        versaoFinanceira: cancelando.venda.versaoFinanceira ?? 1,
       });
       if (resposta.erro) {
         setErroCancelamento(resposta.erro);
@@ -335,6 +339,19 @@ export function GestaoPedidos({
       setMutando(false);
       void atualizar();
     }
+  }
+  function abrirRecebimento(vendaId: string) {
+    if (!podeVender || alterando.current) return;
+    alterando.current = true;
+    epoca.current++;
+    setMutando(true);
+    setRecebendoId(vendaId);
+  }
+  function fecharRecebimento() {
+    setRecebendoId(null);
+    alterando.current = false;
+    setMutando(false);
+    void atualizar();
   }
 
   return (
@@ -417,7 +434,8 @@ export function GestaoPedidos({
       </div>
       <div className={styles.linhaAtualizacao}>
         <p>
-          Pedidos em andamento aparecem mesmo quando iniciados em outro dia.
+          Pedidos em andamento e entregues com pagamento pendente aparecem mesmo
+          quando iniciados em outro dia.
         </p>
         <p>
           {ultima
@@ -444,7 +462,8 @@ export function GestaoPedidos({
         <p className={styles.aviso}>
           Mostrando {quadro.ativosExibidos} de {quadro.ativosTotal} pedidos
           ativos e {quadro.finalizadosExibidos} de {quadro.finalizadosTotal}{" "}
-          finalizados do dia. Consulte também o histórico de vendas.
+          finalizados do período ou entregues com pagamento pendente. Consulte
+          também o histórico de vendas.
         </p>
       )}
       <p id="ajuda-quadro" className="sr-only">
@@ -516,7 +535,7 @@ export function GestaoPedidos({
                       key={p.id}
                       type="button"
                       className={styles.card}
-                      aria-label={`Pedido ${identificacao(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}`}
+                      aria-label={`Pedido ${identificacao(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}${p.venda.status === "PENDENTE" ? ", aguardando pagamento" : ""}`}
                       aria-pressed={selecionadoId === p.id}
                       draggable={podeOperar && !mutando && !!proximo(p)}
                       onDragStart={(e) => {
@@ -541,6 +560,12 @@ export function GestaoPedidos({
                       <span className={styles.cliente}>
                         {p.venda.cliente ?? "Cliente não identificado"}
                       </span>
+                      <EtiquetaPagamento venda={p.venda} />
+                      {p.status === "ENTREGUE" &&
+                        p.venda.status === "PENDENTE" &&
+                        p.entregueEm && (
+                          <small>Entregue em {data(p.entregueEm)}</small>
+                        )}
                       <span className={styles.resumo}>
                         {p.venda.itens
                           .slice(0, 3)
@@ -568,6 +593,8 @@ export function GestaoPedidos({
               pedido={selecionado}
               podeOperar={podeOperar}
               podeCancelar={podeCancelar}
+              podeReceber={podeVender}
+              aoReceber={abrirRecebimento}
               podeEntrega={podeEntrega}
               entregadores={entregadores}
               aoAtribuir={atribuir}
@@ -587,7 +614,7 @@ export function GestaoPedidos({
         </aside>
       </div>
       <PainelLateral
-        aberto={compacto && !!selecionado && !cancelando}
+        aberto={compacto && !!selecionado && !cancelando && !recebendoId}
         aoFechar={() => setSelecionadoId(null)}
         podeFechar={() => !mutando}
         titulo={selecionado ? `Pedido ${identificacao(selecionado)}` : "Pedido"}
@@ -597,6 +624,8 @@ export function GestaoPedidos({
             pedido={selecionado}
             podeOperar={podeOperar}
             podeCancelar={podeCancelar}
+            podeReceber={podeVender}
+            aoReceber={abrirRecebimento}
             podeEntrega={podeEntrega}
             entregadores={entregadores}
             aoAtribuir={atribuir}
@@ -629,8 +658,11 @@ export function GestaoPedidos({
       >
         <div className="space-y-4">
           <p className="text-ink-2 text-sm">
-            O histórico será preservado. A devolução do pagamento ao cliente é
-            manual. Se os ingredientes já foram consumidos, registre a perda
+            O histórico será preservado.{" "}
+            {cancelando?.venda.pagamentos.length
+              ? "A devolução do pagamento ao cliente é manual."
+              : "Nenhum pagamento foi registrado; não haverá devolução de dinheiro."}{" "}
+            Se os ingredientes já foram consumidos, registre a perda
             correspondente no Estoque.
           </p>
           <Campo
@@ -650,6 +682,18 @@ export function GestaoPedidos({
           )}
         </div>
       </PainelLateral>
+      {recebendoId && (
+        <ReceberPedido
+          key={recebendoId}
+          vendaId={recebendoId}
+          aoFechar={fecharRecebimento}
+          aoReceber={() =>
+            setAviso(
+              "Pagamento registrado no caixa. O estoque não foi movimentado novamente.",
+            )
+          }
+        />
+      )}
     </div>
   );
 }
@@ -658,6 +702,8 @@ function DetalhesPedido({
   pedido: p,
   podeOperar,
   podeCancelar,
+  podeReceber,
+  aoReceber,
   podeEntrega,
   entregadores,
   aoAtribuir,
@@ -668,6 +714,8 @@ function DetalhesPedido({
   pedido: PedidoPdv;
   podeOperar: boolean;
   podeCancelar: boolean;
+  podeReceber: boolean;
+  aoReceber: (vendaId: string) => void;
   podeEntrega: boolean;
   entregadores: { id: string; nome: string }[];
   aoAtribuir: (p: PedidoPdv, entregadorId: string | null) => Promise<void>;
@@ -808,7 +856,13 @@ function DetalhesPedido({
         </section>
       )}
       <section className={styles.secao}>
-        <h3>Pagamento registrado</h3>
+        <h3>Pagamento</h3>
+        <EtiquetaPagamento venda={p.venda} />
+        {p.venda.status === "PENDENTE" && (
+          <p className="mt-2">
+            Valor a receber: {moeda(p.venda.totalCentavos)}.
+          </p>
+        )}
         {p.venda.pagamentos.map((pag, i) => (
           <p className={styles.linha} key={i}>
             <span>
@@ -831,6 +885,12 @@ function DetalhesPedido({
           </p>
         )}
         <p className="mt-2 text-xs">Conferência manual do operador.</p>
+        {p.venda.recebidoEm && (
+          <p className="mt-2 text-xs">
+            Recebido em {data(p.venda.recebidoEm)}
+            {p.venda.recebidoPor ? ` por ${p.venda.recebidoPor}` : ""}.
+          </p>
+        )}
       </section>
       <div className={styles.total}>
         <span>Total</span>
@@ -842,6 +902,15 @@ function DetalhesPedido({
         </p>
       )}
       <div className={styles.acoes}>
+        {p.venda.status === "PENDENTE" && podeReceber && (
+          <Botao
+            peso="secundario"
+            disabled={pendente}
+            onClick={() => aoReceber(p.vendaId)}
+          >
+            Receber pagamento
+          </Botao>
+        )}
         {seguinte && (
           <Botao
             disabled={!podeOperar || pendente}

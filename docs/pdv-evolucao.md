@@ -18,7 +18,7 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 
 As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. A exploração seção por seção levou à impressão manual da etapa 4 e ao histórico de vendas da etapa 7. Os demais fluxos continuam pendentes, com modalidade entrega disponível para acompanhamento manual de estados.
 
-O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). A primeira seção seguinte foi Delivery: endereço, áreas/frete e entregador. Próximas prioridades: pedido com pagamento pendente, cliente no atendimento, agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
+O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Após Delivery, foi implementado pedido com pagamento pendente e recebimento posterior. Próximas prioridades: cliente no atendimento, agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
 
 - Preparação em `/pdv/preparacao`, acessível a quem tem `pdv.ver` e `pdv.configurar`.
 - Atendimentos salvos na frente de caixa; cada operador vê somente os próprios na unidade ativa.
@@ -29,6 +29,16 @@ O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-refere
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
 
+### Seção pedido e recebimento separados
+
+- Pedido pendente entra na cozinha com baixa única de estoque, total/receita congelados e indicação financeira nas cinco colunas existentes. Entregue ainda não pago permanece visível em outros dias. Histórico e impressão identificam a pendência sem contabilizá-la como pagamento.
+- Recebimento integral posterior com divisão de meios e troco somente em dinheiro, no caixa atual da unidade, sem repetir estoque ou reprecificar. Origem e recebimento são separados; o fechamento original permanece preservado. Cancelar pendente não exige devolução financeira; cancelar pago exige caixa do recebimento aberto e devolução manual.
+- Migração aditiva `20261027200000_pdv_pagamento_pendente`; legados pagos com recebimento nulo usam o caixa original uma única vez, sem backfill de datas/atores. Trava, versões e idempotência protegem cobrança/cancelamento/fechamento concorrentes.
+- `npm run check`: 649 testes aprovados, sem erros de tipos, lint ou formatação; permanecem cinco avisos anteriores do CRM. `npm run build` aprovado; permanecem os três avisos anteriores de `server/arquivos.ts`.
+- Quatro testes de domínio novos, cinco cenários de integração de recebimento e sete integrações de regressão passaram em PostgreSQL local exclusivo `_test`. Cobrem total e consumo congelados, origem fechada/caixa novo em outro local, divisão/troco, legado nulo, permissões/PII, histórico/CSV, entregue pendente de outro dia, cancelamento, retentativas e disputas de cobrança/cancelamento/fechamento.
+- Playwright local com dados fictícios: criar pedido pendente, indicação no quadro e recebimento dividido Pix/dinheiro com troco, mantendo a coluna e uma única baixa. Na perda simulada da resposta após COMMIT, Esc/edição foram bloqueados e a confirmação repetida registrou um só recebimento/evento, verificado também no banco. Desktop e celular de 390×844 sem overflow do documento nos formulários conferidos.
+- Recebimento pelo histórico filtrado removeu o pedido da lista de pendentes e fechou o diálogo. Prévias de comprovante/cozinha mostraram o aviso, com valor a receber somente no comprovante. Cancelamento sem pagamento mostrou a mensagem correta e preservou o histórico; nenhuma impressão física ou operação de produção foi acionada.
+
 ### Seção Delivery — endereço, áreas e entregadores
 
 - Cadastro por unidade de áreas com cidade/UF/bairros, frete e prazo; entregadores ativos/inativos; atribuição no detalhe do quadro antes da saída. Endereço e cotação são congelados no pedido; frete separado da taxa adicional no checkout, histórico, CSV e comprovante.
@@ -37,7 +47,7 @@ Cada incremento precisa de testes das regras afetadas, integração em PostgreSQ
 - Migração aditiva `20261027190000_pdv_delivery` aplicada no banco local de teste; frete zero mantém as vendas antigas. Nenhum dado de clientes ou pedido da plataforma de referência foi importado.
 - Playwright: criar/editar/inativar/reativar área, cadastrar entregador, capturar endereço, salvar/retomar atendimento e concluir venda fictícia. Mudança de frete em outra aba exige reaplicar cotação e confirmar, preservando o endereço. Áreas/entregadores e formulários foram conferidos em 390×844, sem overflow do documento após correção do cabeçalho acessível da tabela. Perfil somente de consulta não abre cadastros administrativos nem avança pedidos.
 - A entrega fictícia percorreu cozinha → coleta → atribuição de motoboy → saída → entregue. Saída sem responsável foi recusada; atribuição permaneceu no mesmo estado com evento próprio. Comprovante autorizado mostrou endereço/frete; HTML de cozinha e perfil de consulta não continham os novos dados pessoais. Nenhuma impressão física foi acionada.
-- Mapas/polígonos, rotas, rastreamento público e acerto de motoboy continuam pendentes. Cadastro rápido de cliente/carteira de endereços segue no CRM; pedido com pagamento pendente é a próxima seção operacional.
+- Mapas/polígonos, rotas, rastreamento público e acerto de motoboy continuam pendentes. Cadastro rápido de cliente/carteira de endereços segue no CRM; pedido com pagamento pendente foi implementado na seção seguinte.
 
 ### Exploração por seção, impressão e histórico
 

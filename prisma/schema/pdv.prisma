@@ -25,7 +25,8 @@ model PdvCaixa {
   valorContadoCentavos Int?
   saldoFechamentoCentavos Int?
   observacao String @default("")
-  vendas PdvVenda[]
+  vendas PdvVenda[] @relation("PdvCaixaOrigem")
+  vendasRecebidas PdvVenda[] @relation("PdvCaixaRecebimento")
   movimentos PdvMovimentoCaixa[]
   @@unique([organizacaoId, unidadeId, id])
   @@index([organizacaoId, unidadeId, abertoEm])
@@ -52,7 +53,15 @@ model PdvVenda {
   organizacaoId String
   unidadeId String
   caixaId String
-  caixa PdvCaixa @relation(fields: [organizacaoId, unidadeId, caixaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  caixa PdvCaixa @relation("PdvCaixaOrigem", fields: [organizacaoId, unidadeId, caixaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  caixaRecebimentoId String?
+  caixaRecebimento PdvCaixa? @relation("PdvCaixaRecebimento", fields: [organizacaoId, unidadeId, caixaRecebimentoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict, map: "pdv_venda_recebimento_caixa_fkey")
+  recebidoEm DateTime?
+  recebidoPorId String?
+  recebidoPorNome String?
+  recebimentoChave String?
+  recebimentoHash String?
+  versaoFinanceira Int @default(1)
   chave String
   payloadHash String
   usuarioId String
@@ -76,9 +85,12 @@ model PdvVenda {
   canceladaEm DateTime?
   canceladaPorId String?
   motivoCancelamento String?
+  pedido PdvPedido?
   @@unique([organizacaoId, unidadeId, chave])
   @@unique([organizacaoId, unidadeId, id], map: "pdv_venda_escopo_id_key")
+  @@unique([organizacaoId, unidadeId, recebimentoChave], map: "pdv_venda_recebimento_chave_key")
   @@index([organizacaoId, unidadeId, criadaEm])
+  @@index([organizacaoId, unidadeId, status, criadaEm], map: "pdv_venda_status_data_idx")
   @@map("pdv_venda")
 }
 
@@ -108,6 +120,7 @@ model PdvPedido {
   organizacaoId String
   unidadeId String
   vendaId String @unique
+  venda PdvVenda @relation(fields: [organizacaoId, unidadeId, vendaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict, map: "pdv_pedido_venda_fkey")
   numero Int
   status String @default("COZINHA")
   versao Int @default(1)
@@ -122,6 +135,7 @@ model PdvPedido {
   entregador PdvEntregador? @relation(fields: [organizacaoId, unidadeId, entregadorId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
   eventos PdvPedidoEvento[]
   @@unique([organizacaoId, unidadeId, id])
+  @@unique([organizacaoId, unidadeId, vendaId], map: "pdv_pedido_escopo_venda_key")
   @@unique([organizacaoId, unidadeId, numero])
   @@index([organizacaoId, unidadeId, status, criadoEm], map: "pdv_pedido_unidade_status_data_idx")
   @@index([organizacaoId, unidadeId, entregueEm])
