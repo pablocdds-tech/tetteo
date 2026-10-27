@@ -6,6 +6,8 @@ PDV online de produtos para uso próprio da Vitaliano, dentro da sessão, unidad
 
 Referência inspecionada em 27/10/2026: painel autenticado `portal.cardapioweb.com/latest-orders`, novo pedido, complementos de pizza, pagamento e formulário de abertura de caixa. Observação pela aba do Chrome e reprodução local com Playwright. O REA foi diagnosticado, mas não conectado: o Node instalado não satisfaz sua versão mínima e falta registro MCP. Não há evidência de análise interna do código do Cardápio Web.
 
+A exploração seguinte percorreu o menu principal e subseções de gestão, histórico, catálogo, KDS, delivery, clientes, caixa, empresa, configurações, campanhas, WhatsApp, fidelidade e fiado. O inventário, as páginas observadas, os bloqueios do plano e as diferenças pendentes estão em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Não foram criados pedidos ou alterados dados na referência.
+
 Após a mudança de direção solicitada pelo usuário, o visual passou a acompanhar mais de perto o Cardápio Web: barra de busca/ações, cartões compactos, detalhe à direita e novo pedido em janela ampla com categorias, produtos e carrinho. Os controles roxos ficam escopados ao PDV, conforme `DESIGN.md`; a marca é Tetteo e não são copiados logo, imagens ou dados de clientes da referência.
 
 ## Catálogo e estoque
@@ -38,6 +40,22 @@ O quadro atualiza a cada 15 segundos enquanto visível, ao voltar à janela ou p
 
 Somente vendas novas após a implantação geram a fila operacional. A migração não cria pedidos para vendas antigas nem presume que foram entregues: elas permanecem no histórico financeiro. O quadro não recebe pedidos do Cardápio Web automaticamente.
 
+## Impressão e reimpressão
+
+Os detalhes do quadro e do histórico oferecem **Imprimir pedido** e **Versão para cozinha**. Abrem uma prévia autenticada em outra aba, fora da navegação lateral, em `/pdv/imprimir/[vendaId]`. A via padrão é um comprovante não fiscal com itens, complementos, observações, subtotal, desconto, taxa, total, pagamentos registrados, troco e operador. A via de cozinha não envia preços ou pagamentos ao navegador; mostra itens/opções por unidade, quantidade, observações e situação do pedido. Vendas canceladas têm destaque e motivo.
+
+A prévia é preparada para bobina de 80 mm. O operador escolhe impressora/papel no diálogo do navegador; também pode usar A4 ou salvar PDF. Botão e Ctrl+P registram a solicitação antes de abrir esse diálogo. Repetir uma tentativa cuja resposta se perdeu não duplica seu registro. Uma nova solicitação da mesma via é auditada como reimpressão. O navegador não informa se saiu papel: a auditoria registra solicitação, sem afirmar emissão física.
+
+O nome congelado do cliente só aparece nessas vias para quem possui `crm.ver`; endereços/telefones não são buscados. Cada leitura e solicitação verifica sessão, `pdv.ver`, organização e unidade ativa. Abrir a prévia não gera uma solicitação de impressão. Impressão automática, agente QzTray, setores/impressoras, múltiplas vias e resumo impresso de caixa permanecem pendentes.
+
+## Histórico e exportação
+
+`/pdv/vendas` consulta vendas no servidor por período de criação (dias de São Paulo), situação financeira, modalidade, forma de pagamento, operador e busca por número, identificação, operador ou cliente autorizado. O padrão é o dia atual, com páginas de dez registros. Vendas antigas continuam consultáveis ao escolher o período; totais de concluídas/canceladas consideram **todo o filtro**, não apenas a página.
+
+A exportação CSV aplica o mesmo filtro e não depende da página. Até 5.000 vendas podem ser exportadas por arquivo; acima disso, o sistema exige refinar o filtro, sem baixar uma parte silenciosamente. Exportações são auditadas e células de texto são protegidas contra interpretação como fórmula de planilha. Cliente só integra resultados, busca e CSV para quem tem `crm.ver`; o arquivo não inclui telefone/endereço ou dados de contato atuais do CRM.
+
+O filtro de pagamento seleciona vendas que contêm aquele meio, inclusive pagamentos divididos. O total é o valor integral dessas vendas, não apenas a parcela recebida pelo meio escolhido. Pagamentos Pix/cartão continuam registros manuais. Não há filtro por canal ou agendamento enquanto esses fluxos não existirem.
+
 ## Conexão e limites
 
 Itens ainda não salvos ficam em memória na tela durante queda de conexão; mantenha a página aberta. Use “Salvar atendimento” para guardar os itens no servidor e liberar o caixa. Cada operador pode manter até 20 atendimentos ativos por unidade. É possível recarregar/fechar e retomar esses atendimentos depois, com o catálogo e preços atuais. Descontos, taxas e pagamentos não são guardados e precisam ser informados novamente. Salvar não reserva estoque nem conclui uma venda.
@@ -54,7 +72,7 @@ O navegador avisa antes de recarregar uma página com itens, e os links da inter
 
 Esta versão não contempla entrega com endereço/roteirização, agendamento de produção, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
 
-O histórico consulta as 100 vendas mais recentes e os 30 últimos caixas fechados. O seletor traz até 500 clientes ativos, somente para quem possui `crm.ver`. Nesta entrega as vendas aparecem no histórico próprio do PDV; não alimentam automaticamente os relatórios antigos de Saipos/Analytics, os lançamentos do Financeiro ou as métricas de campanhas do CRM.
+O histórico de caixas ainda consulta os 30 últimos fechamentos. O seletor de clientes no atendimento traz até 500 clientes ativos, somente para quem possui `crm.ver`. Nesta entrega as vendas aparecem no histórico próprio do PDV; não alimentam automaticamente os relatórios antigos de Saipos/Analytics, os lançamentos do Financeiro ou as métricas de campanhas do CRM.
 
 ## Verificações executadas
 

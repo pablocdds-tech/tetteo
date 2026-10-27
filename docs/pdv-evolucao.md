@@ -7,16 +7,18 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 1. **Preparar a operação.** Diagnosticar produtos sem preço/receita, complementos, insumos indisponíveis, locais e saldos. Cada pendência deve apontar onde corrigir, sem inventar preços, receitas ou estoque. O diagnóstico deve diferenciar configuração, saldo e avisos; a venda continua fazendo a verificação definitiva.
 2. **Guardar atendimentos.** Salvar, listar, retomar e descartar carrinhos por operador e unidade; não reservar estoque nem registrar pagamentos. Revalidar catálogo e preços ao retomar. Resolver concorrência de abas e consumir o rascunho na mesma transação da venda.
 3. **Encaminhar para a cozinha.** Implementado o quadro escolhido pelo usuário: na cozinha → aguardando coleta → saiu para entrega → entregue, com cancelados em coluna própria. O andamento é separado do pagamento; pedidos de retirada/balcão passam de coleta diretamente a entregue. Setores de produção e integração com impressoras permanecem como evolução.
-4. **Imprimir e reimprimir.** Gerar pedido para cozinha e comprovante não fiscal com identificação, itens, opções, observações, valores e operador. Registrar reimpressão; impressão pelo navegador primeiro, configuração de impressoras e roteamento por setor depois.
+4. **Imprimir e reimprimir.** Implementadas prévias de cozinha e comprovante não fiscal, acessíveis no quadro/histórico, com impressão pelo navegador e auditoria de solicitação/reimpressão. Não há confirmação de papel. Agente local, configuração de impressoras e roteamento por setor permanecem como evolução.
 5. **Integrar a gestão.** Publicar fatos de venda/cancelamento com idempotência e definir consumidores em Financeiro, Analytics e CRM, sem imports entre módulos. Distinguir dinheiro recebido, cartão/Pix registrados e liquidação real para evitar dupla contagem com Saipos.
 6. **Tratar exceções.** Devolução parcial, troca e devolução após caixa fechado, com estoque e compensações financeiras auditadas. Preservar o fechamento original; nunca reescrever o passado.
-7. **Ampliar consultas.** Paginação, filtros por período/operador/forma de pagamento, exportação e busca de clientes no servidor. Totais devem considerar todo o filtro, não somente a página exibida.
+7. **Ampliar consultas.** Histórico de vendas implementado com paginação, filtros por período/operador/forma de pagamento/situação/modalidade, busca e CSV de todo o filtro. Busca de clientes no atendimento e histórico de caixas continuam pendentes.
 8. **Ampliar a operação.** Delivery com endereço, áreas/frete, despacho e entregador; depois terminais/caixas independentes por unidade e permissões de supervisão.
 9. **Adicionar integrações adiadas.** Emissão fiscal, adquirentes/Pix com confirmação automática e contingência offline somente com contratos, regras e testes próprios.
 
 ## Entrega iniciada
 
-As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. As etapas 4 a 9 permanecem planejadas, com modalidade entrega já disponível para acompanhamento manual de estados.
+As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. A exploração seção por seção levou à impressão manual da etapa 4 e ao histórico de vendas da etapa 7. Os demais fluxos continuam pendentes, com modalidade entrega disponível para acompanhamento manual de estados.
+
+O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Próxima prioridade: endereço/frete/entregador e cliente no atendimento, depois pedido com pagamento pendente, agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
 
 - Preparação em `/pdv/preparacao`, acessível a quem tem `pdv.ver` e `pdv.configurar`.
 - Atendimentos salvos na frente de caixa; cada operador vê somente os próprios na unidade ativa.
@@ -26,6 +28,15 @@ As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximid
 ## Validação e publicação por etapa
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
+
+### Exploração por seção, impressão e histórico
+
+- Inventário das entradas do menu e subseções relevantes no Chrome, com evidências e limites em `pdv-referencia-cardapioweb.md`. Mesas/comandas, Financeiro e Estoque Avançado bloqueados pelo plano foram registrados como não inspecionáveis. Nenhum pedido, caixa, envio, configuração ou integração da referência foi alterado.
+- `npm run check`: 640 testes aprovados; sem erros de tipos, lint ou formatação. Permanecem os cinco avisos anteriores do CRM.
+- `npm run build` aprovado com configuração exclusiva do banco local de teste, incluindo `/pdv/imprimir/[vendaId]`. Permanecem os três avisos anteriores de rastreamento de arquivos em `server/arquivos.ts`. Nenhuma migração nova neste incremento.
+- Nove testes unitários novos e duas integrações PostgreSQL local passaram: autorização, escopo, nome do cliente condicionado ao CRM, idempotência/reimpressão, cozinha sem valores, cancelamento, datas/curingas, paginação/totais completos, pagamentos divididos, CSV do filtro integral e recusa de 5.001 registros.
+- Playwright com dados fictícios: tabela desktop, páginas de dez, filtro de Pix incluindo pagamentos divididos, totais completos, CSV conferido, cartões no celular 390×844 sem overflow, detalhe/links de impressão, Voltar/Avançar sem detalhe antigo e erro de data inválida recuperável.
+- PDF headless A4/cozinha e 80 mm/comprovante: uma página cada nos casos testados, sem corte ou página extra; via de cozinha sem preços, sabores/observações legíveis e cancelamento destacado. Ctrl+P/botão abrem a solicitação auditada; nenhuma impressora física foi acionada. Impressão automática/por setor continua pendente.
 
 ### Gestão de pedidos e aproximação visual
 

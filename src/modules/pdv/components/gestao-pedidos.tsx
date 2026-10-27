@@ -16,6 +16,7 @@ import type {
   StatusPedido,
 } from "../pedido-types";
 import styles from "./gestao-pedidos.module.css";
+import { BotoesImpressao } from "./botoes-impressao";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -652,6 +653,7 @@ function DetalhesPedido({
         )}
       </header>
       <span className={styles.etapa}>{nomes[p.status]}</span>
+      <BotoesImpressao vendaId={p.vendaId} />
       <section className={styles.secao}>
         <h3>Cliente</h3>
         <p>{p.venda.cliente ?? "Não identificado"}</p>

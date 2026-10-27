@@ -1,156 +1,491 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 import { PainelLateral } from "@/design-system/painel-lateral";
-
 import { cancelarVendaAcao } from "../acoes";
+import { exportarHistoricoAcao } from "../acoes-historico";
+import type { HistoricoFiltros, PaginaHistorico } from "../historico-types";
 import type { PagamentoPdv, VendaPdv } from "../types";
+import { BotoesImpressao } from "./botoes-impressao";
 
 const moeda = (valor: number) =>
   (valor / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const data = (valor: string) => new Date(valor).toLocaleString("pt-BR");
+const data = (valor: string) =>
+  new Date(valor).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 const formas: Record<PagamentoPdv["forma"], string> = {
   DINHEIRO: "Dinheiro",
   PIX: "Pix",
   CREDITO: "Crédito",
   DEBITO: "Débito",
 };
+const entrada =
+  "bg-surface border-line-2 text-ink h-10 w-full rounded-md border px-3 text-sm font-normal";
+const rotulo =
+  "text-ink-2 flex min-w-32 flex-col gap-1.5 text-sm font-semibold";
+function paginaHref(filtros: HistoricoFiltros, pagina: number) {
+  const parametros = new URLSearchParams();
+  for (const [chave, valor] of Object.entries({ ...filtros, pagina }))
+    if (valor !== "") parametros.set(chave, String(valor));
+  return `/pdv/vendas?${parametros.toString()}`;
+}
 
 export function HistoricoPdv({
-  vendas,
+  inicial,
   podeCancelar,
 }: {
-  vendas: VendaPdv[];
+  inicial: PaginaHistorico;
   podeCancelar: boolean;
 }) {
-  const [busca, setBusca] = useState("");
-  const [status, setStatus] = useState("TODAS");
-  const [selecionada, setSelecionada] = useState<VendaPdv | null>(null);
-  const termo = busca.trim().toLocaleLowerCase("pt-BR");
-  const filtradas = vendas.filter(
-    (venda) =>
-      (status === "TODAS" || venda.status === status) &&
-      `${venda.id} ${venda.cliente ?? ""} ${venda.operador}`
-        .toLocaleLowerCase("pt-BR")
-        .includes(termo),
-  );
-  const concluidas = filtradas.filter((venda) => venda.status === "CONCLUIDA");
-
+  const router = useRouter();
+  const [selecionadaId, setSelecionadaId] = useState<string | null>(null);
+  const [erroExportacao, setErroExportacao] = useState("");
+  const [exportando, iniciarExportacao] = useTransition();
+  const [navegando, iniciarNavegacao] = useTransition();
+  const { filtros, vendas, resumo } = inicial;
+  const selecionada = !navegando
+    ? (vendas.find((v) => v.id === selecionadaId) ?? null)
+    : null;
+  function aplicar(evento: React.FormEvent<HTMLFormElement>) {
+    evento.preventDefault();
+    const campos = new FormData(evento.currentTarget);
+    const parametros = new URLSearchParams();
+    for (const [chave, valor] of campos)
+      if (typeof valor === "string" && valor !== "")
+        parametros.set(chave, valor);
+    parametros.set("pagina", "1");
+    setSelecionadaId(null);
+    setErroExportacao("");
+    iniciarNavegacao(() => router.push(`/pdv/vendas?${parametros.toString()}`));
+  }
+  function exportar() {
+    if (exportando) return;
+    setErroExportacao("");
+    iniciarExportacao(async () => {
+      try {
+        const resultado = await exportarHistoricoAcao(filtros);
+        if (resultado.erro) {
+          setErroExportacao(resultado.erro);
+          return;
+        }
+        if (!resultado.exportacao) {
+          setErroExportacao(
+            "Não foi possível preparar o arquivo. Tente novamente.",
+          );
+          return;
+        }
+        const arquivo = resultado.exportacao;
+        const url = URL.createObjectURL(
+          new Blob([arquivo.csv], { type: "text/csv;charset=utf-8" }),
+        );
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = arquivo.nomeArquivo;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch {
+        setErroExportacao(
+          "Não foi possível exportar as vendas. Tente novamente.",
+        );
+      }
+    });
+  }
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Vendas do PDV</h1>
-        <p className="text-ink-3 mt-1 text-sm">
-          Consulte os registros mais recentes, os itens vendidos e os pagamentos
-          informados pelo caixa.
-        </p>
-      </header>
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="min-w-48 flex-1">
-          <Campo
-            rotulo="Buscar por identificação, cliente ou operador"
-            type="search"
-            value={busca}
-            onChange={(evento) => setBusca(evento.target.value)}
-            placeholder="Buscar venda"
-          />
+    <div className="mx-auto max-w-6xl space-y-5">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Histórico de pedidos
+          </h1>
+          <p className="text-ink-3 mt-1 text-sm">
+            Vendas, itens e pagamentos registrados no PDV. Datas no horário de
+            São Paulo.
+          </p>
         </div>
-        <label className="text-ink-2 flex flex-col gap-1.5 text-sm font-semibold">
-          Situação
-          <select
-            value={status}
-            onChange={(evento) => setStatus(evento.target.value)}
-            className="bg-surface border-line-2 text-ink h-10 rounded-md border px-3 font-normal"
-          >
-            <option value="TODAS">Todas</option>
-            <option value="CONCLUIDA">Concluídas</option>
-            <option value="CANCELADA">Canceladas</option>
-          </select>
-        </label>
-      </div>
-      <div className="border-line bg-surface flex flex-wrap items-center justify-between gap-3 rounded-xl border px-5 py-4">
-        <span className="text-ink-3 text-sm">
-          {filtradas.length} registros exibidos · {concluidas.length} vendas
-          concluídas
-        </span>
-        <span className="font-semibold tabular-nums">
-          Total concluído:{" "}
-          {moeda(
-            concluidas.reduce((soma, venda) => soma + venda.totalCentavos, 0),
-          )}
-        </span>
-      </div>
-      <section
-        className="border-line bg-surface overflow-hidden rounded-xl border"
-        aria-label="Lista de vendas"
+        <Botao
+          peso="secundario"
+          onClick={exportar}
+          carregando={exportando}
+          disabled={navegando}
+        >
+          Exportar filtro aplicado
+        </Botao>
+      </header>
+      <form
+        key={JSON.stringify(filtros)}
+        onSubmit={aplicar}
+        className="border-line bg-surface space-y-4 rounded-lg border p-4"
+        aria-label="Filtros do histórico"
       >
-        {filtradas.length ? (
-          <div className="divide-line divide-y">
-            {filtradas.map((venda) => (
-              <button
-                key={venda.id}
-                type="button"
-                onClick={() => setSelecionada(venda)}
-                className="hover:bg-surface-2 focus-visible:outline-accent flex w-full flex-wrap items-center gap-3 px-5 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">
-                    {venda.cliente ?? "Cliente não identificado"}
-                  </p>
-                  <p className="text-ink-3 mt-1 text-sm">
-                    {data(venda.criadaEm)} · {venda.operador}
-                  </p>
-                  <p className="text-ink-3 mt-1 text-xs">{venda.id}</p>
-                </div>
-                <span
-                  className={`${venda.status === "CANCELADA" ? "bg-bad-sub text-bad" : "bg-ok-sub text-ok"} rounded-full px-2.5 py-1 text-xs font-semibold`}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className={rotulo}>
+            Data inicial
+            <input
+              name="de"
+              type="date"
+              className={entrada}
+              defaultValue={filtros.de}
+              min="2000-01-01"
+              max="2100-12-31"
+              required
+            />
+          </label>
+          <label className={rotulo}>
+            Data final
+            <input
+              name="ate"
+              type="date"
+              className={entrada}
+              defaultValue={filtros.ate}
+              min="2000-01-01"
+              max="2100-12-31"
+              required
+            />
+          </label>
+          <label className={rotulo}>
+            Situação
+            <select
+              name="status"
+              className={entrada}
+              defaultValue={filtros.status}
+            >
+              <option value="TODAS">Todas</option>
+              <option value="CONCLUIDA">Concluídas</option>
+              <option value="CANCELADA">Canceladas</option>
+            </select>
+          </label>
+          <label className={rotulo}>
+            Tipo de pedido
+            <select
+              name="modalidade"
+              className={entrada}
+              defaultValue={filtros.modalidade}
+            >
+              <option value="TODAS">Todos</option>
+              <option value="BALCAO">Balcão</option>
+              <option value="RETIRADA">Retirada</option>
+              <option value="ENTREGA">Entrega</option>
+            </select>
+          </label>
+          <label className={rotulo}>
+            Pagamento
+            <select
+              name="pagamento"
+              className={entrada}
+              defaultValue={filtros.pagamento}
+            >
+              <option value="TODOS">Todos</option>
+              {Object.entries(formas).map(([valor, nome]) => (
+                <option key={valor} value={valor}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={rotulo}>
+            Operador
+            <select
+              name="operadorId"
+              className={entrada}
+              defaultValue={filtros.operadorId}
+            >
+              <option value="">Todos</option>
+              {inicial.operadores.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={`${rotulo} sm:col-span-2`}>
+            {inicial.podeVerClientes
+              ? "Identificação, número, cliente ou operador"
+              : "Identificação, número ou operador"}
+            <input
+              name="busca"
+              type="search"
+              maxLength={100}
+              className={entrada}
+              defaultValue={filtros.busca}
+              placeholder="Buscar no período selecionado"
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Botao type="submit" carregando={navegando}>
+            Aplicar filtros
+          </Botao>
+          <Link
+            href="/pdv/vendas"
+            className="text-ink-2 text-sm underline underline-offset-4"
+          >
+            Limpar filtros
+          </Link>
+          <p className="text-ink-3 text-xs">
+            O CSV inclui todas as vendas do filtro aplicado, até 5.000
+            registros. Não depende da página exibida.
+          </p>
+        </div>
+      </form>
+      {erroExportacao && (
+        <p
+          role="alert"
+          className="bg-bad-sub text-bad rounded-md px-4 py-3 text-sm"
+        >
+          {erroExportacao}
+        </p>
+      )}
+      {!inicial.podeVerClientes && (
+        <p className="text-ink-3 text-xs">
+          Nomes de clientes estão ocultos. A consulta desses nomes exige acesso
+          ao CRM.
+        </p>
+      )}
+      <section
+        aria-label="Resumo do filtro aplicado"
+        className="border-line bg-surface grid gap-3 rounded-lg border p-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <div>
+          <p className="text-ink-3 text-xs">Pedidos no filtro</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">
+            {inicial.totalRegistros}
+          </p>
+        </div>
+        <div>
+          <p className="text-ink-3 text-xs">Concluídos</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">
+            {resumo.concluidas}
+          </p>
+        </div>
+        <div>
+          <p className="text-ink-3 text-xs">Total concluído</p>
+          <p className="mt-1 text-xl font-semibold tabular-nums">
+            {moeda(resumo.totalConcluidoCentavos)}
+          </p>
+        </div>
+        <div>
+          <p className="text-ink-3 text-xs">Cancelados: {resumo.canceladas}</p>
+          <p className="text-bad mt-1 text-xl font-semibold tabular-nums">
+            {moeda(resumo.totalCanceladoCentavos)}
+          </p>
+        </div>
+      </section>
+      {filtros.pagamento !== "TODOS" && (
+        <p className="text-ink-3 text-xs">
+          Totais das vendas que contêm esse pagamento, incluindo parcelas de
+          outros meios.
+        </p>
+      )}
+      <section
+        className="border-line bg-surface overflow-x-auto rounded-lg border"
+        aria-label="Lista de vendas"
+        aria-busy={navegando}
+      >
+        {vendas.length ? (
+          <>
+            <table className="hidden w-full min-w-[820px] text-left text-sm lg:table">
+              <thead className="bg-surface-2 text-ink-2 border-line border-b text-xs">
+                <tr>
+                  {[
+                    "Pedido",
+                    "Cliente",
+                    "Criado em",
+                    "Total",
+                    "Pagamento",
+                    "Tipo",
+                    "Situação",
+                  ].map((coluna) => (
+                    <th
+                      key={coluna}
+                      scope="col"
+                      className={`px-4 py-3 font-semibold ${coluna === "Total" ? "text-right" : ""}`}
+                    >
+                      {coluna}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-line divide-y">
+                {vendas.map((venda) => (
+                  <tr
+                    key={venda.id}
+                    onClick={() => !navegando && setSelecionadaId(venda.id)}
+                    className="hover:bg-surface-2 cursor-pointer"
+                  >
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        disabled={navegando}
+                        onClick={() => !navegando && setSelecionadaId(venda.id)}
+                        aria-label={`Abrir ${venda.numeroPedido !== null ? `pedido ${venda.numeroPedido}` : `venda ${venda.id}`}`}
+                        className="focus-visible:outline-accent font-semibold underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-3"
+                      >
+                        {venda.numeroPedido !== null
+                          ? `#${venda.numeroPedido}`
+                          : venda.id.slice(0, 8)}
+                      </button>
+                    </td>
+                    <td className="max-w-52 px-4 py-3">
+                      <span className="block truncate">
+                        {inicial.podeVerClientes
+                          ? (venda.cliente ?? "Não identificado")
+                          : "Nome restrito"}
+                      </span>
+                      <span className="text-ink-3 mt-1 block truncate text-xs">
+                        {venda.operador}
+                      </span>
+                    </td>
+                    <td className="text-ink-2 px-4 py-3 whitespace-nowrap">
+                      {data(venda.criadaEm)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold whitespace-nowrap tabular-nums">
+                      {moeda(venda.totalCentavos)}
+                    </td>
+                    <td className="text-ink-2 px-4 py-3">
+                      {[
+                        ...new Set(
+                          venda.pagamentos.map((p) => formas[p.forma]),
+                        ),
+                      ].join(" / ") || "Sem registro"}
+                    </td>
+                    <td className="text-ink-2 px-4 py-3">
+                      {venda.modalidade === "BALCAO"
+                        ? "Balcão"
+                        : venda.modalidade === "ENTREGA"
+                          ? "Entrega"
+                          : "Retirada"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`${venda.status === "CANCELADA" ? "bg-bad-sub text-bad" : "bg-ok-sub text-ok"} inline-flex rounded px-2 py-1 text-xs font-semibold`}
+                      >
+                        {venda.status === "CANCELADA"
+                          ? "Cancelada"
+                          : "Concluída"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="divide-line divide-y lg:hidden">
+              {vendas.map((venda) => (
+                <button
+                  key={venda.id}
+                  type="button"
+                  disabled={navegando}
+                  onClick={() => !navegando && setSelecionadaId(venda.id)}
+                  className="hover:bg-surface-2 focus-visible:outline-accent flex w-full flex-wrap items-center gap-3 px-5 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
                 >
-                  {venda.status === "CANCELADA" ? "Cancelada" : "Concluída"}
-                </span>
-                <strong className="min-w-24 text-right tabular-nums">
-                  {moeda(venda.totalCentavos)}
-                </strong>
-              </button>
-            ))}
-          </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">
+                      {venda.numeroPedido !== null && (
+                        <span className="mr-2 font-semibold">
+                          #{venda.numeroPedido}
+                        </span>
+                      )}
+                      {inicial.podeVerClientes
+                        ? (venda.cliente ?? "Cliente não identificado")
+                        : "Nome do cliente restrito"}
+                    </p>
+                    <p className="text-ink-3 mt-1 text-sm">
+                      {data(venda.criadaEm)} · {venda.operador} ·{" "}
+                      {venda.modalidade === "BALCAO"
+                        ? "Balcão"
+                        : venda.modalidade === "ENTREGA"
+                          ? "Entrega"
+                          : "Retirada"}
+                    </p>
+                    <p className="text-ink-3 mt-1 text-xs break-all">
+                      {venda.id}
+                    </p>
+                  </div>
+                  <span
+                    className={`${venda.status === "CANCELADA" ? "bg-bad-sub text-bad" : "bg-ok-sub text-ok"} rounded-full px-2.5 py-1 text-xs font-semibold`}
+                  >
+                    {venda.status === "CANCELADA" ? "Cancelada" : "Concluída"}
+                  </span>
+                  <strong className="min-w-24 text-right tabular-nums">
+                    {moeda(venda.totalCentavos)}
+                  </strong>
+                </button>
+              ))}
+            </div>
+          </>
         ) : (
           <div className="px-5 py-10 text-center">
-            <h2 className="font-semibold">
-              {busca || status !== "TODAS"
-                ? "Nenhuma venda neste filtro"
-                : "Nenhuma venda registrada"}
-            </h2>
+            <h2 className="font-semibold">Nenhuma venda neste filtro</h2>
             <p className="text-ink-3 mt-2 text-sm">
-              {busca || status !== "TODAS"
-                ? "Altere a busca ou a situação para consultar outros registros."
-                : "As vendas concluídas no PDV aparecerão aqui."}
+              Altere o período ou os filtros para consultar outros registros.
             </p>
           </div>
         )}
       </section>
+      <nav
+        aria-label="Paginação do histórico"
+        className="flex flex-wrap items-center justify-between gap-3 text-sm"
+      >
+        <p className="text-ink-3" role="status">
+          {inicial.totalRegistros
+            ? `${(filtros.pagina - 1) * inicial.tamanhoPagina + 1}–${(filtros.pagina - 1) * inicial.tamanhoPagina + vendas.length} de ${inicial.totalRegistros}`
+            : "0 registros"}{" "}
+          · Página {filtros.pagina} de {inicial.totalPaginas}
+        </p>
+        <div className="flex gap-4">
+          {filtros.pagina > 1 ? (
+            <Link
+              href={paginaHref(filtros, filtros.pagina - 1)}
+              onClick={() => setSelecionadaId(null)}
+              className="font-semibold underline underline-offset-4"
+            >
+              Anterior
+            </Link>
+          ) : (
+            <span aria-disabled="true" className="text-ink-3">
+              Anterior
+            </span>
+          )}
+          {filtros.pagina < inicial.totalPaginas ? (
+            <Link
+              href={paginaHref(filtros, filtros.pagina + 1)}
+              onClick={() => setSelecionadaId(null)}
+              className="font-semibold underline underline-offset-4"
+            >
+              Próxima
+            </Link>
+          ) : (
+            <span aria-disabled="true" className="text-ink-3">
+              Próxima
+            </span>
+          )}
+        </div>
+      </nav>
       {selecionada && (
         <DetalheVenda
           key={selecionada.id}
           venda={selecionada}
           podeCancelar={podeCancelar}
-          aoFechar={() => setSelecionada(null)}
+          podeVerClientes={inicial.podeVerClientes}
+          aoFechar={() => setSelecionadaId(null)}
         />
       )}
     </div>
   );
 }
-
 function DetalheVenda({
   venda,
   podeCancelar,
+  podeVerClientes,
   aoFechar,
 }: {
   venda: VendaPdv;
   podeCancelar: boolean;
+  podeVerClientes: boolean;
   aoFechar: () => void;
 }) {
   const router = useRouter();
@@ -218,11 +553,14 @@ function DetalheVenda({
       }
     >
       <div className="space-y-6">
+        <BotoesImpressao vendaId={venda.id} />
         <dl className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <dt className="text-ink-3">Cliente</dt>
             <dd className="mt-1 font-medium">
-              {venda.cliente ?? "Não identificado"}
+              {podeVerClientes
+                ? (venda.cliente ?? "Não identificado")
+                : "Nome do cliente restrito"}
             </dd>
           </div>
           <div>
@@ -355,7 +693,7 @@ function DetalheVenda({
               onChange={(evento) => setMotivo(evento.target.value)}
               required
               minLength={3}
-              maxLength={500}
+              maxLength={300}
               disabled={pendente}
             />
             {erro && (

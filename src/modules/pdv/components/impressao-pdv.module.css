@@ -1,0 +1,217 @@
+.pagina {
+  min-height: 100dvh;
+  padding: 24px 16px 48px;
+  background: var(--paper);
+}
+.controles {
+  display: flex;
+  width: min(100%, 920px);
+  margin: 0 auto 28px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+.folha {
+  page: pdv-comprovante;
+  box-sizing: border-box;
+  width: 80mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 4mm;
+  background: white;
+  color: black;
+  box-shadow: var(--shadow-flutuante);
+  font-family: ui-monospace, "Cascadia Code", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.folha h2 {
+  margin: 3px 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.folha h3 {
+  margin-bottom: 5px;
+  font-weight: 700;
+}
+.cozinha {
+  font-size: 13px;
+}
+.cozinha .item > p:first-child {
+  font-size: 15px;
+}
+.cozinha .observacao,
+.cozinha .observacaoPedido {
+  font-size: 14px;
+}
+.cabecalho {
+  padding-bottom: 12px;
+  border-bottom: 1px dashed currentcolor;
+  text-align: center;
+}
+.cabecalho > strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+}
+.cabecalho > h3 {
+  margin: 12px 0 6px;
+  font-size: 19px;
+}
+.marca {
+  font-size: 17px;
+  font-weight: 700;
+}
+.identificacao {
+  margin-top: 8px;
+  font-size: 9px;
+}
+.dados {
+  display: grid;
+  gap: 4px;
+  padding: 12px 0;
+}
+.dados > div {
+  display: grid;
+  grid-template-columns: 23mm minmax(0, 1fr);
+  gap: 6px;
+}
+.dados dt {
+  font-weight: 700;
+}
+.itens {
+  border-top: 1px dashed currentcolor;
+  padding-top: 10px;
+}
+.item {
+  padding: 8px 0;
+  border-bottom: 1px dotted currentcolor;
+  break-inside: avoid;
+}
+.item > p:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.item > p:first-child span {
+  flex: none;
+  white-space: nowrap;
+}
+.item ul {
+  margin-top: 5px;
+  padding-left: 10px;
+}
+.rotuloComplementos {
+  margin-top: 6px;
+  font-weight: 700;
+}
+.item small {
+  display: block;
+  margin-top: 2px;
+}
+.observacao {
+  margin-top: 6px;
+  font-weight: 700;
+  white-space: pre-wrap;
+}
+.observacaoPedido {
+  margin-top: 12px;
+  padding: 8px 0;
+  border-block: 1px dashed currentcolor;
+  white-space: pre-wrap;
+  break-inside: avoid;
+}
+.totais {
+  display: grid;
+  gap: 5px;
+  padding: 12px 0;
+}
+.totais > div,
+.pagamentos dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.totais dd,
+.pagamentos dd {
+  flex: none;
+  white-space: nowrap;
+}
+.total {
+  margin-top: 3px;
+  padding-top: 5px;
+  border-top: 1px solid currentcolor;
+  font-size: 14px;
+  font-weight: 700;
+}
+.pagamentos {
+  padding-block: 10px;
+  border-top: 1px dashed currentcolor;
+}
+.pagamentos dl {
+  display: grid;
+  gap: 5px;
+}
+.pagamentos small {
+  display: block;
+  margin-top: 8px;
+}
+.cancelado {
+  margin: 12px 0;
+  padding: 8px;
+  border: 2px solid currentcolor;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 700;
+}
+.fim {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed currentcolor;
+  text-align: center;
+  font-size: 9px;
+}
+.bloqueioImpressao {
+  display: none;
+}
+
+@page pdv-comprovante {
+  size: auto;
+  margin: 4mm;
+}
+@media print {
+  :global(html):has(.pagina),
+  :global(body):has(.pagina) {
+    height: auto;
+    min-height: 0;
+    display: block;
+    background: white;
+  }
+  .pagina {
+    min-height: 0;
+    padding: 0;
+    background: white;
+    color: black;
+  }
+  .controles {
+    display: none;
+  }
+  .folha {
+    width: 72mm;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+  .bloqueada .folha {
+    display: none;
+  }
+  .bloqueada .bloqueioImpressao {
+    display: block;
+    font-size: 12pt;
+  }
+  .liberada .bloqueioImpressao {
+    display: none;
+  }
+}
