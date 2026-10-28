@@ -14,6 +14,7 @@ const moeda = (valor: number) =>
 const data = (valor: string) =>
   new Date(valor).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 const status: Record<string, string> = {
+  AGENDADO: "Agendado · aguardando preparo",
   COZINHA: "Na cozinha",
   AGUARDANDO_COLETA: "Aguardando coleta",
   SAIU_ENTREGA: "Saiu para entrega",
@@ -186,6 +187,24 @@ export function ImpressaoPdv({ inicial }: { inicial: DocumentoImpressaoPdv }) {
           <div className={styles.cancelado}>AGUARDANDO PAGAMENTO</div>
         )}
         <dl className={styles.dados}>
+          {documento.agendamento && (
+            <>
+              <div>
+                <dt>Agendado para</dt>
+                <dd>{data(documento.agendamento.para)}</dd>
+              </div>
+              <div>
+                <dt>Preparo previsto</dt>
+                <dd>{data(documento.agendamento.iniciarPreparoEm)}</dd>
+              </div>
+              {documento.agendamento.preparoIniciadoEm && (
+                <div>
+                  <dt>Preparo iniciado</dt>
+                  <dd>{data(documento.agendamento.preparoIniciadoEm)}</dd>
+                </div>
+              )}
+            </>
+          )}
           <div>
             <dt>Data</dt>
             <dd>{data(documento.criadaEm)}</dd>

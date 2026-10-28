@@ -59,7 +59,14 @@ export function montarDocumentoImpressao(
     tipo: "COMPROVANTE" | "COZINHA";
     podeVerCliente: boolean;
     podeVerEntrega?: boolean;
-    pedido: { id: string; numero: number; status: string } | null;
+    pedido: {
+      id: string;
+      numero: number;
+      status: string;
+      agendadoPara?: Date | null;
+      iniciarPreparoEm?: Date | null;
+      preparoIniciadoEm?: Date | null;
+    } | null;
     agora?: Date;
   },
 ): DocumentoImpressaoPdv {
@@ -67,7 +74,13 @@ export function montarDocumentoImpressao(
   const base = {
     vendaId: venda.id,
     unidade: contexto.unidade,
-    pedido: contexto.pedido,
+    pedido: contexto.pedido
+      ? {
+          id: contexto.pedido.id,
+          numero: contexto.pedido.numero,
+          status: contexto.pedido.status,
+        }
+      : null,
     criadaEm: venda.criadaEm.toISOString(),
     geradoEm: (contexto.agora ?? new Date()).toISOString(),
     operador: venda.operador,
@@ -78,6 +91,16 @@ export function montarDocumentoImpressao(
     observacao: venda.observacao,
     statusVenda: venda.status,
     motivoCancelamento: venda.motivoCancelamento,
+    ...(contexto.pedido?.agendadoPara && contexto.pedido.iniciarPreparoEm
+      ? {
+          agendamento: {
+            para: contexto.pedido.agendadoPara.toISOString(),
+            iniciarPreparoEm: contexto.pedido.iniciarPreparoEm.toISOString(),
+            preparoIniciadoEm:
+              contexto.pedido.preparoIniciadoEm?.toISOString() ?? null,
+          },
+        }
+      : {}),
   };
   const itens = venda.itens.map((linha) => ({
     nome: linha.nome,

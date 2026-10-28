@@ -3,8 +3,13 @@ export async function register() {
     process.env.NEXT_RUNTIME === "nodejs" &&
     process.env.NEXT_PHASE !== "phase-production-build"
   ) {
-    const { iniciarWorkerCw } = await import("./connectors/cardapioweb/worker");
+    const [{ iniciarWorkerCw }, { iniciarRelogioAgendamentos }] =
+      await Promise.all([
+        import("./connectors/cardapioweb/worker"),
+        import("./modules/pdv/services/agendamentos-worker"),
+      ]);
     iniciarWorkerCw();
+    iniciarRelogioAgendamentos();
   }
   if (
     process.env.NEXT_RUNTIME === "nodejs" &&

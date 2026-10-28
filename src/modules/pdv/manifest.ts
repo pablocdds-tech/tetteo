@@ -10,6 +10,7 @@ export const manifestoPdv: ManifestoDoApp = {
   rota: "/pdv",
   navegacao: [
     { rota: "/pdv", nome: "Gestão de pedidos" },
+    { rota: "/pdv/agendamentos", nome: "Pedidos agendados" },
     { rota: "/pdv/novo-pedido", nome: "Novo pedido", permissao: "pdv.vender" },
     {
       rota: "/pdv/preparacao",

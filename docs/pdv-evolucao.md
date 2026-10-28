@@ -18,7 +18,7 @@ Plano iniciado em 27/10/2026. O objetivo é fechar primeiro o atendimento de bal
 
 As etapas 1 e 2 foram implementadas. Em seguida, o usuário pediu maior proximidade visual com o Cardápio Web e priorizou o kanban da etapa 3, que foi implementado. A exploração seção por seção levou à impressão manual da etapa 4 e ao histórico de vendas da etapa 7. Os demais fluxos continuam pendentes, com modalidade entrega disponível para acompanhamento manual de estados.
 
-O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Após Delivery e pagamento pendente, foram integrados busca/cadastro de clientes e endereços do CRM no atendimento. Próximas prioridades: agendamento/KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
+O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-referencia-cardapioweb.md). Após Delivery, pagamento pendente e clientes/endereços, foi implementado o agendamento com liberação de preparo. Próximas prioridades: KDS e catálogo comercial. A ordem detalhada foi ajustada ao pedido de maior semelhança operacional com a referência; não há promessa de paridade integral nesta etapa.
 
 - Preparação em `/pdv/preparacao`, acessível a quem tem `pdv.ver` e `pdv.configurar`.
 - Atendimentos salvos na frente de caixa; cada operador vê somente os próprios na unidade ativa.
@@ -28,6 +28,17 @@ O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-refere
 ## Validação e publicação por etapa
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
+
+### Seção agendamento de pedidos
+
+- Data/hora prometida de São Paulo e antecedência no checkout, carrinhos salvos e revalidação na confirmação. Página/aba de agendados, filtros/paginação, próximos preparos, atrasos e detalhes operacionais/financeiros. As cinco colunas do quadro continuam preservadas.
+- Estado interno AGENDADO até o início planejado; relógio do servidor a cada trinta segundos e conferência na atualização do quadro. A criação mantém baixa e financeiro existentes; liberação apenas inicia produção. Reagendamento/início antecipado com motivo, versão e idempotência; cancelamento preserva regras financeiras.
+- Migração aditiva `20261027220000_pdv_agendamentos`, mantendo os CHECKs anteriores, consistência de datas e metadados de retentativa. Aplicação local em transação protegida por host/porta/nome do banco `_test`; produção somente pelo `prisma migrate deploy` normal.
+- Quatro testes de domínio novos cobrem fuso IANA, datas inválidas, limites e transições históricas de horário de verão. Uma integração própria e quatro cenários independentes passaram, incluindo dois workers, corridas com cancelamento/recebimento/reprogramação/início manual, inativos, paginação, rascunho vencido, comprovante/cozinha e rejeição no banco de metadados inválidos. Sete integrações de regressão passaram no PostgreSQL local exclusivo.
+- A referência foi revista no Chrome, sem salvar: o novo pedido oferece **Pedido para agora**, **Agendar pedido**, data e faixa horária. O Tetteo usa data/hora prometida e antecedência explícitas; expediente/capacidade por janela e KDS por praça continuam como evolução.
+- `npm run check`: 656 testes aprovados, sem erros de tipos, lint ou formatação; permanecem cinco avisos anteriores do CRM. `npm run build` aprovado, com os três avisos anteriores de `server/arquivos.ts`.
+- Playwright com dados fictícios: horário inválido, salvar/retomar agendamento, receber sem liberar preparo, reagendar após perda de resposta e confirmar uma única alteração, início manual e cancelamento sem pagamento. O relógio liberou outro pedido pela agenda, sem consultar o quadro durante a espera. A conferência no banco confirmou um recebimento/baixa, um reagendamento/início manual e um evento automático com ator nulo, sem repetir estoque ou dinheiro.
+- Filtros e prévias de comprovante/cozinha foram conferidos; cozinha continuou sem valores. Desktop compacto e celular 390×844 sem overflow do documento, com foco dentro do diálogo. Nenhum pedido de produção ou impressão física foi usado nos testes.
 
 ### Seção clientes e endereços no atendimento
 

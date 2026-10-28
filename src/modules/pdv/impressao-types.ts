@@ -21,6 +21,11 @@ type DocumentoBase = {
   observacao: string;
   statusVenda: "PENDENTE" | "CONCLUIDA" | "CANCELADA";
   motivoCancelamento: string | null;
+  agendamento?: {
+    para: string;
+    iniciarPreparoEm: string;
+    preparoIniciadoEm: string | null;
+  };
 };
 
 export type DocumentoImpressaoPdv =

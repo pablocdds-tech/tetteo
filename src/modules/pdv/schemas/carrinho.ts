@@ -4,10 +4,12 @@ import type { ProdutoPdv } from "../types";
 import { calcularPrecoItem } from "./venda";
 import { ErroPdv } from "./erro";
 import { esquemaEnderecoEntrega, esquemaTelefoneEntrega } from "./entrega";
+import { esquemaAgendamento } from "./agendamento";
 
 const identificador = z.string().trim().min(1).max(100);
 export const esquemaConteudoCarrinho = z
   .object({
+    agendamento: esquemaAgendamento.optional(),
     clienteId: identificador.optional(),
     modalidade: z.enum(["RETIRADA", "BALCAO", "ENTREGA"]),
     entrega: z

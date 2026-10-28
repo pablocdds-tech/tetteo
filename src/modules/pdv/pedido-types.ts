@@ -4,16 +4,20 @@ import type { EntregaSnapshot } from "./entrega-types";
 export type StatusPedido =
   "COZINHA" | "AGUARDANDO_COLETA" | "SAIU_ENTREGA" | "ENTREGUE" | "CANCELADO";
 export type DestinoPedido = Exclude<StatusPedido, "COZINHA" | "CANCELADO">;
+export type StatusEventoPedido = StatusPedido | "AGENDADO";
 export type EventoPedido = {
   id: string;
-  de: StatusPedido | null;
-  para: StatusPedido;
+  de: StatusEventoPedido | null;
+  para: StatusEventoPedido;
   versao: number;
   operador: string;
   observacao: string;
   criadoEm: string;
 };
 export type PedidoPdv = {
+  agendadoPara?: string | null;
+  iniciarPreparoEm?: string | null;
+  preparoIniciadoEm?: string | null;
   id: string;
   vendaId: string;
   numero: number;

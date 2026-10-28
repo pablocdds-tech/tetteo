@@ -1,3 +1,4 @@
+import { converterAgendamento } from "../schemas/agendamento";
 import { createHash } from "node:crypto";
 import { ErroPdv } from "../schemas/erro";
 import { Prisma } from "@prisma/client";
@@ -394,9 +395,19 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
         throw new ErroPdv(
           "Dados de entrega só podem acompanhar pedidos da modalidade entrega.",
         );
+      const agoraAgendamento = new Date();
+      const agendamento = dados.agendamento
+        ? converterAgendamento(dados.agendamento, agoraAgendamento)
+        : null;
+      const statusInicial =
+        agendamento && agendamento.iniciarPreparoEm > agoraAgendamento
+          ? "AGENDADO"
+          : "COZINHA";
       const entrega = dados.entrega
         ? await prepararEntrega(tx, ctx, escopo, dados.entrega, new Date())
         : null;
+      if (entrega && agendamento)
+        entrega.previstoEm = agendamento.agendadoPara.toISOString();
       const freteCentavos = entrega?.freteCentavos ?? 0;
       const carrinho = dados.carrinhoId
         ? await tx.pdvCarrinho.findFirst({
@@ -567,10 +578,14 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           vendaId: venda.id,
           numero: (ultimoPedido._max.numero ?? 0) + 1,
           criadoEm: venda.criadaEm,
+          status: statusInicial,
+          ...(agendamento ?? {}),
+          preparoIniciadoEm:
+            statusInicial === "COZINHA" ? agoraAgendamento : null,
           eventos: {
             create: {
               de: null,
-              para: "COZINHA",
+              para: statusInicial,
               versao: 1,
               usuarioId: ctx.usuario.id,
               operador: ctx.usuario.nome,
@@ -581,8 +596,15 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
       await auditar(tx, ctx, escopo, "PdvPedido", pedido.id, "CRIOU", null, {
         vendaId: venda.id,
         numero: pedido.numero,
-        status: "COZINHA",
+        status: statusInicial,
         versao: 1,
+        ...(agendamento
+          ? {
+              agendadoPara: agendamento.agendadoPara.toISOString(),
+              iniciarPreparoEm: agendamento.iniciarPreparoEm.toISOString(),
+              antecedenciaMinutos: agendamento.antecedenciaMinutos,
+            }
+          : {}),
       });
       if (carrinho) {
         await tx.pdvCarrinho.update({

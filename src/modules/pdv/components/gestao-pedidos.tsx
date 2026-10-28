@@ -20,6 +20,7 @@ import styles from "./gestao-pedidos.module.css";
 import { BotoesImpressao } from "./botoes-impressao";
 import { EtiquetaPagamento } from "./etiqueta-pagamento";
 import { ReceberPedido } from "./receber-pedido";
+import { AbasPedidos } from "./abas-pedidos";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -98,7 +99,9 @@ function tempo(p: PedidoPdv, agora: string) {
   const minutos = Math.max(
     0,
     Math.floor(
-      (new Date(agora).getTime() - new Date(p.criadoEm).getTime()) / 60_000,
+      (new Date(agora).getTime() -
+        new Date(p.preparoIniciadoEm ?? p.criadoEm).getTime()) /
+        60_000,
     ),
   );
   return minutos >= 60
@@ -368,6 +371,7 @@ export function GestaoPedidos({
           Caixa
         </Link>
       </header>
+      <AbasPedidos atual="quadro" />
       <div className={styles.toolbar}>
         <div className={styles.busca}>
           <label htmlFor="busca-pedidos">Buscar pedido</label>
@@ -553,7 +557,10 @@ export function GestaoPedidos({
                         <span className={styles.numero}>
                           {identificacao(p)}
                         </span>
-                        <time className={styles.tempo} dateTime={p.criadoEm}>
+                        <time
+                          className={styles.tempo}
+                          dateTime={p.preparoIniciadoEm ?? p.criadoEm}
+                        >
                           {tempo(p, agora)}
                         </time>
                       </span>
@@ -561,6 +568,15 @@ export function GestaoPedidos({
                         {p.venda.cliente ?? "Cliente não identificado"}
                       </span>
                       <EtiquetaPagamento venda={p.venda} />
+                      {p.agendadoPara && (
+                        <small className="text-accent">
+                          Agendado para {data(p.agendadoPara)}
+                          {!["ENTREGUE", "CANCELADO"].includes(p.status) &&
+                          p.agendadoPara < agora
+                            ? " · Atrasado"
+                            : ""}
+                        </small>
+                      )}
                       {p.status === "ENTREGUE" &&
                         p.venda.status === "PENDENTE" &&
                         p.entregueEm && (
@@ -745,6 +761,16 @@ function DetalhesPedido({
         )}
       </header>
       <span className={styles.etapa}>{nomes[p.status]}</span>
+      {p.agendadoPara && (
+        <p className="border-line rounded-md border p-3 text-sm">
+          Agendado para <strong>{data(p.agendadoPara)}</strong>
+          {p.preparoIniciadoEm && (
+            <span className="text-ink-3 mt-1 block">
+              Preparo iniciado em {data(p.preparoIniciadoEm)}.
+            </span>
+          )}
+        </p>
+      )}
       <BotoesImpressao vendaId={p.vendaId} />
       {p.venda.modalidade === "ENTREGA" && (
         <section className={styles.secao}>
@@ -946,7 +972,10 @@ function DetalhesPedido({
         <ol>
           {p.historico.map((e) => (
             <li key={e.id}>
-              <strong>{nomes[e.para]}</strong> · {e.operador}
+              <strong>
+                {e.para === "AGENDADO" ? "Agendado" : nomes[e.para]}
+              </strong>{" "}
+              · {e.operador}
               <time dateTime={e.criadoEm}>{data(e.criadoEm)}</time>
               {e.observacao && <p>{e.observacao}</p>}
             </li>

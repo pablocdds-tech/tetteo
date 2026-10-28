@@ -94,10 +94,15 @@ export async function finalizarVendaAcao(
     (ctx) => finalizarVenda(ctx, dados),
     typeof dados === "object" &&
       dados !== null &&
-      "pagamentoPendente" in dados &&
-      dados.pagamentoPendente === true
-      ? "Pedido enviado para a cozinha. Aguardando pagamento."
-      : "Venda concluída.",
+      "agendamento" in dados &&
+      dados.agendamento
+      ? "Pedido agendado. Confira o horário de entrada na cozinha na aba Agendados."
+      : typeof dados === "object" &&
+          dados !== null &&
+          "pagamentoPendente" in dados &&
+          dados.pagamentoPendente === true
+        ? "Pedido enviado para a cozinha. Aguardando pagamento."
+        : "Venda concluída.",
     true,
   );
 }

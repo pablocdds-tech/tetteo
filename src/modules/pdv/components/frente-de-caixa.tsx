@@ -10,6 +10,12 @@ import { PainelLateral } from "@/design-system/painel-lateral";
 import { finalizarVendaAcao } from "../acoes";
 import { CarrinhosSalvos } from "./carrinhos-salvos";
 import { DadosEntrega } from "./dados-entrega";
+import { horarioSaoPaulo, DadosAgendamento } from "./dados-agendamento";
+import type { AgendamentoEntrada } from "../agendamento-types";
+import {
+  converterDataLocalSaoPaulo,
+  converterAgendamento,
+} from "../schemas/agendamento";
 import { ClienteAtendimento } from "./cliente-atendimento";
 import type {
   ClienteAtendimentoPdv,
@@ -112,6 +118,10 @@ export function FrenteDeCaixa({
   const [entregaConferida, setEntregaConferida] = useState(false);
   const [editarEntrega, setEditarEntrega] = useState(false);
   const [observacao, setObservacao] = useState("");
+  const [agendamento, setAgendamento] = useState<AgendamentoEntrada | null>(
+    null,
+  );
+  const [editarAgendamento, setEditarAgendamento] = useState(false);
   const [pagamento, setPagamento] = useState(false);
   const [confirmarPendente, setConfirmarPendente] = useState(false);
   const [desconto, setDesconto] = useState("0");
@@ -203,6 +213,14 @@ export function FrenteDeCaixa({
     incerta && valorCongelado !== null ? valorCongelado : totalAtual;
   const pago = pagamentos.reduce((soma, p) => soma + p.valorCentavos, 0);
   const troco = Math.max(0, pago - total);
+  let erroAgendamento = "";
+  if (agendamento)
+    try {
+      converterAgendamento(agendamento);
+    } catch {
+      erroAgendamento =
+        "O horário agendado precisa ser ajustado. Escolha uma nova data ou Para agora.";
+    }
   const podeAbrirPagamento =
     itens.length > 0 &&
     !!dados.caixa &&
@@ -211,7 +229,8 @@ export function FrenteDeCaixa({
     !ocupado &&
     !incerta &&
     !temItensInvalidos &&
-    !erroEntrega;
+    !erroEntrega &&
+    !erroAgendamento;
 
   useEffect(() => {
     const dialogo = checkoutRef.current;
@@ -250,7 +269,7 @@ export function FrenteDeCaixa({
     window.addEventListener("offline", atualizar);
     window.addEventListener("keydown", atalhos);
     const proteger = (e: BeforeUnloadEvent) => {
-      if (itens.length || entrega) e.preventDefault();
+      if (itens.length || entrega || agendamento) e.preventDefault();
     };
     const protegerLink = (e: MouseEvent) => {
       if (
@@ -275,9 +294,9 @@ export function FrenteDeCaixa({
       if (
         ocupado ||
         incerta ||
-        ((itens.length > 0 || entrega) &&
+        ((itens.length > 0 || entrega || agendamento) &&
           !window.confirm(
-            "Há itens ou dados de entrega neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
+            "Há itens, dados de entrega ou horário neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
           ))
       ) {
         e.preventDefault();
@@ -293,7 +312,14 @@ export function FrenteDeCaixa({
       window.removeEventListener("beforeunload", proteger);
       document.removeEventListener("click", protegerLink, true);
     };
-  }, [podeAbrirPagamento, itens.length, ocupado, incerta, entrega]);
+  }, [
+    podeAbrirPagamento,
+    itens.length,
+    ocupado,
+    incerta,
+    entrega,
+    agendamento,
+  ]);
 
   function limparAtendimento() {
     setConfirmarPendente(false);
@@ -303,6 +329,8 @@ export function FrenteDeCaixa({
     setClienteSelecionado(null);
     setSeedEntrega(null);
     setObservacao("");
+    setAgendamento(null);
+    setEditarAgendamento(false);
     setDesconto("0");
     setTaxa("0");
     setValor("");
@@ -352,6 +380,7 @@ export function FrenteDeCaixa({
       setEntregaConferida(false);
     }
     setObservacao(salvo.conteudo.observacao);
+    setAgendamento(salvo.conteudo.agendamento ?? null);
     setAviso(
       [
         `Atendimento “${salvo.nome}” retomado com os preços atuais.`,
@@ -485,7 +514,7 @@ export function FrenteDeCaixa({
     if (
       trava.current ||
       (!dados.caixa && !tentativaVenda.current) ||
-      (!incerta && (temItensInvalidos || !!erroEntrega))
+      (!incerta && (temItensInvalidos || !!erroEntrega || !!erroAgendamento))
     )
       return;
     if (!navigator.onLine) {
@@ -516,6 +545,7 @@ export function FrenteDeCaixa({
         modalidade,
         ...(modalidade === "ENTREGA" && entrega ? { entrega } : {}),
         observacao,
+        ...(agendamento ? { agendamento } : {}),
         itens: itens.map(({ produtoId, quantidade, opcoes, observacao }) => ({
           produtoId,
           quantidade,
@@ -550,6 +580,8 @@ export function FrenteDeCaixa({
       setClienteSelecionado(null);
       setSeedEntrega(null);
       setObservacao("");
+      setAgendamento(null);
+      setEditarAgendamento(false);
       setEntrega(null);
       setEntregaConferida(false);
       setEditarEntrega(false);
@@ -562,9 +594,11 @@ export function FrenteDeCaixa({
       tentativaVenda.current = null;
       setValorCongelado(null);
       router.push(
-        resultado.vendaId
-          ? `/pdv?novaVenda=${encodeURIComponent(resultado.vendaId)}`
-          : "/pdv",
+        agendamento
+          ? "/pdv/agendamentos"
+          : resultado.vendaId
+            ? `/pdv?novaVenda=${encodeURIComponent(resultado.vendaId)}`
+            : "/pdv",
       );
     } catch {
       setIncerta(true);
@@ -587,9 +621,9 @@ export function FrenteDeCaixa({
         evento.preventDefault();
         if (ocupado || incerta) return;
         if (
-          (!itens.length && !entrega) ||
+          (!itens.length && !entrega && !agendamento) ||
           window.confirm(
-            "Há itens ou dados de entrega neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
+            "Há itens, dados de entrega ou horário neste atendimento. Salve para retomar depois. Sair sem guardar as alterações?",
           )
         )
           router.push("/pdv");
@@ -642,6 +676,7 @@ export function FrenteDeCaixa({
                 }
               : {}),
             observacao,
+            ...(agendamento ? { agendamento } : {}),
             itens: itens.map(
               ({ produtoId, quantidade, opcoes, observacao }) => ({
                 produtoId,
@@ -872,10 +907,25 @@ export function FrenteDeCaixa({
                 )}
               </>
             )}
-            <div className={styles.agora}>
+            <button
+              type="button"
+              className={`${styles.agora} text-left`}
+              disabled={ocupado || incerta}
+              onClick={() => setEditarAgendamento(true)}
+            >
               <Icone nome="relogio" tamanho={18} />
-              <span>Pedido para agora</span>
-            </div>
+              <span>
+                {agendamento
+                  ? `Agendado · ${horarioSaoPaulo(converterDataLocalSaoPaulo(agendamento.paraLocal))} (São Paulo)`
+                  : "Pedido para agora"}
+              </span>
+              <Icone nome="seta-direita" tamanho={16} />
+            </button>
+            {erroAgendamento && (
+              <p role="alert" className="text-warn text-xs">
+                {erroAgendamento}
+              </p>
+            )}
             <details className={styles.observacao}>
               <summary>
                 <Icone nome="lista-conferida" tamanho={18} />
@@ -1050,6 +1100,17 @@ export function FrenteDeCaixa({
           </footer>
         </aside>
       </div>
+      {editarAgendamento && (
+        <DadosAgendamento
+          agendamento={agendamento}
+          bloqueado={ocupado || incerta}
+          aoFechar={() => setEditarAgendamento(false)}
+          aoConfirmar={(valor) => {
+            setAgendamento(valor);
+            setEditarAgendamento(false);
+          }}
+        />
+      )}
       {editarEntrega && (
         <DadosEntrega
           entrega={entrega}
@@ -1100,6 +1161,7 @@ export function FrenteDeCaixa({
               (!incerta &&
                 (temItensInvalidos ||
                   !!erroEntrega ||
+                  !!erroAgendamento ||
                   (!confirmarPendente &&
                     (pago < total || !pagamentos.length)) ||
                   (confirmarPendente &&

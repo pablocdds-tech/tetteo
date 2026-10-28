@@ -23,7 +23,14 @@ async function consultarDocumento(
     tx.pdvVenda.findFirst({ where: { ...escopo, id: dados.vendaId } }),
     tx.pdvPedido.findFirst({
       where: { ...escopo, vendaId: dados.vendaId },
-      select: { id: true, numero: true, status: true },
+      select: {
+        id: true,
+        numero: true,
+        status: true,
+        agendadoPara: true,
+        iniciarPreparoEm: true,
+        preparoIniciadoEm: true,
+      },
     }),
   ]);
   if (!venda) throw new ErroPdv("Venda indisponível nesta unidade.");

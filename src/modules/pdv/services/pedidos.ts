@@ -2,7 +2,13 @@ import { Prisma } from "@prisma/client";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { db } from "@/server/db";
 import { serializarVendaPdv } from "./venda-dto";
-import type { PedidoPdv, QuadroPedidos, StatusPedido } from "../pedido-types";
+import type {
+  PedidoPdv,
+  QuadroPedidos,
+  StatusPedido,
+  StatusEventoPedido,
+} from "../pedido-types";
+import { processarAgendamentosVencidos } from "./agendamentos";
 import { ErroPdv } from "../schemas/erro";
 import { esquemaEntregaSnapshot } from "../schemas/entrega";
 import {
@@ -13,7 +19,7 @@ import {
   STATUS_PEDIDO,
   validarTransicaoPedido,
 } from "../schemas/pedido";
-import { exigirEscopo } from "./pdv";
+import { exigirEscopo } from "./escopo";
 
 const incluirEventos = {
   eventos: { orderBy: { versao: "asc" as const } },
@@ -31,6 +37,9 @@ function serializarPedido(
     ? esquemaEntregaSnapshot.safeParse(v.entrega)
     : null;
   return {
+    agendadoPara: p.agendadoPara?.toISOString() ?? null,
+    iniciarPreparoEm: p.iniciarPreparoEm?.toISOString() ?? null,
+    preparoIniciadoEm: p.preparoIniciadoEm?.toISOString() ?? null,
     id: p.id,
     vendaId: p.vendaId,
     numero: p.numero,
@@ -49,8 +58,8 @@ function serializarPedido(
     venda: serializarVendaPdv(v, pode(ctx, "crm.ver")),
     historico: p.eventos.map((e) => ({
       id: e.id,
-      de: e.de as StatusPedido | null,
-      para: e.para as StatusPedido,
+      de: e.de as StatusEventoPedido | null,
+      para: e.para as StatusEventoPedido,
       versao: e.versao,
       operador: e.operador,
       observacao: e.observacao,
@@ -63,6 +72,7 @@ export async function listarPedidos(
   entrada: unknown = {},
 ): Promise<QuadroPedidos> {
   const escopo = await exigirEscopo(ctx);
+  await processarAgendamentosVencidos(escopo);
   const dados = esquemaListaPedidos.parse(entrada);
   const dia = dados.dia ?? diaPedidos();
   const periodo = periodoPedidos(dia);

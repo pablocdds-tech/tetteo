@@ -3,6 +3,7 @@ import type {
   EntregaEntrada,
   EntregaSnapshot,
 } from "./entrega-types";
+import type { AgendamentoEntrada } from "./agendamento-types";
 
 export type OpcaoComplemento = {
   id: string;
@@ -37,6 +38,7 @@ export type PagamentoPdv = {
   valorCentavos: number;
 };
 export type FinalizarEntrada = {
+  agendamento?: AgendamentoEntrada;
   chave: string;
   carrinhoId?: string;
   versaoCarrinho?: number;

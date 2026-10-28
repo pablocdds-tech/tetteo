@@ -1,5 +1,6 @@
 import type { ItemCarrinho, ProdutoPdv } from "./types";
 import type { EntregaEntrada } from "./entrega-types";
+import type { AgendamentoEntrada } from "./agendamento-types";
 
 export type EntregaCarrinho = Pick<
   EntregaEntrada,
@@ -7,6 +8,7 @@ export type EntregaCarrinho = Pick<
 >;
 
 export type ConteudoCarrinho = {
+  agendamento?: AgendamentoEntrada;
   clienteId?: string;
   modalidade: "RETIRADA" | "BALCAO" | "ENTREGA";
   entrega?: EntregaCarrinho;

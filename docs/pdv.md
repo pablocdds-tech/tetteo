@@ -52,6 +52,20 @@ Recebimento, cancelamento e fechamento usam a mesma trava por unidade. A versão
 
 Comprovante e cozinha destacam **AGUARDANDO PAGAMENTO**; somente o comprovante inclui o valor a receber. Histórico e CSV distinguem pendentes de pagamentos registrados. Os totais do histórico continuam usando a data de criação do pedido; data e operador reais do recebimento aparecem separadamente quando disponíveis.
 
+## Agendamento de pedidos
+
+No novo pedido, **Pedido para agora** abre a escolha entre atendimento imediato e **Agendar**. Informe data/hora prometida e quantos minutos antes deve começar o preparo. Todos os horários usam `America/Sao_Paulo`, independentemente do fuso do navegador/servidor. A promessa deve ficar entre cinco minutos e noventa dias no futuro; a antecedência pode ser de um minuto a vinte e quatro horas. Se o início calculado já chegou, a tela informa que o pedido entrará imediatamente na cozinha.
+
+Confirmar o pedido continua validando caixa, catálogo, receita, preço e estoque. A baixa e o registro de pagamento ou pendência ocorrem uma única vez na confirmação. O agendamento controla a produção; não representa reserva sem consumo nem pagamento futuro automático. Frete e endereço permanecem congelados, com a previsão da entrega definida pelo horário prometido.
+
+`/pdv/agendamentos` e a aba **Agendados** mostram os horários, início previsto/real, situação operacional e financeira, próximos preparos e pedidos atrasados. Há filtros pelo período prometido e situação, com páginas de vinte. O padrão traz todos os agendamentos em aberto, incluindo os atrasados de outros dias. O estado interno **AGENDADO** aguarda fora das cinco colunas do quadro; quando liberado, entra em **Na cozinha**.
+
+O servidor verifica a fila a cada trinta segundos, em lotes de até cem, inclusive sem navegador aberto. Reinício ou indisponibilidade são recuperados pela próxima verificação. O quadro também confere os vencidos da unidade ao atualizar. Trava e revalidação no banco coordenam instâncias; o evento automático usa ator nulo e operador Sistema. A liberação não exige caixa aberto nem repete preço, pagamento ou estoque.
+
+Enquanto aguarda preparo, **Reagendar** exige `pdv.vender`, motivo e versão; **Iniciar agora** exige `pdv.operar` e motivo. Reagendamento atualiza os horários e a previsão da entrega, preservando endereço, frete e valores. Após iniciar, o pedido segue o fluxo normal do quadro. **Receber pagamento** não libera produção. Cancelamento mantém `pdv.cancelar`, guarda financeira e estorno do consumo original. Retentativas preservam chave/payload/ator e recuperam a confirmação mesmo depois de outra mudança de estado.
+
+Atendimentos salvos guardam a data escolhida. Ao retomar, um horário vencido precisa ser corrigido ou trocado explicitamente por **Para agora** antes da confirmação. Comprovante e cozinha mostram promessa e início previsto/real; cozinha continua sem valores financeiros ou endereço/telefone estruturados. Emissão fiscal, validação de expediente/capacidade por janela e regras avançadas de agenda permanecem fora desta etapa.
+
 ## Clientes e endereços no atendimento
 
 O campo **Buscar cliente**, no topo do carrinho, consulta nome ou telefone no CRM da unidade ativa. Digite pelo menos dois caracteres; a pesquisa usa páginas de vinte resultados no servidor, sem restringir a busca aos primeiros 500 clientes. O atendimento salvo retoma o cliente pelo ID, sem substituir seu endereço ou cotação por dados atuais do cadastro.

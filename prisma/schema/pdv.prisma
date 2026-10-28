@@ -130,6 +130,10 @@ model PdvPedido {
   saiuEntregaEm DateTime?
   entregueEm DateTime?
   canceladoEm DateTime?
+  agendadoPara DateTime?
+  iniciarPreparoEm DateTime?
+  preparoIniciadoEm DateTime?
+  antecedenciaMinutos Int?
   entregadorId String?
   entregadorNome String?
   entregador PdvEntregador? @relation(fields: [organizacaoId, unidadeId, entregadorId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
@@ -138,6 +142,7 @@ model PdvPedido {
   @@unique([organizacaoId, unidadeId, vendaId], map: "pdv_pedido_escopo_venda_key")
   @@unique([organizacaoId, unidadeId, numero])
   @@index([organizacaoId, unidadeId, status, criadoEm], map: "pdv_pedido_unidade_status_data_idx")
+  @@index([status, iniciarPreparoEm], map: "pdv_pedido_agendamento_inicio_idx")
   @@index([organizacaoId, unidadeId, entregueEm])
   @@index([organizacaoId, unidadeId, canceladoEm])
   @@map("pdv_pedido")
@@ -155,7 +160,10 @@ model PdvPedidoEvento {
   usuarioId String?
   operador String
   observacao String @default("")
+  chave String?
+  payloadHash String?
   criadoEm DateTime @default(now())
+  @@unique([organizacaoId, unidadeId, chave])
   @@unique([pedidoId, versao])
   @@map("pdv_pedido_evento")
 }
