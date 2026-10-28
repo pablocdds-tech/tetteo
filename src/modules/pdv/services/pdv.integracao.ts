@@ -13,6 +13,7 @@ import {
   salvarComplementos,
 } from "./pdv";
 import type { FinalizarEntrada } from "../types";
+import { consultarCaixa, listarHistoricoCaixas } from "./caixa";
 
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid");
 if (
@@ -126,6 +127,27 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
   ]);
   assert.equal(aberturas.filter((r) => r.status === "fulfilled").length, 1);
   const caixa = (await carregarPdv(ctx)).caixa!;
+  await assert.rejects(
+    () => consultarCaixa({ ...ctx, permissoes: new Set() }, caixa.id),
+    /permissão/,
+  );
+  await assert.rejects(
+    () =>
+      consultarCaixa(
+        {
+          ...ctx,
+          organizacao: { id: orgOutra.id, nome: orgOutra.nome },
+          unidadeAtiva: unidadeOutra,
+          unidadesVisiveis: [unidadeOutra],
+        },
+        caixa.id,
+      ),
+    /não encontrado/,
+  );
+  await assert.rejects(
+    () => listarHistoricoCaixas({ ...ctx, permissoes: new Set() }),
+    /permissão/,
+  );
   const entrada: FinalizarEntrada = {
     chave: randomUUID(),
     caixaId: caixa.id,
@@ -255,6 +277,21 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
   const encerrado = (await carregarPdv(ctx)).caixasAnteriores[0];
   assert.equal(encerrado.saldoEsperadoCentavos, 1300);
   assert.equal(encerrado.diferencaCentavos, -50);
+  const detalhe = await consultarCaixa(ctx, caixa.id);
+  assert.equal(detalhe.saldoEsperadoCentavos, 1300);
+  assert.equal(detalhe.diferencaCentavos, -50);
+  assert.equal(
+    detalhe.lancamentos
+      .filter((l) => l.forma === "DINHEIRO")
+      .reduce((s, l) => s + l.valorCentavos, 0),
+    1300,
+  );
+  assert.ok(detalhe.lancamentos.some((l) => l.tipo === "ESTORNO"));
+  assert.equal(
+    detalhe.lancamentos.find((l) => l.tipo === "SANGRIA")?.usuario,
+    usuario.nome,
+  );
+  assert.equal(detalhe.observacao, "Conferência fictícia");
   await assert.rejects(
     () => finalizarVenda(ctx, { ...entrada, chave: randomUUID() }),
     /não está aberto/,
@@ -312,4 +349,25 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
     assert.equal(caixaFinal.saldoFechamentoCentavos, 1000);
     assert.equal(saldoEstoque, "10");
   }
+  await db.pdvCaixa.createMany({
+    data: Array.from({ length: 12 }, (_, i) => ({
+      organizacaoId: org.id,
+      unidadeId: unidade.id,
+      localEstoqueId: local.id,
+      abertoPorId: usuario.id,
+      operador: usuario.nome,
+      saldoInicialCentavos: i,
+      abertoEm: new Date(2020, 0, i + 1),
+      fechadoEm: new Date(2020, 0, i + 1, 1),
+      valorContadoCentavos: i,
+      saldoFechamentoCentavos: i,
+    })),
+  });
+  const p1 = await listarHistoricoCaixas(ctx, 1);
+  const p2 = await listarHistoricoCaixas(ctx, 2);
+  assert.equal(p1.total, 14);
+  assert.equal(p1.itens.length, 10);
+  assert.equal(p2.itens.length, 4);
+  assert.equal(new Set([...p1.itens, ...p2.itens].map((c) => c.id)).size, 14);
+  assert.equal((await listarHistoricoCaixas(ctx, 999)).pagina, 2);
 });

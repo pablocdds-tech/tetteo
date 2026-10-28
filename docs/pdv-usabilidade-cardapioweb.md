@@ -1,5 +1,30 @@
 # Usabilidade do PDV a partir da central de ajuda
 
+## Caixa no domínio próprio — 28/10/2026
+
+Comparação visual diretamente com `/caixa` do Cardápio Web, seus formulários
+de sangria e fechamento e o histórico de sessões. Implementados tabela de
+movimentações, busca por descrição, filtros de pagamento e operação, ordenação
+por data/valor, resumo lateral por modalidade/pagamento, histórico paginado,
+consulta de sessão anterior e resumo imprimível. Diálogos centrais seguem o
+mesmo padrão visual dos campos, cabeçalho e ações da referência.
+
+Os totais consideram a sessão inteira, troco e caixa do recebimento. Pedidos
+cancelados mantêm as linhas de entrada e estorno, mas não entram nas vendas
+líquidas. Não há dados do CRM no DTO do caixa. Abertura, movimentações e
+fechamento continuam nos serviços existentes, com permissão e trava por unidade.
+
+Limites funcionais: retirada no fechamento é registrada como sangria antes de
+fechar; não foram criados reabertura, fechamento automático, fiado, conciliação
+com adquirentes ou impressão automática de recibos de movimentação. A impressão
+manual do resumo atende tanto o caixa aberto quanto sessões encerradas.
+
+Validação com Playwright e dados fictícios: filtros sem alterar resumo, estornos,
+ordenação, suprimento, recusa de sangria acima do saldo, fechamento com diferença,
+nova abertura, navegação pelo histórico, impressão e layouts de 1920, 1280 e
+390 px. Integrações locais verificam isolamento entre organizações, paginação,
+legado, recebimento em outro caixa e reconciliação após cancelamento.
+
 ## Revisão visual no domínio próprio — 28/10/2026
 
 Inspeção autenticada e somente de leitura da Gestão de pedidos no portal do
@@ -59,7 +84,7 @@ O Tetteo já adiciona produtos simples diretamente e abre complementos apenas qu
 | [Edição de pedido lançado](https://ajuda.cardapioweb.com/gestao/gestao-de-pedidos/como-editar-um-pedido)                                                        | Alterar cliente, modalidade, endereço, itens e meios de pagamento em pedidos abertos; reabrir sob regras de caixa. | Edição de carrinho disponível. Edição após confirmação e reabertura continuam pendentes: precisam recompor estoque, valores, diferenças recebidas e auditoria em transação própria.                                                                                                                           |
 | [Tempos de preparo e entrega](https://ajuda.cardapioweb.com/gestao/gestao-de-pedidos/como-aumentar-ou-diminuir-o-tempo-de-entrega-preparo)                      | Ajuste rápido dos prazos gerais na Gestão.                                                                         | Prazo de entrega por área e programação por pedido existem; falta ajuste operacional global.                                                                                                                                                                                                                  |
 | [Agendamento](https://ajuda.cardapioweb.com/gestao/configuracoes/agendamento)                                                                                   | Janelas, limites de capacidade e políticas de início do preparo.                                                   | Promessa, antecedência, reagendamento e liberação automática existem. Faltam expediente, capacidade por janela e escolha configurável entre início manual/automático. O tutorial de estados descreve início manual; a configuração oferece início automático. Não se presume uma única regra para toda conta. |
-| [Caixa](https://ajuda.cardapioweb.com/gestao/caixa)                                                                                                             | Abertura, movimentos, resumo, caixas anteriores, conferência e regras de reabertura.                               | Abertura explícita, sangria, suprimento e fechamento auditados existem. Faltam consulta ampliada e relatório imprimível. As automações financeiras da referência não são adotadas implicitamente.                                                                                                             |
+| [Caixa](https://ajuda.cardapioweb.com/gestao/caixa)                                                                                                             | Abertura, movimentos, resumo, caixas anteriores, conferência e regras de reabertura.                               | Abertura, sangria, suprimento e fechamento auditados, tabela filtrável, resumo por pagamento/modalidade, histórico paginado e impressão existem. Reabertura, fiado e automações financeiras da referência seguem fora desta entrega.                                                                          |
 | [Histórico](https://ajuda.cardapioweb.com/gestao/historico-de-pedidos)                                                                                          | Consulta, filtros e detalhe de pedidos por diferentes dimensões.                                                   | Histórico financeiro, filtros, resumo e CSV existem; faltam canal e filtros operacionais/agendamento mais completos.                                                                                                                                                                                          |
 | [Clientes](https://ajuda.cardapioweb.com/gestao/clientes)                                                                                                       | Busca e cadastro simples no atendimento, cadastro completo e métricas na gestão.                                   | CRM e endereços reutilizados no atendimento; falta alimentar métricas do CRM com fatos do PDV.                                                                                                                                                                                                                |
 | [Catálogo](https://ajuda.cardapioweb.com/gestao/catalogo)                                                                                                       | Produtos, categorias, complementos, opções, disponibilidade e operações em massa.                                  | Catálogo baseado nas fichas e complementos existe; faltam apresentação comercial, fotos, combos e edição em massa.                                                                                                                                                                                            |

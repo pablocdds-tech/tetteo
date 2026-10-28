@@ -1,40 +1,52 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
-import { useState, useTransition } from "react";
-
-import { Botao, estiloDeBotao } from "@/design-system/botao";
-import { Campo } from "@/design-system/campo";
-import { PainelLateral } from "@/design-system/painel-lateral";
+import { useRef, useState, useTransition } from "react";
+import {
+  LinkIntegrado as Link,
+  useAmbienteProprio,
+} from "@/core/shell/link-integrado";
+import { Icone } from "@/design-system/icones";
 import { lerNumeroBr } from "@/lib/numero";
-
 import { abrirCaixaAcao, fecharCaixaAcao, movimentarCaixaAcao } from "../acoes";
-import type { CaixaPdv } from "../types";
+import { historicoCaixasAcao } from "../caixa-acoes";
+import {
+  codigoCaixa,
+  dataCaixa,
+  formasCaixa,
+  moedaCaixa,
+  tiposLancamento,
+  type DetalheCaixa,
+  type HistoricoCaixas,
+  type FormaCaixa,
+} from "../caixa-types";
+import { ModalCaixa } from "./modal-caixa";
+import { ResumoCaixa } from "./resumo-caixa";
+import styles from "./gestao-caixa.module.css";
 
-const moeda = (valor: number) =>
-  (valor / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const data = (valor: string) => new Date(valor).toLocaleString("pt-BR");
 type Operacao = "ABRIR" | "SANGRIA" | "SUPRIMENTO" | "FECHAR";
 const titulos: Record<Operacao, string> = {
   ABRIR: "Abrir caixa",
-  SANGRIA: "Registrar sangria",
-  SUPRIMENTO: "Registrar suprimento",
-  FECHAR: "Fechar e conferir caixa",
+  SANGRIA: "Nova sangria",
+  SUPRIMENTO: "Novo suprimento",
+  FECHAR: "Fechar caixa",
 };
 
 export function GestaoCaixa({
   caixa,
-  caixasAnteriores,
+  caixaAtualId,
+  historico: inicial,
   locais,
   podeOperar,
 }: {
-  caixa: CaixaPdv | null;
-  caixasAnteriores: CaixaPdv[];
+  caixa: DetalheCaixa | null;
+  caixaAtualId: string | null;
+  historico: HistoricoCaixas;
   locais: { id: string; nome: string }[];
   podeOperar: boolean;
 }) {
   const router = useRouter();
+  const proprio = useAmbienteProprio();
   const [operacao, setOperacao] = useState<Operacao | null>(null);
   const [valor, setValor] = useState("");
   const [motivo, setMotivo] = useState("");
@@ -42,30 +54,72 @@ export function GestaoCaixa({
     locais.length === 1 ? locais[0].id : "",
   );
   const [erro, setErro] = useState("");
+  const [incerto, setIncerto] = useState(false);
   const [sucesso, setSucesso] = useState("");
   const [pendente, iniciar] = useTransition();
-  const [anterior, setAnterior] = useState<CaixaPdv | null>(null);
+  const enviando = useRef(false);
+  const [historico, setHistorico] = useState(inicial);
+  const [verHistorico, setVerHistorico] = useState(false);
+  const [erroHistorico, setErroHistorico] = useState("");
+  const [carregandoHistorico, iniciarHistorico] = useTransition();
+  const [busca, setBusca] = useState("");
+  const [forma, setForma] = useState("");
+  const [tipo, setTipo] = useState("");
+  const [ordem, setOrdem] = useState<{ campo: "data" | "valor"; asc: boolean }>(
+    { campo: "data", asc: false },
+  );
   const numero = lerNumeroBr(valor);
   const centavos = typeof numero === "number" ? Math.round(numero * 100) : null;
-
-  function abrir(tipo: Operacao) {
+  const ativo = caixa && !caixa.fechadoEm;
+  const termo = busca.trim().toLocaleLowerCase("pt-BR");
+  const lancamentos = (caixa?.lancamentos ?? [])
+    .filter(
+      (l) =>
+        (!termo || l.descricao.toLocaleLowerCase("pt-BR").includes(termo)) &&
+        (!forma || l.forma === forma) &&
+        (!tipo || l.tipo === tipo),
+    )
+    .sort(
+      (a, b) =>
+        (ordem.campo === "data"
+          ? a.data.localeCompare(b.data)
+          : a.valorCentavos - b.valorCentavos) * (ordem.asc ? 1 : -1),
+    );
+  function ordenar(campo: "data" | "valor") {
+    setOrdem({ campo, asc: ordem.campo === campo ? !ordem.asc : false });
+  }
+  function abrir(op: Operacao) {
+    if (pendente || enviando.current) return;
     setValor("");
-    setMotivo("");
+    setMotivo(
+      op === "SANGRIA" ? "Sangria" : op === "SUPRIMENTO" ? "Suprimento" : "",
+    );
     setErro("");
     setSucesso("");
-    setOperacao(tipo);
+    setIncerto(false);
+    setOperacao(op);
   }
-
-  function confirmar(evento: React.FormEvent<HTMLFormElement>) {
-    evento.preventDefault();
-    if (!operacao || pendente) return;
+  function carregarHistorico(pagina: number) {
+    setErroHistorico("");
+    iniciarHistorico(async () => {
+      try {
+        setHistorico(await historicoCaixasAcao(pagina));
+      } catch {
+        setErroHistorico(
+          "Não foi possível carregar os caixas. Tente novamente.",
+        );
+      }
+    });
+  }
+  function confirmar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!operacao || pendente || enviando.current || incerto) return;
     if (
       centavos === null ||
       !Number.isSafeInteger(centavos) ||
       centavos < 0 ||
-      (numero !== null &&
-        numero !== undefined &&
-        Math.abs(numero * 100 - centavos) > 0.00001)
+      centavos > 100_000_000 ||
+      (numero != null && Math.abs(numero * 100 - centavos) > 0.00001)
     ) {
       setErro("Informe um valor válido, com até duas casas decimais.");
       return;
@@ -76,11 +130,18 @@ export function GestaoCaixa({
     }
     if (
       (operacao === "SANGRIA" || operacao === "SUPRIMENTO") &&
-      (!motivo.trim() || centavos <= 0)
+      (motivo.trim().length < 3 || centavos <= 0)
     ) {
-      setErro("Informe um valor maior que zero e o motivo da movimentação.");
+      setErro(
+        "Informe um valor maior que zero e uma descrição com pelo menos três caracteres.",
+      );
       return;
     }
+    if (operacao !== "ABRIR" && !ativo) {
+      setErro("Este caixa já foi fechado. Atualize a tela.");
+      return;
+    }
+    enviando.current = true;
     setErro("");
     iniciar(async () => {
       try {
@@ -106,354 +167,535 @@ export function GestaoCaixa({
         else {
           setSucesso(resultado.ok ?? "Caixa atualizado.");
           setOperacao(null);
+          if (operacao === "ABRIR") router.replace("/pdv/caixa");
           router.refresh();
         }
       } catch {
+        setIncerto(true);
         setErro(
-          "Não foi possível confirmar a operação. Atualize o caixa antes de tentar novamente.",
+          "Não foi possível confirmar a operação. Atualize o caixa e confira os lançamentos antes de tentar novamente.",
         );
+      } finally {
+        enviando.current = false;
       }
     });
   }
-
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Caixa</h1>
-          <p className="text-ink-3 mt-1 text-sm">
-            Abertura, movimentações em dinheiro e conferência do expediente.
-          </p>
+    <div className={styles.pagina}>
+      {!proprio && <h1 className={styles.titulo}>Caixa</h1>}
+      <div className={styles.barra}>
+        <div className={styles.filtros}>
+          <label className={styles.busca}>
+            <Icone nome="lupa" tamanho={20} />
+            <input
+              aria-label="Pesquisar pela descrição"
+              placeholder="Pesquise pela descrição"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </label>
+          <select
+            aria-label="Formas de pagamento"
+            value={forma}
+            onChange={(e) => setForma(e.target.value)}
+          >
+            <option value="">Formas de pagamento</option>
+            {Object.entries(formasCaixa).map(([v, t]) => (
+              <option key={v} value={v}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Tipo de operação"
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value)}
+          >
+            <option value="">Tipo de operação</option>
+            {Object.entries(tiposLancamento).map(([v, t]) => (
+              <option key={v} value={v}>
+                {t}
+              </option>
+            ))}
+          </select>
         </div>
-        {podeOperar && !caixa && (
-          <Botao onClick={() => abrir("ABRIR")} disabled={locais.length === 0}>
-            Abrir caixa
-          </Botao>
-        )}
-      </header>
+        <div className={styles.acoes}>
+          {podeOperar && ativo && (
+            <>
+              <button
+                className={styles.botaoRoxo}
+                onClick={() => abrir("FECHAR")}
+                disabled={pendente}
+              >
+                Fechar caixa
+              </button>
+              <button
+                className={styles.botaoRoxo}
+                onClick={() => abrir("SANGRIA")}
+                disabled={pendente}
+              >
+                Sangria
+              </button>
+              <button
+                className={styles.botaoRoxo}
+                onClick={() => abrir("SUPRIMENTO")}
+                disabled={pendente}
+              >
+                Suprimento
+              </button>
+            </>
+          )}
+          {podeOperar && !caixaAtualId && (
+            <button
+              className={styles.primario}
+              disabled={!locais.length || pendente}
+              onClick={() => abrir("ABRIR")}
+            >
+              Abrir caixa
+            </button>
+          )}
+          {!!caixaAtualId && caixaAtualId !== caixa?.id && (
+            <Link className={styles.botao} href="/pdv/caixa">
+              Caixa atual
+            </Link>
+          )}
+          <button
+            className={styles.botao}
+            onClick={() => {
+              setVerHistorico(true);
+              carregarHistorico(1);
+            }}
+          >
+            Caixas anteriores
+          </button>
+        </div>
+      </div>
       {sucesso && (
-        <p
-          role="status"
-          className="bg-ok-sub text-ok rounded-lg px-4 py-3 text-sm"
-        >
+        <p className={styles.sucesso} role="status">
           {sucesso}
         </p>
       )}
-      <section className="border-line bg-surface overflow-hidden rounded-xl border">
-        <div className="border-line flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
-          <div>
-            <h2 className="font-semibold">
-              {caixa ? "Caixa em operação" : "Caixa fechado"}
-            </h2>
-            <p className="text-ink-3 mt-1 text-sm">
-              {caixa
-                ? `Aberto por ${caixa.operador} em ${data(caixa.abertoEm)}`
-                : "Abra o caixa antes de registrar a primeira venda."}
-            </p>
-          </div>
-          <span
-            className={`${caixa ? "bg-ok-sub text-ok" : "bg-surface-2 text-ink-2"} rounded-full px-3 py-1 text-sm font-medium`}
+      {caixa?.fechadoEm && (
+        <p className={styles.aviso}>
+          Consulta do caixa de {dataCaixa(caixa.abertoEm)} · Fechado
+        </p>
+      )}
+      <div className={styles.grade}>
+        <section
+          className={styles.tabelaPainel}
+          aria-label="Movimentações do caixa"
+        >
+          <div
+            className={styles.rolagemTabela}
+            tabIndex={0}
+            aria-label="Tabela de movimentações"
           >
-            {caixa ? "Aberto" : "Fechado"}
-          </span>
-        </div>
-        {caixa ? (
-          <>
-            <dl className="grid gap-6 px-5 py-6 sm:grid-cols-3">
-              <div>
-                <dt className="text-ink-3 text-sm">Fundo inicial</dt>
-                <dd className="mt-1 text-xl font-semibold tabular-nums">
-                  {moeda(caixa.saldoInicialCentavos)}
-                </dd>
+            <table className={styles.tabela}>
+              <thead>
+                <tr>
+                  <th
+                    aria-sort={
+                      ordem.campo === "data"
+                        ? ordem.asc
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
+                    <button onClick={() => ordenar("data")}>
+                      Data/Hora{" "}
+                      {ordem.campo === "data" && (ordem.asc ? "↑" : "↓")}
+                    </button>
+                  </th>
+                  <th>Descrição</th>
+                  <th
+                    aria-sort={
+                      ordem.campo === "valor"
+                        ? ordem.asc
+                          ? "ascending"
+                          : "descending"
+                        : "none"
+                    }
+                  >
+                    <button onClick={() => ordenar("valor")}>
+                      Valor {ordem.campo === "valor" && (ordem.asc ? "↑" : "↓")}
+                    </button>
+                  </th>
+                  <th>Forma de pagamento</th>
+                  <th>Tipo</th>
+                  <th>Usuário</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lancamentos.map((l) => (
+                  <tr key={l.id}>
+                    <td>{dataCaixa(l.data)}</td>
+                    <td className={styles.descricao}>{l.descricao}</td>
+                    <td
+                      className={styles.valor}
+                      data-negativo={l.valorCentavos < 0}
+                    >
+                      {moedaCaixa(l.valorCentavos)}
+                    </td>
+                    <td>{formasCaixa[l.forma]}</td>
+                    <td>
+                      <span className={styles.etiqueta} data-tipo={l.tipo}>
+                        {tiposLancamento[l.tipo]}
+                      </span>
+                    </td>
+                    <td>{l.usuario}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!lancamentos.length && (
+              <div className={styles.vazio}>
+                <Icone nome="moeda" tamanho={38} />
+                <h2>
+                  {caixa
+                    ? "Nenhuma movimentação encontrada"
+                    : "Seu caixa está fechado"}
+                </h2>
+                <p>
+                  {caixa
+                    ? "Altere a busca ou os filtros para consultar os lançamentos."
+                    : "Abra o caixa para começar a registrar as vendas do expediente."}
+                </p>
+                {(busca || forma || tipo) && (
+                  <button
+                    className={styles.botao}
+                    onClick={() => {
+                      setBusca("");
+                      setForma("");
+                      setTipo("");
+                    }}
+                  >
+                    Limpar filtros
+                  </button>
+                )}
+                {!locais.length && !caixa && (
+                  <Link href="/estoque">
+                    Cadastre um local de estoque para abrir o caixa.
+                  </Link>
+                )}
               </div>
-              <div>
-                <dt className="text-ink-3 text-sm">
-                  Dinheiro esperado em caixa
-                </dt>
-                <dd className="mt-1 text-2xl font-semibold tabular-nums">
-                  {moeda(caixa.saldoEsperadoCentavos)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-ink-3 text-sm">Saída de estoque</dt>
-                <dd className="mt-1 font-medium">
-                  {locais.find((local) => local.id === caixa.localEstoqueId)
-                    ?.nome ?? "Local vinculado na abertura"}
-                </dd>
-              </div>
-            </dl>
-            {podeOperar && (
-              <div className="border-line flex flex-wrap gap-2 border-t px-5 py-4">
-                <Botao peso="secundario" onClick={() => abrir("SUPRIMENTO")}>
-                  Suprimento
-                </Botao>
-                <Botao peso="secundario" onClick={() => abrir("SANGRIA")}>
-                  Sangria
-                </Botao>
-                <Botao className="sm:ml-auto" onClick={() => abrir("FECHAR")}>
-                  Fechar caixa
-                </Botao>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="text-ink-3 px-5 py-8 text-sm">
-            {locais.length === 0 ? (
-              <>
-                Cadastre um local de estoque para vincular as saídas das vendas.{" "}
-                <Link className="text-accent underline" href="/estoque">
-                  Ir para locais de estoque
-                </Link>
-                .
-              </>
-            ) : (
-              "O saldo inicial é o dinheiro disponível para troco. Cartão e Pix são registrados separadamente nas vendas."
             )}
           </div>
-        )}
-      </section>
-      {caixa && (
-        <section className="border-line bg-surface overflow-hidden rounded-xl border">
-          <h2 className="border-line border-b px-5 py-4 font-semibold">
-            Movimentações do caixa
-          </h2>
-          {caixa.movimentos.length ? (
-            <div className="divide-line divide-y">
-              {caixa.movimentos.map((movimento) => (
-                <div
-                  key={movimento.id}
-                  className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium">
-                      {movimento.tipo === "SANGRIA"
-                        ? "Sangria"
-                        : movimento.tipo === "SUPRIMENTO"
-                          ? "Suprimento"
-                          : movimento.tipo}
-                    </p>
-                    <p className="text-ink-3 mt-0.5 text-sm">
-                      {movimento.motivo}
-                    </p>
-                    <p className="text-ink-3 mt-1 text-xs">
-                      {data(movimento.criadoEm)}
-                    </p>
-                  </div>
-                  <span className="font-semibold tabular-nums">
-                    {movimento.tipo === "SANGRIA" ? "− " : "+ "}
-                    {moeda(movimento.valorCentavos)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-ink-3 px-5 py-6 text-sm">
-              Nenhuma sangria ou suprimento registrado neste caixa.
+          {(busca || forma || tipo) && (
+            <p className={styles.rodapeTabela} role="status">
+              {lancamentos.length} lançamento(s) encontrado(s). O resumo
+              considera a sessão inteira.
             </p>
           )}
         </section>
-      )}
-      <section className="border-line bg-surface overflow-hidden rounded-xl border">
-        <h2 className="border-line border-b px-5 py-4 font-semibold">
-          Caixas anteriores
-        </h2>
-        {caixasAnteriores.length ? (
-          <div className="divide-line divide-y">
-            {caixasAnteriores.map((sessao) => (
-              <button
-                type="button"
-                key={sessao.id}
-                onClick={() => setAnterior(sessao)}
-                className="hover:bg-surface-2 focus-visible:outline-accent flex w-full flex-wrap items-center justify-between gap-3 px-5 py-4 text-left focus-visible:outline-2 focus-visible:outline-offset-[-2px]"
+        <aside className={styles.resumo} aria-label="Resumo da sessão">
+          <header>
+            <h2>Resumo</h2>
+            {caixa && (
+              <a
+                href={`/pdv/caixa/imprimir/${caixa.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Imprimir resumo"
+                title="Imprimir resumo"
               >
-                <span>
-                  <span className="block text-sm font-medium">
-                    {data(sessao.abertoEm)}
-                  </span>
-                  <span className="text-ink-3 mt-1 block text-sm">
-                    {sessao.operador} ·{" "}
-                    {sessao.fechadoEm
-                      ? `Fechado em ${data(sessao.fechadoEm)}`
-                      : "Em aberto"}
-                  </span>
-                </span>
-                <span className="text-right">
-                  <span className="block font-semibold tabular-nums">
-                    {moeda(
-                      sessao.valorContadoCentavos ??
-                        sessao.saldoEsperadoCentavos,
-                    )}
-                  </span>
-                  <span
-                    className={`mt-1 block text-sm ${sessao.diferencaCentavos ? "text-warn" : "text-ink-3"}`}
-                  >
-                    {sessao.diferencaCentavos === null
-                      ? "Sem conferência"
-                      : sessao.diferencaCentavos === 0
-                        ? "Conferido sem diferença"
-                        : `Diferença: ${moeda(sessao.diferencaCentavos)}`}
-                  </span>
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="text-ink-3 px-5 py-6 text-sm">
-            Os fechamentos aparecerão aqui após o primeiro expediente.
-          </p>
-        )}
-      </section>
-      <PainelLateral
+                <Icone nome="impressora" tamanho={20} />
+              </a>
+            )}
+          </header>
+          {caixa ? (
+            <ResumoCaixa caixa={caixa} />
+          ) : (
+            <p className={styles.semResumo}>
+              O resumo aparecerá após a abertura do caixa.
+            </p>
+          )}
+        </aside>
+      </div>
+      <ModalCaixa
         aberto={operacao !== null}
-        aoFechar={() => {
-          if (!pendente) setOperacao(null);
-        }}
-        podeFechar={() => !pendente}
         titulo={operacao ? titulos[operacao] : "Caixa"}
+        ocupado={pendente}
+        aoFechar={() => setOperacao(null)}
+        amplo={operacao === "FECHAR"}
         rodape={
           <>
-            <Botao
-              peso="secundario"
+            <button
+              className={styles.botao}
               disabled={pendente}
               onClick={() => setOperacao(null)}
             >
-              Voltar
-            </Botao>
-            <Botao form="operacao-caixa" type="submit" carregando={pendente}>
-              Confirmar{" "}
-              {operacao === "FECHAR"
-                ? "fechamento"
-                : operacao === "ABRIR"
-                  ? "abertura"
-                  : "movimentação"}
-            </Botao>
+              Cancelar
+            </button>
+            {incerto ? (
+              <button
+                className={styles.primario}
+                onClick={() => {
+                  setOperacao(null);
+                  router.refresh();
+                }}
+              >
+                Atualizar caixa
+              </button>
+            ) : (
+              <button
+                type="submit"
+                form="operacao-caixa"
+                className={styles.primario}
+                disabled={pendente}
+              >
+                {pendente
+                  ? "Salvando…"
+                  : operacao === "ABRIR"
+                    ? "Abrir caixa"
+                    : operacao === "FECHAR"
+                      ? "Fechar caixa"
+                      : "Salvar"}
+              </button>
+            )}
           </>
         }
       >
-        <form id="operacao-caixa" onSubmit={confirmar} className="space-y-5">
-          {operacao === "ABRIR" && (
-            <label className="text-ink-2 flex flex-col gap-1.5 text-sm font-semibold">
-              Local de saída do estoque
-              <select
-                value={localId}
-                onChange={(evento) => setLocalId(evento.target.value)}
-                required
-                className="border-line-2 bg-surface text-ink h-10 w-full rounded-md border px-3 font-normal"
-              >
-                <option value="">Selecione um local</option>
-                {locais.map((local) => (
-                  <option key={local.id} value={local.id}>
-                    {local.nome}
-                  </option>
-                ))}
-              </select>
-              <span className="text-ink-3 text-sm font-normal">
-                As receitas dos produtos serão baixadas deste local.
-              </span>
-            </label>
-          )}
-          {operacao === "FECHAR" && caixa && (
-            <div className="bg-surface-2 rounded-lg p-4">
-              <p className="text-ink-3 text-sm">Dinheiro esperado</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">
-                {moeda(caixa.saldoEsperadoCentavos)}
-              </p>
-              <p className="text-ink-3 mt-2 text-sm">
-                Conte o dinheiro físico, incluindo o fundo de troco.
-              </p>
-            </div>
-          )}
-          <Campo
-            rotulo={
-              operacao === "ABRIR"
-                ? "Saldo inicial (R$)"
-                : operacao === "FECHAR"
-                  ? "Dinheiro contado (R$)"
-                  : "Valor (R$)"
-            }
-            value={valor}
-            onChange={(evento) => setValor(evento.target.value)}
-            inputMode="decimal"
-            placeholder="0,00"
-            required
-            autoComplete="off"
-            disabled={pendente}
-          />
-          {operacao !== "ABRIR" && (
-            <Campo
-              rotulo={
-                operacao === "FECHAR" ? "Observação da conferência" : "Motivo"
-              }
-              value={motivo}
-              onChange={(evento) => setMotivo(evento.target.value)}
-              maxLength={500}
-              required={operacao !== "FECHAR"}
-              disabled={pendente}
-            />
-          )}
-          {operacao === "FECHAR" && caixa && centavos !== null && (
-            <p
-              className={`text-sm ${centavos === caixa.saldoEsperadoCentavos ? "text-ok" : "text-warn"}`}
-            >
-              Diferença da conferência:{" "}
-              <strong>{moeda(centavos - caixa.saldoEsperadoCentavos)}</strong>
-            </p>
-          )}
+        <form
+          id="operacao-caixa"
+          onSubmit={confirmar}
+          className={styles.formulario}
+          aria-busy={pendente}
+        >
+          <fieldset disabled={pendente || incerto}>
+            {operacao === "ABRIR" && (
+              <label className={styles.campo}>
+                <span className={styles.rotuloCampo}>Local de estoque</span>
+                <select
+                  required
+                  value={localId}
+                  onChange={(e) => setLocalId(e.target.value)}
+                >
+                  <option value="">Selecione o local</option>
+                  {locais.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.nome}
+                    </option>
+                  ))}
+                </select>
+                <small>Estoque utilizado nas vendas deste caixa.</small>
+              </label>
+            )}
+            {(operacao === "SANGRIA" || operacao === "SUPRIMENTO") && (
+              <label className={styles.campo}>
+                <span className={styles.rotuloCampo}>Descrição</span>
+                <input
+                  data-foco-inicial
+                  required
+                  minLength={3}
+                  maxLength={300}
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                />
+              </label>
+            )}
+            {operacao === "FECHAR" && caixa ? (
+              <>
+                <div className={styles.conferencia}>
+                  <div />
+                  <strong>Esperado</strong>
+                  <strong>Em caixa</strong>
+                  <strong>Diferença</strong>
+                  <span>Dinheiro</span>
+                  <span>{moedaCaixa(caixa.saldoEsperadoCentavos)}</span>
+                  <label className={styles.dinheiro}>
+                    <span>R$</span>
+                    <input
+                      aria-label="Dinheiro contado em caixa"
+                      data-foco-inicial
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      required
+                      value={valor}
+                      onChange={(e) => setValor(e.target.value)}
+                    />
+                  </label>
+                  <output
+                    aria-live="polite"
+                    className={
+                      centavos !== null &&
+                      centavos !== caixa.saldoEsperadoCentavos
+                        ? styles.diferenca
+                        : undefined
+                    }
+                  >
+                    {centavos === null
+                      ? "—"
+                      : moedaCaixa(centavos - caixa.saldoEsperadoCentavos)}
+                  </output>
+                </div>
+                <details className={styles.outrasFormas}>
+                  <summary>Ver outras formas de pagamento</summary>
+                  <dl>
+                    {(Object.entries(formasCaixa) as [FormaCaixa, string][])
+                      .filter(([f]) => f !== "DINHEIRO")
+                      .map(([f, nome]) => (
+                        <div key={f}>
+                          <dt>{nome}</dt>
+                          <dd>{moedaCaixa(caixa.resumo.pagamentos[f])}</dd>
+                        </div>
+                      ))}
+                  </dl>
+                </details>
+                <p className={styles.apoio}>
+                  Conte o dinheiro físico, incluindo o saldo inicial. Registre
+                  uma sangria antes de fechar caso faça uma retirada.
+                </p>
+                <label className={styles.campo}>
+                  <span className={styles.rotuloCampo}>Observações</span>
+                  <textarea
+                    maxLength={500}
+                    rows={3}
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                  />
+                </label>
+              </>
+            ) : (
+              <label className={styles.campo}>
+                <span className={styles.rotuloCampo}>
+                  {operacao === "ABRIR" ? "Saldo inicial" : "Valor"}
+                </span>
+                <span className={styles.dinheiro}>
+                  <span>R$</span>
+                  <input
+                    data-foco-inicial={operacao === "ABRIR" || undefined}
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    required
+                    value={valor}
+                    onChange={(e) => setValor(e.target.value)}
+                  />
+                </span>
+                {operacao === "ABRIR" && (
+                  <small>
+                    Dinheiro disponível para troco no início do expediente.
+                  </small>
+                )}
+              </label>
+            )}
+          </fieldset>
           {erro && (
-            <p
-              role="alert"
-              className="text-bad bg-bad-sub rounded-lg px-3 py-2 text-sm"
-            >
+            <p role="alert" className={styles.erro}>
               {erro}
             </p>
           )}
         </form>
-      </PainelLateral>
-      <PainelLateral
-        aberto={anterior !== null}
-        aoFechar={() => setAnterior(null)}
-        titulo="Conferência do caixa"
+      </ModalCaixa>
+      <ModalCaixa
+        aberto={verHistorico}
+        titulo="Histórico de caixa"
+        amplo
+        aoFechar={() => setVerHistorico(false)}
         rodape={
-          <Link href="/pdv/vendas" className={estiloDeBotao("secundario")}>
-            Consultar vendas
-          </Link>
+          <div className={styles.paginacao}>
+            <span>
+              {historico.total
+                ? `${(historico.pagina - 1) * historico.porPagina + 1}–${Math.min(historico.pagina * historico.porPagina, historico.total)}`
+                : "0"}{" "}
+              de {historico.total}
+            </span>
+            <button
+              className={styles.botao}
+              disabled={carregandoHistorico || historico.pagina <= 1}
+              onClick={() => carregarHistorico(historico.pagina - 1)}
+              aria-label="Página anterior"
+            >
+              ‹
+            </button>
+            <button
+              className={styles.botao}
+              disabled={
+                carregandoHistorico ||
+                historico.pagina * historico.porPagina >= historico.total
+              }
+              onClick={() => carregarHistorico(historico.pagina + 1)}
+              aria-label="Próxima página"
+            >
+              ›
+            </button>
+          </div>
         }
       >
-        {anterior && (
-          <dl className="space-y-4 text-sm">
-            {[
-              ["Abertura", data(anterior.abertoEm)],
-              [
-                "Fechamento",
-                anterior.fechadoEm ? data(anterior.fechadoEm) : "Em aberto",
-              ],
-              ["Operador", anterior.operador],
-              ["Fundo inicial", moeda(anterior.saldoInicialCentavos)],
-              ["Dinheiro esperado", moeda(anterior.saldoEsperadoCentavos)],
-              [
-                "Dinheiro contado",
-                anterior.valorContadoCentavos === null
-                  ? "Não informado"
-                  : moeda(anterior.valorContadoCentavos),
-              ],
-              [
-                "Diferença",
-                anterior.diferencaCentavos === null
-                  ? "Sem conferência"
-                  : moeda(anterior.diferencaCentavos),
-              ],
-            ].map(([rotulo, conteudo]) => (
-              <div
-                key={rotulo}
-                className="border-line flex justify-between gap-4 border-b pb-3"
-              >
-                <dt className="text-ink-3">{rotulo}</dt>
-                <dd className="text-right font-medium">{conteudo}</dd>
-              </div>
-            ))}
-          </dl>
+        {erroHistorico && (
+          <p className={styles.erro} role="alert">
+            {erroHistorico}{" "}
+            <button onClick={() => carregarHistorico(historico.pagina)}>
+              Tentar novamente
+            </button>
+          </p>
         )}
-      </PainelLateral>
+        {carregandoHistorico && (
+          <p role="status" className={styles.semResumo}>
+            Carregando caixas…
+          </p>
+        )}
+        <div
+          className={styles.historicoTabela}
+          aria-busy={carregandoHistorico}
+          hidden={carregandoHistorico}
+        >
+          <table className={styles.tabela}>
+            <thead>
+              <tr>
+                <th>Sessão</th>
+                <th>Aberto em</th>
+                <th>Fechado em</th>
+                <th>Saldo inicial</th>
+                <th>Saldo final</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historico.itens.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <Link
+                      href={`/pdv/caixa?caixa=${c.id}`}
+                      onClick={() => {
+                        setVerHistorico(false);
+                        setBusca("");
+                        setForma("");
+                        setTipo("");
+                        setSucesso("");
+                      }}
+                      aria-label={`Consultar caixa ${codigoCaixa(c.id)}`}
+                    >
+                      {codigoCaixa(c.id)}
+                    </Link>
+                  </td>
+                  <td>{dataCaixa(c.abertoEm)}</td>
+                  <td>{c.fechadoEm ? dataCaixa(c.fechadoEm) : "—"}</td>
+                  <td>{moedaCaixa(c.saldoInicialCentavos)}</td>
+                  <td>
+                    {c.valorContadoCentavos === null
+                      ? "—"
+                      : moedaCaixa(c.valorContadoCentavos)}
+                  </td>
+                  <td>
+                    <span
+                      className={styles.situacao}
+                      data-fechado={!!c.fechadoEm}
+                    >
+                      {c.fechadoEm ? "Fechado" : "Aberto"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!historico.total && (
+            <p className={styles.semResumo}>
+              Nenhum caixa registrado nesta unidade.
+            </p>
+          )}
+        </div>
+      </ModalCaixa>
     </div>
   );
 }

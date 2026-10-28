@@ -1,5 +1,33 @@
 # Modelo de ameaças do PDV
 
+## Consulta e impressão do caixa — 28/10/2026
+
+Contexto já confirmado na conversa: operação própria, online, com sessão,
+unidades e banco compartilhados com o Tetteo. Esta entrega acrescenta projeções
+de leitura; os serviços transacionais de abertura, movimento e fechamento não
+mudam. Não há integração com adquirente nem nova permissão concedida.
+
+Entradas: `/pdv/caixa?caixa=UUID`, `historicoCaixasAcao(pagina)` e
+`/pdv/caixa/imprimir/[caixaId]`. Navegador → Next.js cruza HTTPS e a sessão
+Auth.js existente. Cada entrada obtém o contexto no servidor; Next.js → banco
+passa por `services/caixa.ts` e `exigirEscopo`, validando `pdv.ver`, unidade
+visível, organização e unidade ativa. UUID e paginação são validados. O DTO não
+leva telefone, endereço, cliente, credencial ou conteúdo de itens para o browser.
+
+| Abuso                                                                        | Ativo / impacto                            | Controle existente e evidência                                                                                                                                                                                                                     | Probabilidade / prioridade residual                                     |
+| ---------------------------------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Operador troca UUID ou chama a ação diretamente para ler caixa de outra loja | Confidencialidade financeira; impacto alto | `services/caixa.ts` repete escopo em caixa, vendas e histórico; impressão usa o mesmo serviço. `pdv.integracao.ts` testa outra organização e ausência de permissão                                                                                 | Baixa / média                                                           |
+| Resumo inclui recebimento de outro caixa, troco duplicado ou venda cancelada | Integridade da conferência; impacto alto   | Associação por caixa de recebimento, legado somente sem recebimento, agrupamento por forma, estorno e fotografia RepeatableRead. `resumo-caixa.test.ts` e `recebimentos.integracao.ts` verificam reconciliação e preservação do fechamento         | Baixa / média                                                           |
+| Operador reenvia movimento enquanto a primeira chamada está pendente         | Duplicação financeira; impacto médio       | Ref síncrona, ações desabilitadas e diálogo bloqueado durante envio. Resultado incerto exige conferir lançamentos; não há retry automático. O backend existente ainda não oferece chave idempotente para sangria/suprimento                        | Baixa / média; adicionar idempotência transacional numa entrega própria |
+| Conta autorizada consulta repetidamente uma sessão muito longa               | Disponibilidade; impacto médio             | Histórico paginado em 10 sessões, sem carregar vendas de todos os caixas. Detalhe carrega recebimentos completos de uma sessão para não truncar totais; paginação de lançamentos no servidor seria indicada para sessões excepcionalmente extensas | Baixa no uso próprio confirmado / baixa                                 |
+
+O atacante pode modificar parâmetros e usar uma conta comum, mas não controla
+o banco ou o contexto gerado pelo servidor. Relatórios impressos ficam sob
+controle de quem tem acesso ao caixa. Testes usam somente PostgreSQL local e
+dados fictícios; nenhum registro financeiro de produção foi alterado. Revisão
+cobriu as três entradas, fronteiras de sessão/escopo/banco e publicação. As
+limitações residuais acima não são novas garantias do backend financeiro.
+
 ## Domínio operacional separado — 27/10/2026
 
 Contexto confirmado na conversa: PDV online para a própria pizzaria, integrado

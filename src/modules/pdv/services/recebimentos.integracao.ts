@@ -13,6 +13,7 @@ import {
   finalizarVenda,
 } from "./pdv";
 import { consultarRecebimento, receberPedido } from "./recebimentos";
+import { consultarCaixa } from "./caixa";
 
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid");
 if (
@@ -303,6 +304,17 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   assert.deepEqual(paga.entrega, criado.entrega);
   assert.equal(paga.trocoCentavos, 500);
   assert.equal(paga.caixaRecebimentoId, caixaAtual);
+  const detalheAtual = await consultarCaixa(ctx, caixaAtual);
+  const detalheOrigem = await consultarCaixa(ctx, caixaOrigem);
+  assert.equal(
+    detalheAtual.saldoEsperadoCentavos,
+    (await carregarPdv(ctx)).caixa!.saldoEsperadoCentavos,
+  );
+  assert.ok(detalheAtual.lancamentos.some((l) => l.id.startsWith(pendenteId)));
+  assert.ok(
+    !detalheOrigem.lancamentos.some((l) => l.id.startsWith(pendenteId)),
+  );
+  assert.equal(detalheOrigem.saldoEsperadoCentavos, 3500);
   assert.equal(paga.versaoFinanceira, 2);
   assert.equal((await carregarPdv(ctx)).caixa!.saldoEsperadoCentavos, 3700);
   assert.equal(
@@ -353,6 +365,19 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   );
   assert.equal(await estoque(), "97");
   assert.equal((await carregarPdv(ctx)).caixa!.saldoEsperadoCentavos, 200);
+  const estornado = await consultarCaixa(ctx, caixaAtual);
+  assert.equal(estornado.saldoEsperadoCentavos, 200);
+  assert.equal(estornado.resumo.totalCentavos, 0);
+  assert.equal(
+    estornado.lancamentos
+      .filter((l) => l.id.startsWith(pendenteId))
+      .reduce((s, l) => s + l.valorCentavos, 0),
+    0,
+  );
+  assert.equal(
+    estornado.lancamentos.filter((l) => l.tipo === "ESTORNO").length,
+    2,
+  );
   assert.equal(
     await receberPedido(ctx, receber),
     pendenteId,

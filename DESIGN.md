@@ -1,5 +1,21 @@
 # Design do Tetteo
 
+## Caixa do PDV — 28/10/2026
+
+Referência inspecionada na tela Caixa do Cardápio Web, incluindo sangria,
+fechamento e histórico. O caixa usa a fonte e os tokens já existentes do PDV:
+barra de busca/filtros/ações, tabela com cabeçalho cinza e linhas de 62 px,
+resumo de até 400 px à direita e rolagens independentes. Ações usam texto em
+maiúsculas e o acento roxo. Os formulários abrem em diálogos centrais nativos,
+com foco no primeiro campo, Esc, retenção de foco e campos com rótulos na borda.
+O histórico apresenta sessões em tabela paginada; escolher uma carrega a mesma
+tela em modo de consulta. Em telas menores, a barra quebra por grupos; no celular
+os filtros ficam inteiros e o resumo aparece abaixo da tabela rolável.
+
+A impressão é uma rota autenticada com resumo de 80 mm. Filtros alteram somente
+a tabela; o resumo sempre corresponde à sessão completa. A marca Vitaliano e
+as regras financeiras existentes são preservadas.
+
 ## Ambiente próprio do PDV
 
 Quando o domínio operacional está configurado, o PDV recebe uma casca própria:

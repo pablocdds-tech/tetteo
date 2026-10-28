@@ -1,0 +1,655 @@
+.pagina {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  height: var(--altura-area-aplicativo, calc(100dvh - 150px));
+  min-height: 500px;
+  min-width: 0;
+}
+.titulo {
+  font-size: 24px;
+  font-weight: 600;
+}
+.barra,
+.filtros,
+.acoes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.barra {
+  justify-content: space-between;
+  flex: none;
+}
+.filtros {
+  flex: 1;
+}
+.acoes {
+  gap: 10px;
+}
+.busca {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 256px;
+}
+.busca svg {
+  position: absolute;
+  left: 13px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.busca input,
+.filtros select {
+  height: 40px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.busca input {
+  width: 100%;
+  padding: 8px 12px 8px 43px;
+}
+.busca input::placeholder {
+  color: var(--ink-3);
+}
+.filtros select {
+  width: 205px;
+  padding: 8px 30px 8px 12px;
+}
+.botao,
+.botaoRoxo,
+.primario {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.botaoRoxo {
+  color: var(--pdv-acento-texto, var(--accent));
+  border-color: var(--pdv-acento-texto, var(--accent));
+}
+.primario {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+.botao:hover,
+.botaoRoxo:hover {
+  background: var(--surface-2);
+}
+.primario:hover {
+  filter: brightness(0.95);
+}
+.pagina button:disabled,
+.modal button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.pagina :is(button, a, input, select, [tabindex]):focus-visible,
+.modal :is(button, a, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.grade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(310px, 24vw, 400px);
+  gap: 16px;
+  min-height: 0;
+  flex: 1;
+}
+.tabelaPainel,
+.resumo {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface);
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.rolagemTabela {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.tabela {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 14px;
+}
+.tabela th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-3);
+  font-weight: 700;
+  height: 58px;
+}
+.tabela th,
+.tabela td {
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.tabela td {
+  height: 62px;
+}
+.tabela th button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.tabela td.descricao {
+  min-width: 190px;
+  max-width: 340px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.tabela tbody tr:hover {
+  background: var(--surface-2);
+}
+.tabela a {
+  color: var(--pdv-acento-texto, var(--accent));
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.valor {
+  font-variant-numeric: tabular-nums;
+}
+.valor[data-negativo="true"],
+.diferenca {
+  color: var(--bad);
+}
+.etiqueta,
+.situacao {
+  display: inline-flex;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 13px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.etiqueta[data-tipo="VENDA"] {
+  background: var(--info-sub);
+  color: var(--info);
+}
+.etiqueta[data-tipo="SUPRIMENTO"],
+.situacao {
+  background: var(--ok-sub);
+  color: var(--ok);
+}
+.etiqueta[data-tipo="ESTORNO"],
+.etiqueta[data-tipo="SANGRIA"],
+.situacao[data-fechado="true"] {
+  background: var(--bad-sub);
+  color: var(--bad);
+}
+.resumo > header {
+  height: 54px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex: none;
+}
+.resumo h2 {
+  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
+}
+.resumo > header a {
+  position: absolute;
+  right: 10px;
+  padding: 8px;
+  border-radius: 4px;
+  color: var(--ink-2);
+}
+.corpoResumo {
+  padding: 16px;
+  overflow: auto;
+  min-height: 0;
+  font-size: 13px;
+}
+.sessao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sessao strong,
+.dadosSessao strong {
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.dadosSessao {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+}
+.dadosSessao strong:not(:first-child) {
+  margin-top: 8px;
+}
+.corpoResumo section {
+  margin-top: 32px;
+}
+.corpoResumo h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-bottom: 14px;
+}
+.corpoResumo h3::before,
+.corpoResumo h3::after {
+  content: "";
+  height: 1px;
+  background: var(--line);
+  flex: 1;
+}
+.corpoResumo dl > div:not(.separadorResumo),
+.outrasFormas dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+}
+.corpoResumo dt {
+  text-transform: uppercase;
+}
+.corpoResumo dd {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.totalResumo {
+  font-weight: 700;
+}
+.separadorResumo {
+  height: 12px;
+}
+.observacao {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vazio {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  padding: 64px 24px;
+  color: var(--ink-3);
+}
+.vazio h2 {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+}
+.vazio a {
+  color: var(--pdv-acento-texto, var(--accent));
+  text-decoration: underline;
+}
+.semResumo {
+  padding: 24px;
+  color: var(--ink-3);
+  text-align: center;
+}
+.rodapeTabela {
+  border-top: 1px solid var(--line);
+  padding: 10px 16px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.sucesso,
+.aviso,
+.erro {
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.sucesso {
+  background: var(--ok-sub);
+  color: var(--ok);
+}
+.aviso {
+  background: var(--info-sub);
+  color: var(--info);
+}
+.erro {
+  background: var(--bad-sub);
+  color: var(--bad);
+}
+.modal {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  padding: 0;
+  width: min(444px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 18%);
+}
+.modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+.modal[data-amplo] {
+  width: min(960px, calc(100vw - 32px));
+}
+.modal:has(.conferencia) {
+  width: min(600px, calc(100vw - 32px));
+}
+.modal::backdrop {
+  background: rgb(0 0 0 / 48%);
+}
+.modal > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 66px;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.modal h2 {
+  font-size: 17px;
+  font-weight: 700;
+}
+.modal > header button {
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.corpoModal {
+  padding: 20px;
+  min-height: 0;
+  overflow: auto;
+}
+.modal > footer {
+  padding: 16px 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex: none;
+  border-top: 1px solid var(--line);
+}
+.formulario fieldset {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+.campo {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.rotuloCampo {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  padding: 0 4px;
+  background: var(--surface);
+  font-size: 11px;
+  z-index: 1;
+}
+.campo:focus-within .rotuloCampo {
+  color: var(--pdv-acento-texto, var(--accent));
+}
+.campo > input,
+.campo > select,
+.campo > .dinheiro {
+  min-height: 54px;
+}
+.campo > input,
+.campo > select,
+.campo > textarea,
+.dinheiro {
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  min-width: 0;
+  width: 100%;
+  color: var(--ink);
+}
+.campo > input,
+.campo > select,
+.campo > textarea {
+  padding: 12px;
+  font-size: 14px;
+}
+.campo small,
+.apoio {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.dinheiro {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.dinheiro > span {
+  color: var(--ink-3);
+  font-size: 13px;
+}
+.dinheiro > input {
+  min-width: 0;
+  width: 100%;
+  background: transparent;
+  padding: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+.dinheiro:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.modal .dinheiro > input:focus-visible {
+  outline: none;
+}
+.conferencia {
+  display: grid;
+  grid-template-columns: 0.8fr 1fr 1fr 1fr;
+  align-items: center;
+  gap: 14px;
+  font-size: 13px;
+  text-align: right;
+}
+.conferencia > :nth-child(5) {
+  text-align: left;
+}
+.conferencia .dinheiro {
+  padding: 8px;
+}
+.conferencia input {
+  text-align: right;
+}
+.outrasFormas summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 0;
+}
+.outrasFormas dl {
+  font-size: 13px;
+  margin-top: 10px;
+}
+.formulario > .erro {
+  margin-top: 16px;
+}
+.historicoTabela {
+  overflow: auto;
+  min-height: 240px;
+}
+.paginacao {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 13px;
+}
+.paginacao button {
+  min-width: 36px;
+  font-size: 20px;
+  padding: 0 10px;
+}
+.impressao {
+  max-width: 400px;
+  margin: 24px auto;
+  background: var(--surface);
+  color: var(--ink);
+}
+.impressao h1 {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+.impressao > p {
+  text-align: center;
+  font-size: 13px;
+}
+.impressao nav {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding: 20px 0;
+}
+@media (max-width: 1550px) {
+  .filtros {
+    flex-basis: 100%;
+  }
+  .acoes {
+    margin-left: auto;
+  }
+  .pagina {
+    gap: 16px;
+  }
+  .grade {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+  .tabela td,
+  .tabela th {
+    padding: 12px;
+  }
+}
+@media (max-width: 760px) {
+  .pagina {
+    height: auto;
+    min-height: 0;
+  }
+  .grade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .filtros {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+  .busca {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+  .filtros select {
+    width: 100%;
+    min-width: 0;
+  }
+  .acoes {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .acoes > * {
+    white-space: normal;
+    min-height: 40px;
+  }
+  .rolagemTabela {
+    max-height: 480px;
+  }
+  .resumo {
+    min-height: 200px;
+  }
+  .modal {
+    max-height: calc(100dvh - 24px);
+  }
+  .corpoModal {
+    padding: 16px;
+  }
+  .modal > footer {
+    padding: 12px 16px;
+  }
+  .conferencia {
+    grid-template-columns: 0.7fr 1fr 1fr;
+    gap: 12px 8px;
+    font-size: 12px;
+  }
+  .conferencia > :first-child,
+  .conferencia > :nth-child(5) {
+    display: none;
+  }
+  .conferencia .dinheiro {
+    padding: 8px 5px;
+    gap: 3px;
+  }
+}
+@media print {
+  .impressao {
+    margin: 0 auto;
+    max-width: 80mm;
+    --surface: #fff;
+    --ink: #111;
+    --ink-2: #222;
+    --ink-3: #444;
+    --line: #ccc;
+    background: #fff;
+    color: #111;
+  }
+  .impressao nav {
+    display: none;
+  }
+  .impressao .corpoResumo {
+    overflow: visible;
+    padding: 8px;
+    font-size: 10pt;
+  }
+  .impressao section {
+    break-inside: avoid;
+  }
+  .impressao .situacao {
+    background: none;
+    color: #111;
+  }
+}
