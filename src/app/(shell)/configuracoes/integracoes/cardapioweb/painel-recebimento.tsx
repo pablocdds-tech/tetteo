@@ -5,6 +5,7 @@ import type { EscopoCw } from "@/connectors/cardapioweb/seguranca";
 import { acaoCardapioWeb } from "./acoes";
 import { BotaoAcaoCw } from "./botao-acao";
 import { FormularioLegadoCw } from "./formulario-legado";
+import { AtualizarRecebimentoCw } from "./atualizar-recebimento";
 
 const quando = (d: Date | null) =>
   d
@@ -40,9 +41,11 @@ export async function PainelRecebimentoCw({ scope }: { scope: EscopoCw }) {
   }
   return (
     <section
+      id="recebimento-cardapioweb"
       className="space-y-5"
       aria-label="Recebimento de pedidos Cardápio Web"
     >
+      <AtualizarRecebimentoCw lidoEm={new Date().toISOString()} />
       <Cartao>
         <TituloDeSecao apoio="Para quem já possui o token de API da loja.">
           Conectar pedidos e webhook
@@ -95,7 +98,7 @@ export async function PainelRecebimentoCw({ scope }: { scope: EscopoCw }) {
                   </p>
                   <dl className="grid gap-3 text-sm sm:grid-cols-3">
                     <div>
-                      <dt className="text-ink-3">Último evento recebido</dt>
+                      <dt className="text-ink-3">Último webhook recebido</dt>
                       <dd>{quando(v.ultimoEventoEm)}</dd>
                     </div>
                     <div>
@@ -111,6 +114,14 @@ export async function PainelRecebimentoCw({ scope }: { scope: EscopoCw }) {
                       <dd>{v._count.eventos}</dd>
                     </div>
                   </dl>
+                  {!v.ultimoEventoEm && (
+                    <p className="text-warn text-sm">
+                      Nenhum webhook foi recebido desta loja. Confira a URL e o
+                      mesmo token de autenticação no portal da Cardápio Web. A
+                      consulta automática pela API funciona separadamente e pode
+                      trazer pedidos mesmo sem o webhook.
+                    </p>
+                  )}
                   {v.ultimoErro && (
                     <p role="status" className="text-warn text-sm">
                       A última consulta falhou. O Tetteo mantém os eventos
@@ -138,7 +149,7 @@ export async function PainelRecebimentoCw({ scope }: { scope: EscopoCw }) {
               )}
             </div>
           ))}
-          <details open={vinculos.length === 0}>
+          <details data-credenciais open={vinculos.length === 0}>
             <summary className="cursor-pointer text-sm font-semibold">
               {vinculos.length
                 ? "Conferir outra credencial ou trocar o token do webhook"

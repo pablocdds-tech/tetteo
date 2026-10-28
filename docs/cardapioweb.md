@@ -15,6 +15,14 @@
    Faça o teste de um pedido no Sandbox antes de considerar a integração
    homologada. O teste automatizado local usa somente fixtures.
 
+A tela consulta os registros do Tetteo a cada 15 segundos enquanto estiver
+visível, ao voltar à janela e pelo botão **Atualizar pedidos**. A atualização
+automática pausa durante a configuração de credenciais. Isso atualiza a lista
+e os indicadores sem fazer uma nova consulta direta ao fornecedor. **Último
+webhook recebido** informa somente entregas do webhook; pedidos obtidos pela
+consulta automática da API aparecem na mesma lista, mesmo sem esse evento.
+O quadro do PDV e os totais financeiros continuam separados desta conferência.
+
 Com `APP_URL=https://app.vitalianopizzaria.com.br`, a URL de produção é:
 
 ```text
