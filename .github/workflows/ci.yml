@@ -1,0 +1,45 @@
+name: Verificação do projeto
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verificacao-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tipos, lint, formatação, testes e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: postgresql://compilacao:compilacao@localhost:5432/compilacao
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar cliente Prisma
+        run: npx prisma generate
+
+      - name: Verificar projeto
+        run: npm run check
+
+      - name: Compilar para produção
+        run: npm run build
