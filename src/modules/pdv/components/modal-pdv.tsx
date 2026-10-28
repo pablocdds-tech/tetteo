@@ -12,6 +12,7 @@ export function ModalPdv({
   amplo = false,
   children,
   rodape,
+  podeFechar,
 }: {
   aberto: boolean;
   titulo: string;
@@ -20,6 +21,7 @@ export function ModalPdv({
   amplo?: boolean;
   children: ReactNode;
   rodape?: ReactNode;
+  podeFechar?: () => boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const id = useId();
@@ -46,7 +48,7 @@ export function ModalPdv({
       className={styles.modal}
       data-amplo={amplo || undefined}
       onCancel={(e) => {
-        if (ocupado) e.preventDefault();
+        if (ocupado || (podeFechar && !podeFechar())) e.preventDefault();
       }}
       onClose={aoFechar}
     >
@@ -56,7 +58,9 @@ export function ModalPdv({
           type="button"
           aria-label="Fechar janela"
           disabled={ocupado}
-          onClick={() => ref.current?.close()}
+          onClick={() => {
+            if (!podeFechar || podeFechar()) ref.current?.close();
+          }}
         >
           <Icone nome="fechar" tamanho={20} />
         </button>

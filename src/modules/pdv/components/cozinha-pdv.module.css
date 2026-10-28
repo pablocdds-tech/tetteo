@@ -1,0 +1,98 @@
+.barra {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px;
+}
+.barra select {
+  padding: 8px 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 14px;
+}
+.barra strong {
+  margin-left: 8px;
+}
+.pedidos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.pedido {
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  border-top: 4px solid #e5ac36;
+}
+.pedido[data-pronto] {
+  border-top-color: #46ba94;
+}
+.pedido header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.pedido header > strong {
+  font-size: 20px;
+}
+.pedido time {
+  width: 100%;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.pedido ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 16px;
+}
+.pedido li {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 15px;
+}
+.pedido li strong {
+  font-weight: 700;
+}
+.pedido li p {
+  margin-top: 6px;
+  font-size: 14px;
+}
+.pedido > .observacao {
+  margin: 12px 16px;
+}
+.observacao {
+  white-space: pre-wrap;
+  background: var(--warn-sub);
+  color: var(--ink);
+  padding: 8px;
+  border-radius: 4px;
+}
+.agendado {
+  padding: 12px 16px;
+  color: var(--pdv-acento-texto, var(--accent));
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+.pedido footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px;
+}
+.pedido footer button {
+  width: 100%;
+}

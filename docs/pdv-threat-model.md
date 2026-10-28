@@ -150,6 +150,40 @@ flowchart LR
 
 ## Riscos residuais e validação
 
+### Seções de Clientes, Cozinha e Desempenho (28/10/2026)
+
+A página `/pdv/clientes` compõe o CRM na camada de rotas, exige `pdv.ver` e
+`crm.ver`, e usa o `CrmUser` derivado da sessão ativa. As escritas continuam na
+API de atendimento, com `crm.editar`, escopo de unidade, validação, versão e
+idempotência existentes. Não há endpoint público, novo consentimento ou cópia
+de cliente. A janela impede sair durante confirmação incerta; endereços são o
+mesmo componente utilizado no atendimento. Alterações não salvas pedem descarte.
+
+A cozinha exige o escopo do PDV e devolve somente identificação, tipo, horários,
+itens, complementos e observações da comanda. Nome/telefone/endereço estruturados,
+pagamentos e preços são excluídos do DTO. Observações livres continuam sendo
+texto operacional e podem conter dados digitados pelo operador. Concluir preparo
+usa a mesma transição autorizada por `pdv.operar`, versão otimista e transação da
+gestão; não cria um fluxo paralelo de estoque ou de recebimento. O polling tem
+uma consulta por vez, pausa com a página oculta e descarta respostas anteriores
+a uma mutação. Limite de consulta é informado quando atingido.
+
+Desempenho exige `pdv.ver` e filtra organização/unidade antes da consulta. A
+comparação usa dois períodos de dias civis de São Paulo em snapshot consistente.
+Vendas locais e pedidos externos sem venda local são fontes distintas; cancelados
+não entram no valor dos pedidos. Pendências locais permanecem explícitas. O
+retorno contém apenas agregados e nomes de produtos, sem clientes ou endereços.
+O período tem limite de 92 dias e cada fonte tem teto de 20.000 registros; exceder
+esse teto recusa a consulta e pede um período menor, sem produzir totais parciais.
+Os números externos não comprovam recebimento financeiro. As configurações de
+layout guardam somente preferências por operador/unidade, nunca dados de pedidos.
+
+Evidências: `schemas/cozinha.test.ts`, `schemas/desempenho.test.ts` e
+`services/secoes.integracao.ts` verificam DTO mínimo, fronteiras de data,
+cancelamentos, comparação, fontes, permissão e isolamento. As duas integrações
+existentes do atendimento CRM também foram executadas com sucesso. Toda validação
+usa exclusivamente banco local fictício.
+
 ### Clientes e endereços no atendimento
 
 O contexto confirmado continua sendo operação interna online, com sessão existente e dados pessoais reais somente no ambiente autorizado. O CRM é o proprietário do cadastro: `crm/services/atendimento.ts`, `atendimento-routes.ts` e `schemas/atendimento.ts` fornecem pesquisa paginada, criação de cliente e manutenção de endereços. O PDV consome a API autenticada, sem importar serviços de outro módulo. A seleção é explícita; o endereço escolhido é copiado para o rascunho/snapshot operacional e não cria vínculo entre cadastros por semelhança de nome ou telefone.

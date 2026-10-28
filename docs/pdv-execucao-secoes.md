@@ -16,19 +16,19 @@ testadas e concluídas; não misturar alterações de outros chats.
 
 ## Sequência e critérios de conclusão
 
-| Seção                           | Entrega esperada                                                                                                     | Estado                 |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------- |
-| Gestão de pedidos e novo pedido | Gestão unificada, listas/kanban, resumo e atendimento no padrão visual de referência                                 | Publicada em `83fe978` |
-| Caixa                           | Tabela, filtros, resumo, diálogos, histórico e impressão                                                             | Publicada em `6e0b261` |
-| Histórico de pedidos            | Barra de filtros compacta, tabela e detalhe coerentes com a referência, preservando consultas/exportação/recebimento | Em andamento           |
-| Catálogo                        | Navegação por categorias, produtos e complementos; configuração clara e conectada ao cadastro existente              | Pendente               |
-| Áreas de entrega                | Listagem, busca, situação e cadastro/edição no mesmo padrão visual                                                   | Pendente               |
-| Entregadores                    | Consulta, cadastro e edição no contexto do Delivery                                                                  | Pendente               |
-| Clientes                        | Seção própria do PDV usando CRM e endereços existentes, sem duplicar cadastros                                       | Pendente               |
-| Configurações                   | Central operacional clara e preparação da operação com controles realmente aplicados                                 | Pendente               |
-| Cozinha                         | Tela operacional de preparo usando pedidos e estados reais, com foco nos itens e próximas ações                      | Pendente               |
-| Desempenho                      | Visão de vendas e operação com período e números reais da unidade                                                    | Pendente               |
-| Revisão final                   | Navegação entre seções, responsividade, permissões, testes, build e deploy confirmados                               | Pendente               |
+| Seção                           | Entrega esperada                                                                                                     | Estado                               |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Gestão de pedidos e novo pedido | Gestão unificada, listas/kanban, resumo e atendimento no padrão visual de referência                                 | Publicada em `83fe978`               |
+| Caixa                           | Tabela, filtros, resumo, diálogos, histórico e impressão                                                             | Publicada em `6e0b261`               |
+| Histórico de pedidos            | Barra de filtros compacta, tabela e detalhe coerentes com a referência, preservando consultas/exportação/recebimento | Publicada em `ed2b494`               |
+| Catálogo                        | Navegação por categorias, produtos e complementos; configuração clara e conectada ao cadastro existente              | Publicada em `ed2b494`               |
+| Áreas de entrega                | Listagem, busca, situação e cadastro/edição no mesmo padrão visual                                                   | Publicada em `ed2b494`               |
+| Entregadores                    | Consulta, cadastro e edição no contexto do Delivery                                                                  | Publicada em `ed2b494`               |
+| Clientes                        | Seção própria do PDV usando CRM e endereços existentes, sem duplicar cadastros                                       | Implementada; validação em andamento |
+| Configurações                   | Central operacional clara e preparação da operação com controles realmente aplicados                                 | Implementada; validação em andamento |
+| Cozinha                         | Tela operacional de preparo usando pedidos e estados reais, com foco nos itens e próximas ações                      | Implementada; validação em andamento |
+| Desempenho                      | Visão de vendas e operação com período e números reais da unidade                                                    | Implementada; validação em andamento |
+| Revisão final                   | Navegação entre seções, responsividade, permissões, testes, build e deploy confirmados                               | Pendente                             |
 
 Esta sequência cobre a operação do PDV. Marketing, fidelidade, fiado, módulos
 financeiros adicionais e integrações comerciais não são presumidos como parte
@@ -80,4 +80,54 @@ necessário pendente.
   não existem nesta base; entrega continua por cidade/bairro. O Histórico deste
   lote consulta vendas locais; pedidos externos continuam na Gestão de pedidos.
   Esses recursos não aparecem como controles simulados.
-- Validação: `npm run check` aprovado (674 testes; cinco avisos preexistentes no CRM), `npm run build` aprovado (três avisos preexistentes de arquivos dinâmicos). Publicação: aguardando confirmação do deploy.
+- Validação: `npm run check` aprovado (674 testes; cinco avisos preexistentes no CRM), `npm run build` aprovado (três avisos preexistentes de arquivos dinâmicos).
+
+- Lote 1 publicado no commit `ed2b494`, push para `main` concluído. Dokploy
+  confirmou atualização em 28/10/2026 às 05:10:14 UTC; CSS público e quatro pesos
+  de Muli conferidos por HTTP 200 e SHA-256 igual ao contêiner.
+
+### Lote 2 — Clientes, Configurações, Cozinha e Desempenho
+
+- Clientes: lista de 20 por página, busca por nome/telefone, cadastro com
+  idempotência e tratamento de duplicidade, consulta e manutenção de endereços
+  no CRM. Edição do contato e segmentação permanecem no CRM do Tetteo.
+- Configurações: central por subseções, layout aplicado à gestão por operador e
+  unidade, distribuição das listas, visibilidade dos estados opcionais, impressão,
+  agendamento e integrações existentes. Preparação visual revisada.
+- Cozinha: itens e complementos reais, observações, tempo desde o início, filtros
+  de modalidade e busca, visões Em preparo/Prontos, atualização a cada 15 segundos
+  e conclusão de preparo usando a transição da gestão. DTO sem contatos/preços.
+- Desempenho: período e comparação anterior, totais de pedidos locais/externos,
+  cancelamentos separados, pendências locais, gráfico por dia, modalidades,
+  origens e produtos mais pedidos. Dias no fuso São Paulo e teto explícito.
+- Testes de domínio novos: DTO mínimo de cozinha, datas/totais e rejeição de
+  somas financeiras inseguras. Integração nova de seções: aprovada, junto às
+  duas integrações existentes de atendimento CRM (3/3 no lote final).
+- Inspeção da referência realizada em Histórico (`/pedidos`), Catálogo
+  (`/cardapio/produtos`), Delivery (`/entrega-taxas`, `/entregadores`), Clientes
+  (`/clientes` e janela de cadastro), Cozinha (`/kds` e configurações), Desempenho
+  (`/analise-vendas`) e Configurações (`/configuracoes/geral`), somente leitura.
+- Diferenças preservadas: sem raio/mapa, repasse financeiro ou link de motoboy,
+  impressão automática, alteração de regras globais de modalidades, personalização
+  de site público ou segmentação duplicada no PDV. Esses controles não foram
+  simulados; os recursos reais do Tetteo permanecem acessíveis por links.
+- Playwright local: criação de cliente, busca por telefone, resultado vazio e
+  retorno à lista, telefone duplicado abrindo o cadastro existente, cadastro e
+  reabertura do endereço principal, escolha do endereço no novo pedido e frete
+  por área. A mudança descartada no endereço não alterou o cadastro persistido.
+- Cozinha: conclusão do preparo, permanência em Prontos após recarregar, busca
+  por número e atualização do mesmo pedido na gestão. Configurações: troca de
+  listas/kanban, persistência após recarregar e navegação nas subseções.
+- Desempenho: intervalo de datas, mudança de indicador, tabela diária, período
+  inválido e retorno à consulta. Capturas desktop (1440) e celular (390) revistas;
+  nenhuma página das novas seções apresentou transbordamento horizontal.
+  No fluxo normal não houve erros de console; o teste de duplicata produziu o
+  HTTP 409 esperado e exibiu a alternativa de abrir o cadastro existente.
+- Ajustes encontrados na revisão: controles de layout aguardam as preferências
+  locais antes de aceitar mudanças; gráfico móvel permite rolagem com eixos
+  legíveis; endereços usam janela centralizada e mantêm proteção contra saída
+  com alterações pendentes.
+- Verificação final: `npm run check` aprovado com 678 testes, sem erro de lint
+  (cinco avisos preexistentes do CRM); `npm run build` aprovado, com três avisos
+  preexistentes de rastreamento de arquivos dinâmicos. As quatro novas rotas
+  constam do build. Publicação do lote 2 em andamento.

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
-import { PainelLateral } from "@/design-system/painel-lateral";
+import { ModalPdv } from "./modal-pdv";
 import { apiClientes, ErroClienteAtendimento } from "../cliente-api";
 import type {
   ClienteAtendimentoPdv,
@@ -53,7 +53,7 @@ export function EnderecosCliente({
   cliente: ClienteAtendimentoPdv;
   podeEditar: boolean;
   sugestao?: EntregaEntrada["endereco"];
-  aoUsar: (endereco: EnderecoClientePdv) => void;
+  aoUsar?: (endereco: EnderecoClientePdv) => void;
   aoFechar: () => void;
 }) {
   const [enderecos, setEnderecos] = useState<EnderecoClientePdv[]>([]);
@@ -135,7 +135,7 @@ export function EnderecosCliente({
         );
         return;
       }
-      aoUsar(atual);
+      aoUsar?.(atual);
     } catch (falha) {
       setErro(
         falha instanceof Error
@@ -223,10 +223,10 @@ export function EnderecosCliente({
   }
   const bloqueado = ocupado || incerta;
   return (
-    <PainelLateral
+    <ModalPdv
       aberto
-      titulo="Endereços do cliente"
-      apoio={cliente.nome}
+      titulo={"Endereços — " + cliente.nome}
+      ocupado={bloqueado}
       aoFechar={aoFechar}
       podeFechar={() =>
         !bloqueado &&
@@ -323,12 +323,14 @@ export function EnderecosCliente({
                         </p>
                       )}
                       <div className="flex gap-2">
-                        <Botao
-                          disabled={ocupado}
-                          onClick={() => void usar(item)}
-                        >
-                          Usar endereço
-                        </Botao>
+                        {aoUsar && (
+                          <Botao
+                            disabled={ocupado}
+                            onClick={() => void usar(item)}
+                          >
+                            Usar endereço
+                          </Botao>
+                        )}
                         {podeEditar && (
                           <Botao
                             disabled={ocupado}
@@ -344,6 +346,7 @@ export function EnderecosCliente({
                 </ul>
                 {podeEditar && (
                   <Botao
+                    className="mr-2 mb-2"
                     peso="secundario"
                     disabled={ocupado || enderecos.length >= 20}
                     onClick={() => abrir(null)}
@@ -456,6 +459,6 @@ export function EnderecosCliente({
           </form>
         )}
       </div>
-    </PainelLateral>
+    </ModalPdv>
   );
 }

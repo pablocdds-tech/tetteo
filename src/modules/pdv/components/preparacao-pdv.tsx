@@ -1,6 +1,9 @@
 "use client";
 
-import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
+import {
+  LinkIntegrado as Link,
+  useAmbienteProprio,
+} from "@/core/shell/link-integrado";
 import { useState } from "react";
 
 import { Botao, estiloDeBotao } from "@/design-system/botao";
@@ -8,6 +11,7 @@ import { Campo } from "@/design-system/campo";
 import { Icone } from "@/design-system/icones";
 
 import type { PreparacaoPdv, ProdutoPreparacao } from "../preparacao-types";
+import comum from "./secoes-pdv.module.css";
 
 type Filtro = "TODOS" | "BLOQUEIO" | "ESTOQUE" | "AVISO" | "APTOS";
 type Permissao = { nome: string; concedida: boolean };
@@ -30,6 +34,7 @@ export function PreparacaoPdv({
   dados: PreparacaoPdv;
   permissoes: Permissao[];
 }) {
+  const proprio = useAmbienteProprio();
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("TODOS");
   const termo = busca.trim().toLocaleLowerCase("pt-BR");
@@ -47,10 +52,10 @@ export function PreparacaoPdv({
   });
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className={comum.pagina}>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className={proprio ? "sr-only" : comum.titulo}>
             Preparação do PDV
           </h1>
           <p className="text-ink-3 mt-1 max-w-2xl text-sm">
@@ -64,7 +69,7 @@ export function PreparacaoPdv({
       </header>
 
       <section
-        className="border-line bg-surface rounded-xl border"
+        className="border-line bg-surface rounded border"
         aria-labelledby="preparacao-verificacoes"
       >
         <h2
@@ -116,7 +121,7 @@ export function PreparacaoPdv({
       </section>
 
       <section
-        className="border-line bg-surface rounded-xl border p-5"
+        className="border-line bg-surface rounded border p-5"
         aria-labelledby="preparacao-local"
       >
         <div className="flex flex-wrap items-start justify-between gap-5">
@@ -184,7 +189,7 @@ export function PreparacaoPdv({
             base.
           </p>
         </div>
-        <dl className="border-line bg-surface grid grid-cols-2 gap-x-6 gap-y-4 rounded-xl border px-5 py-4 sm:grid-cols-4">
+        <dl className="border-line bg-surface grid grid-cols-2 gap-x-6 gap-y-4 rounded border px-5 py-4 sm:grid-cols-4">
           <Contador
             rotulo="Produtos verificados"
             valor={dados.contadores.produtos}
@@ -203,7 +208,7 @@ export function PreparacaoPdv({
           />
         </dl>
         {dados.produtos.length === 0 ? (
-          <div className="border-line bg-surface rounded-xl border px-5 py-10 text-center">
+          <div className="border-line bg-surface rounded border px-5 py-10 text-center">
             <h3 className="font-semibold">Comece pelo cadastro dos produtos</h3>
             <p className="text-ink-3 mx-auto mt-2 max-w-lg text-sm">
               Crie uma ficha técnica do tipo prato com nome, preço de venda e
@@ -252,7 +257,7 @@ export function PreparacaoPdv({
                 ? "produto neste filtro"
                 : "produtos neste filtro"}
             </p>
-            <div className="border-line bg-surface divide-line divide-y overflow-hidden rounded-xl border">
+            <div className="border-line bg-surface divide-line divide-y overflow-hidden rounded border">
               {produtos.length > 0 ? (
                 produtos.map((produto) => (
                   <ProdutoVerificado
@@ -273,7 +278,7 @@ export function PreparacaoPdv({
       </section>
 
       <section
-        className="border-line bg-surface rounded-xl border p-5"
+        className="border-line bg-surface rounded border p-5"
         aria-labelledby="preparacao-permissoes"
       >
         <h2 id="preparacao-permissoes" className="font-semibold">
