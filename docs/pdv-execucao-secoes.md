@@ -16,19 +16,19 @@ testadas e concluídas; não misturar alterações de outros chats.
 
 ## Sequência e critérios de conclusão
 
-| Seção                           | Entrega esperada                                                                                                     | Estado                               |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Gestão de pedidos e novo pedido | Gestão unificada, listas/kanban, resumo e atendimento no padrão visual de referência                                 | Publicada em `83fe978`               |
-| Caixa                           | Tabela, filtros, resumo, diálogos, histórico e impressão                                                             | Publicada em `6e0b261`               |
-| Histórico de pedidos            | Barra de filtros compacta, tabela e detalhe coerentes com a referência, preservando consultas/exportação/recebimento | Publicada em `ed2b494`               |
-| Catálogo                        | Navegação por categorias, produtos e complementos; configuração clara e conectada ao cadastro existente              | Publicada em `ed2b494`               |
-| Áreas de entrega                | Listagem, busca, situação e cadastro/edição no mesmo padrão visual                                                   | Publicada em `ed2b494`               |
-| Entregadores                    | Consulta, cadastro e edição no contexto do Delivery                                                                  | Publicada em `ed2b494`               |
-| Clientes                        | Seção própria do PDV usando CRM e endereços existentes, sem duplicar cadastros                                       | Implementada; validação em andamento |
-| Configurações                   | Central operacional clara e preparação da operação com controles realmente aplicados                                 | Implementada; validação em andamento |
-| Cozinha                         | Tela operacional de preparo usando pedidos e estados reais, com foco nos itens e próximas ações                      | Implementada; validação em andamento |
-| Desempenho                      | Visão de vendas e operação com período e números reais da unidade                                                    | Implementada; validação em andamento |
-| Revisão final                   | Navegação entre seções, responsividade, permissões, testes, build e deploy confirmados                               | Pendente                             |
+| Seção                           | Entrega esperada                                                                                                     | Estado                 |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| Gestão de pedidos e novo pedido | Gestão unificada, listas/kanban, resumo e atendimento no padrão visual de referência                                 | Publicada em `83fe978` |
+| Caixa                           | Tabela, filtros, resumo, diálogos, histórico e impressão                                                             | Publicada em `6e0b261` |
+| Histórico de pedidos            | Barra de filtros compacta, tabela e detalhe coerentes com a referência, preservando consultas/exportação/recebimento | Publicada em `ed2b494` |
+| Catálogo                        | Navegação por categorias, produtos e complementos; configuração clara e conectada ao cadastro existente              | Publicada em `ed2b494` |
+| Áreas de entrega                | Listagem, busca, situação e cadastro/edição no mesmo padrão visual                                                   | Publicada em `ed2b494` |
+| Entregadores                    | Consulta, cadastro e edição no contexto do Delivery                                                                  | Publicada em `ed2b494` |
+| Clientes                        | Seção própria do PDV usando CRM e endereços existentes, sem duplicar cadastros                                       | Publicada em `ee0c71a` |
+| Configurações                   | Central operacional clara e preparação da operação com controles realmente aplicados                                 | Publicada em `ee0c71a` |
+| Cozinha                         | Tela operacional de preparo usando pedidos e estados reais, com foco nos itens e próximas ações                      | Publicada em `ee0c71a` |
+| Desempenho                      | Visão de vendas e operação com período e números reais da unidade                                                    | Publicada em `ee0c71a` |
+| Revisão final                   | Navegação entre seções, responsividade, permissões, testes, build e deploy confirmados                               | Concluída              |
 
 Esta sequência cobre a operação do PDV. Marketing, fidelidade, fiado, módulos
 financeiros adicionais e integrações comerciais não são presumidos como parte
@@ -50,11 +50,10 @@ testes e não alterar pedidos, caixa ou configurações reais da referência.
 
 ## Continuidade
 
-Continuação automática vinculada ao mesmo chat: `concluir-se-es-do-pdv`, a cada
-30 minutos, enquanto houver seções pendentes. Deve ser desativada ao concluir o
-plano. Se uma sessão for interrompida, retomar por este documento e pelo diff
-local, sem descartar trabalho. Não declarar conclusão enquanto houver item
-necessário pendente.
+Continuação automática `concluir-se-es-do-pdv` desativada após a conclusão em
+28/10/2026. Foi usada uma programação a cada 30 minutos enquanto havia seções
+pendentes. Este documento preserva a sequência, as evidências e as limitações
+para os próximos ajustes, sem reabrir automaticamente o trabalho concluído.
 
 ## Entregas e validações
 
@@ -130,4 +129,21 @@ necessário pendente.
 - Verificação final: `npm run check` aprovado com 678 testes, sem erro de lint
   (cinco avisos preexistentes do CRM); `npm run build` aprovado, com três avisos
   preexistentes de rastreamento de arquivos dinâmicos. As quatro novas rotas
-  constam do build. Publicação do lote 2 em andamento.
+  constam do build. Publicação do lote 2 confirmada.
+
+## Encerramento
+
+- Lote 2 publicado no commit `ee0c71a`, push para `main` concluído sem força.
+  Dokploy confirmou a troca em 28/10/2026 às 05:35:47 UTC (02:35:47 em São Paulo).
+  As quatro novas rotas foram verificadas na imagem em execução. CSS público
+  `07piibezc7f97.css` e quatro fontes Muli responderam HTTP 200 com SHA-256 igual
+  aos arquivos do contêiner.
+- Redirecionamentos entre Tetteo/PDV, login e origens dos provedores conferidos.
+  Testes funcionais usaram exclusivamente banco local e dados fictícios; a
+  inspeção de produção não criou clientes, pedidos, caixa ou movimentações.
+- Todas as seções operacionais desta sequência foram implementadas, revisadas e
+  publicadas. A automação de continuidade está `PAUSED`; nenhum trabalho extra
+  permanece agendado por esta tarefa.
+- Fiscal/offline e as diferenças avançadas listadas acima continuam adiados.
+  O resultado reproduz a organização visual e os fluxos disponíveis na base,
+  sem afirmar equivalência integral de funcionalidades com o Cardápio Web.
