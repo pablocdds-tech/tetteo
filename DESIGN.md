@@ -6,6 +6,8 @@ Por solicitação explícita do usuário, o PDV segue de perto a disposição vi
 
 O roxo fica escopado a `pdv-aparencia.module.css`, sem trocar o acento global dos demais módulos. Pares claros: `#8b2fd0`/`#ffffff` (6,15:1) e sobre `#f2e7fb` (5,15:1). Pares escuros: `#d2a8f4`/`#281336` (8,61:1) e sobre `#362344` (7,19:1). O layout conserva foco visível, navegação por teclado, movimento reduzido e alternativa por botões ao arraste do kanban. No celular, o detalhe abre em diálogo nativo com o fundo inerte.
 
+A revisão pela central de ajuda prioriza continuidade do atendimento: edição no próprio carrinho, corpo do detalhe rolável com total e ações fixos e texto de estado com pelo menos 12 px, sem truncar sua situação. O layout é uma preferência por operador/unidade no navegador; filtros não a apagam. Etapas em andamento permanecem visíveis. O mapa funcional e as lacunas estão em [Usabilidade do PDV](docs/pdv-usabilidade-cardapioweb.md).
+
 Este documento é a fonte da verdade visual do sistema. Ele registra o que foi
 decidido, **e principalmente por quê** — para que ninguém, daqui a seis meses,
 reabra uma decisão por engano ou desfaça uma trava de acessibilidade achando que

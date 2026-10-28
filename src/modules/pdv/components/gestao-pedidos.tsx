@@ -27,6 +27,8 @@ import {
   PagamentosOrigemPedido,
   EntregaOrigemPedido,
 } from "./origem-pedido";
+import { useLayoutPedidos } from "../hooks/use-layout-pedidos";
+import { ESTADOS_OCULTAVEIS } from "../schemas/layout-pedidos";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -142,6 +144,7 @@ function tempo(p: PedidoPdv, agora: string) {
 export function GestaoPedidos({
   inicial,
   unidade,
+  preferenciasId,
   podeVender,
   podeOperar,
   podeCancelar,
@@ -152,6 +155,7 @@ export function GestaoPedidos({
 }: {
   inicial: QuadroPedidos;
   unidade: string;
+  preferenciasId: string;
   podeVender: boolean;
   podeOperar: boolean;
   podeCancelar: boolean;
@@ -163,20 +167,10 @@ export function GestaoPedidos({
   const router = useRouter();
   const [quadro, setQuadro] = useState(inicial);
   const [busca, setBusca] = useState("");
-  const [modoLayout, setModoLayout] = useState<"LISTAS" | "KANBAN">("LISTAS");
-  const [distribuicao, setDistribuicao] = useState<
-    Record<StatusPedido, "1" | "2" | "OCULTO">
-  >({
-    AGENDADO: "1",
-    COZINHA: "1",
-    AGUARDANDO_COLETA: "1",
-    SAIU_ENTREGA: "2",
-    ENTREGUE: "2",
-    CANCELADO: "2",
-  });
-  const [visiveis, setVisiveis] = useState<StatusPedido[]>(
-    COLUNAS.map((c) => c.status),
-  );
+  const [layout, setLayout] = useLayoutPedidos(preferenciasId);
+  const { modo: modoLayout, distribuicao, visiveis } = layout;
+  const setModoLayout = (modo: "LISTAS" | "KANBAN") =>
+    setLayout((l) => ({ ...l, modo }));
   const [selecionadoId, setSelecionadoId] = useState<string | null>(
     () => inicial.pedidos.find((p) => p.vendaId === novaVenda)?.id ?? null,
   );
@@ -518,15 +512,20 @@ export function GestaoPedidos({
                       aria-label={`Posição de ${c.nome}`}
                       value={distribuicao[c.status]}
                       onChange={(e) =>
-                        setDistribuicao((d) => ({
-                          ...d,
-                          [c.status]: e.target.value as "1" | "2" | "OCULTO",
+                        setLayout((l) => ({
+                          ...l,
+                          distribuicao: {
+                            ...l.distribuicao,
+                            [c.status]: e.target.value as "1" | "2" | "OCULTO",
+                          },
                         }))
                       }
                     >
                       <option value="1">Lista 1</option>
                       <option value="2">Lista 2</option>
-                      <option value="OCULTO">Ocultar</option>
+                      {(ESTADOS_OCULTAVEIS as readonly string[]).includes(
+                        c.status,
+                      ) && <option value="OCULTO">Ocultar</option>}
                     </select>
                   </label>
                 ) : (
@@ -535,14 +534,17 @@ export function GestaoPedidos({
                       type="checkbox"
                       checked={visiveis.includes(c.status)}
                       disabled={
-                        visiveis.length === 1 && visiveis.includes(c.status)
+                        !(ESTADOS_OCULTAVEIS as readonly string[]).includes(
+                          c.status,
+                        )
                       }
                       onChange={(e) =>
-                        setVisiveis((v) =>
-                          e.target.checked
-                            ? [...v, c.status]
-                            : v.filter((s) => s !== c.status),
-                        )
+                        setLayout((l) => ({
+                          ...l,
+                          visiveis: e.target.checked
+                            ? [...l.visiveis, c.status]
+                            : l.visiveis.filter((s) => s !== c.status),
+                        }))
                       }
                     />
                     {c.nome}
@@ -990,221 +992,252 @@ function DetalhesPedido({
   const seguinte = proximo(p);
   return (
     <div className={styles.detalheConteudo}>
-      <header className={styles.detalheTopo}>
-        <div>
-          <h2>Pedido {identificacao(p)}</h2>
-          <p>
-            {data(p.criadoEm)} · {modalidade(p)}
-          </p>
-        </div>
-        {aoFechar && (
-          <button
-            type="button"
-            aria-label="Fechar pedido selecionado"
-            className={styles.fechar}
-            onClick={aoFechar}
-          >
-            ×
-          </button>
-        )}
-      </header>
-      <span className={styles.etapa}>{etapaPedido(p)}</span>
-      <EtiquetaOrigemPedido origem={p.origem} />
-      {p.origem && (
-        <p className="text-ink-3 text-xs">
-          {p.origem.situacao} · atualizado pela {p.origem.nome} em{" "}
-          {data(p.origem.atualizadoEm)}. Canal: {p.origem.canal}.
-        </p>
-      )}
-      {!p.origem && p.status === "AGENDADO" && (
-        <GerenciarAgendamento
-          key={p.id}
-          pedido={p}
-          podeVender={podeReceber}
-          podeOperar={podeOperar}
-          bloqueado={pendente}
-          aoOcupar={aoOcupar}
-          aoConfirmar={aoConfirmarAgendamento}
-        />
-      )}
-      {p.agendadoPara && (
-        <p className="border-line rounded-md border p-3 text-sm">
-          Agendado para <strong>{data(p.agendadoPara)}</strong>
-          {!p.preparoIniciadoEm && p.iniciarPreparoEm && (
-            <span className="text-ink-3 mt-1 block">
-              Preparo previsto para {data(p.iniciarPreparoEm)}.
-            </span>
-          )}
-          {p.preparoIniciadoEm && (
-            <span className="text-ink-3 mt-1 block">
-              Preparo iniciado em {data(p.preparoIniciadoEm)}.
-            </span>
-          )}
-        </p>
-      )}
-      {p.vendaId && <BotoesImpressao vendaId={p.vendaId} />}
-      {p.venda.modalidade === "ENTREGA" && (
-        <section className={styles.secao}>
-          <h3>Entrega</h3>
-          {p.origem ? (
-            <EntregaOrigemPedido origem={p.origem} podeEntrega={podeEntrega} />
-          ) : p.entrega ? (
-            <>
-              <p>
-                <strong>{p.entrega.destinatario}</strong>
-              </p>
-              {p.entrega.telefone && <p>Telefone: {p.entrega.telefone}</p>}
-              <p>
-                {p.entrega.endereco.logradouro}, {p.entrega.endereco.numero}
-              </p>
-              {p.entrega.endereco.complemento && (
-                <p>{p.entrega.endereco.complemento}</p>
-              )}
-              <p>
-                {p.entrega.endereco.bairro} · {p.entrega.endereco.cidade}/
-                {p.entrega.endereco.uf}
-              </p>
-              {p.entrega.endereco.cep && <p>CEP: {p.entrega.endereco.cep}</p>}
-              {p.entrega.endereco.referencia && (
-                <p>Referência: {p.entrega.endereco.referencia}</p>
-              )}
-              <p>
-                {p.entrega.areaNome ?? "Frete manual"} ·{" "}
-                {moeda(p.venda.freteCentavos ?? 0)}
-              </p>
-              <p>
-                Previsão: {data(p.entrega.previstoEm)} ·{" "}
-                {p.entrega.prazoMinutos} min
-              </p>
-            </>
-          ) : (
+      <div
+        className={styles.corpoDetalhe}
+        tabIndex={0}
+        role="region"
+        aria-label={`Resumo do pedido ${identificacao(p)}`}
+      >
+        <header className={styles.detalheTopo}>
+          <div>
+            <h2>Pedido {identificacao(p)}</h2>
             <p>
-              {!podeEntrega
-                ? "Seu perfil precisa de permissão de entrega para consultar o endereço."
-                : p.temEnderecoEntrega
-                  ? "Dados da entrega indisponíveis. Consulte o responsável pela operação."
-                  : "Pedido anterior ao cadastro de endereços. Confira a entrega com o responsável."}
+              {data(p.criadoEm)} · {modalidade(p)}
+            </p>
+          </div>
+          {aoFechar && (
+            <button
+              type="button"
+              aria-label="Fechar pedido selecionado"
+              className={styles.fechar}
+              onClick={aoFechar}
+            >
+              ×
+            </button>
+          )}
+        </header>
+        <span className={styles.etapa}>{etapaPedido(p)}</span>
+        <EtiquetaOrigemPedido origem={p.origem} />
+        {p.origem && (
+          <p className="text-ink-3 text-xs">
+            {p.origem.situacao} · atualizado pela {p.origem.nome} em{" "}
+            {data(p.origem.atualizadoEm)}. Canal: {p.origem.canal}.
+          </p>
+        )}
+        {p.agendadoPara && (
+          <p className="border-line rounded-md border p-3 text-sm">
+            Agendado para <strong>{data(p.agendadoPara)}</strong>
+            {!p.preparoIniciadoEm && p.iniciarPreparoEm && (
+              <span className="text-ink-3 mt-1 block">
+                Preparo previsto para {data(p.iniciarPreparoEm)}.
+              </span>
+            )}
+            {p.preparoIniciadoEm && (
+              <span className="text-ink-3 mt-1 block">
+                Preparo iniciado em {data(p.preparoIniciadoEm)}.
+              </span>
+            )}
+          </p>
+        )}
+        {p.vendaId && <BotoesImpressao vendaId={p.vendaId} />}
+        {p.venda.modalidade === "ENTREGA" && (
+          <section className={styles.secao}>
+            <h3>Entrega</h3>
+            {p.origem ? (
+              <EntregaOrigemPedido
+                origem={p.origem}
+                podeEntrega={podeEntrega}
+              />
+            ) : p.entrega ? (
+              <>
+                <p>
+                  <strong>{p.entrega.destinatario}</strong>
+                </p>
+                {p.entrega.telefone && <p>Telefone: {p.entrega.telefone}</p>}
+                <p>
+                  {p.entrega.endereco.logradouro}, {p.entrega.endereco.numero}
+                </p>
+                {p.entrega.endereco.complemento && (
+                  <p>{p.entrega.endereco.complemento}</p>
+                )}
+                <p>
+                  {p.entrega.endereco.bairro} · {p.entrega.endereco.cidade}/
+                  {p.entrega.endereco.uf}
+                </p>
+                {p.entrega.endereco.cep && <p>CEP: {p.entrega.endereco.cep}</p>}
+                {p.entrega.endereco.referencia && (
+                  <p>Referência: {p.entrega.endereco.referencia}</p>
+                )}
+                <p>
+                  {p.entrega.areaNome ?? "Frete manual"} ·{" "}
+                  {moeda(p.venda.freteCentavos ?? 0)}
+                </p>
+                <p>
+                  Previsão: {data(p.entrega.previstoEm)} ·{" "}
+                  {p.entrega.prazoMinutos} min
+                </p>
+              </>
+            ) : (
+              <p>
+                {!podeEntrega
+                  ? "Seu perfil precisa de permissão de entrega para consultar o endereço."
+                  : p.temEnderecoEntrega
+                    ? "Dados da entrega indisponíveis. Consulte o responsável pela operação."
+                    : "Pedido anterior ao cadastro de endereços. Confira a entrega com o responsável."}
+              </p>
+            )}
+            {!p.origem &&
+            podeEntrega &&
+            (p.status === "COZINHA" || p.status === "AGUARDANDO_COLETA") ? (
+              <label className="text-ink-2 mt-3 block text-sm font-semibold">
+                Entregador
+                <select
+                  className="border-line-2 bg-surface text-ink mt-1 h-10 w-full rounded-md border px-2 font-normal"
+                  value={p.entregadorId ?? ""}
+                  disabled={pendente}
+                  onChange={(e) => void aoAtribuir(p, e.target.value || null)}
+                >
+                  <option value="">Sem entregador</option>
+                  {p.entregadorId &&
+                    !entregadores.some((e) => e.id === p.entregadorId) && (
+                      <option value={p.entregadorId}>
+                        {p.entregadorNome} (indisponível)
+                      </option>
+                    )}
+                  {entregadores.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nome}
+                    </option>
+                  ))}
+                </select>
+                {!entregadores.length && (
+                  <Link
+                    href="/pdv/entregas/entregadores"
+                    className="text-accent mt-2 inline-block text-xs underline"
+                  >
+                    Cadastrar entregador
+                  </Link>
+                )}
+              </label>
+            ) : !p.origem ? (
+              <p className="mt-3">
+                Entregador: {p.entregadorNome ?? "Não atribuído"}
+              </p>
+            ) : null}
+          </section>
+        )}
+        <section className={styles.secao}>
+          <h3>Cliente</h3>
+          <p>{p.venda.cliente ?? "Não identificado"}</p>
+        </section>
+        <section className={styles.secao}>
+          <h3>Itens do pedido</h3>
+          {p.venda.itens.map((item, i) => (
+            <div key={i} className={styles.item}>
+              <div className={styles.linha}>
+                <strong>
+                  {item.quantidade}× {item.nome}
+                </strong>
+                <strong>{moeda(item.totalCentavos)}</strong>
+              </div>
+              {item.complementos.map((o, n) => (
+                <small key={n}>
+                  {o.grupo}: {o.nome}
+                </small>
+              ))}
+              {item.observacao && <small>Observação: {item.observacao}</small>}
+            </div>
+          ))}
+        </section>
+        {p.venda.observacao && (
+          <section className={styles.secao}>
+            <h3>Observação do pedido</h3>
+            <p>{p.venda.observacao}</p>
+          </section>
+        )}
+        <section className={styles.secao}>
+          <h3>Pagamento</h3>
+          <EtiquetaPagamento venda={p.venda} />
+          {p.origem && <PagamentosOrigemPedido origem={p.origem} />}
+          {p.venda.status === "PENDENTE" && (
+            <p className="mt-2">
+              Valor a receber: {moeda(p.venda.totalCentavos)}.
             </p>
           )}
-          {!p.origem &&
-          podeEntrega &&
-          (p.status === "COZINHA" || p.status === "AGUARDANDO_COLETA") ? (
-            <label className="text-ink-2 mt-3 block text-sm font-semibold">
-              Entregador
-              <select
-                className="border-line-2 bg-surface text-ink mt-1 h-10 w-full rounded-md border px-2 font-normal"
-                value={p.entregadorId ?? ""}
-                disabled={pendente}
-                onChange={(e) => void aoAtribuir(p, e.target.value || null)}
-              >
-                <option value="">Sem entregador</option>
-                {p.entregadorId &&
-                  !entregadores.some((e) => e.id === p.entregadorId) && (
-                    <option value={p.entregadorId}>
-                      {p.entregadorNome} (indisponível)
-                    </option>
-                  )}
-                {entregadores.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.nome}
-                  </option>
-                ))}
-              </select>
-              {!entregadores.length && (
-                <Link
-                  href="/pdv/entregas/entregadores"
-                  className="text-accent mt-2 inline-block text-xs underline"
-                >
-                  Cadastrar entregador
-                </Link>
-              )}
-            </label>
-          ) : !p.origem ? (
-            <p className="mt-3">
-              Entregador: {p.entregadorNome ?? "Não atribuído"}
-            </p>
-          ) : null}
-        </section>
-      )}
-      <section className={styles.secao}>
-        <h3>Cliente</h3>
-        <p>{p.venda.cliente ?? "Não identificado"}</p>
-      </section>
-      <section className={styles.secao}>
-        <h3>Itens do pedido</h3>
-        {p.venda.itens.map((item, i) => (
-          <div key={i} className={styles.item}>
-            <div className={styles.linha}>
-              <strong>
-                {item.quantidade}× {item.nome}
-              </strong>
-              <strong>{moeda(item.totalCentavos)}</strong>
-            </div>
-            {item.complementos.map((o, n) => (
-              <small key={n}>
-                {o.grupo}: {o.nome}
-              </small>
-            ))}
-            {item.observacao && <small>Observação: {item.observacao}</small>}
-          </div>
-        ))}
-      </section>
-      {p.venda.observacao && (
-        <section className={styles.secao}>
-          <h3>Observação do pedido</h3>
-          <p>{p.venda.observacao}</p>
-        </section>
-      )}
-      <section className={styles.secao}>
-        <h3>Pagamento</h3>
-        <EtiquetaPagamento venda={p.venda} />
-        {p.origem && <PagamentosOrigemPedido origem={p.origem} />}
-        {p.venda.status === "PENDENTE" && (
-          <p className="mt-2">
-            Valor a receber: {moeda(p.venda.totalCentavos)}.
-          </p>
-        )}
-        {p.venda.pagamentos.map((pag, i) => (
-          <p className={styles.linha} key={i}>
-            <span>
-              {
+          {p.venda.pagamentos.map((pag, i) => (
+            <p className={styles.linha} key={i}>
+              <span>
                 {
-                  DINHEIRO: "Dinheiro",
-                  PIX: "Pix",
-                  CREDITO: "Crédito",
-                  DEBITO: "Débito",
-                }[pag.forma]
-              }
-            </span>
-            <span>{moeda(pag.valorCentavos)}</span>
-          </p>
-        ))}
-        {p.venda.trocoCentavos > 0 && (
-          <p className={styles.linha}>
-            <span>Troco</span>
-            <span>{moeda(p.venda.trocoCentavos)}</span>
+                  {
+                    DINHEIRO: "Dinheiro",
+                    PIX: "Pix",
+                    CREDITO: "Crédito",
+                    DEBITO: "Débito",
+                  }[pag.forma]
+                }
+              </span>
+              <span>{moeda(pag.valorCentavos)}</span>
+            </p>
+          ))}
+          {p.venda.trocoCentavos > 0 && (
+            <p className={styles.linha}>
+              <span>Troco</span>
+              <span>{moeda(p.venda.trocoCentavos)}</span>
+            </p>
+          )}
+          {!p.origem && (
+            <p className="mt-2 text-xs">Conferência manual do operador.</p>
+          )}
+          {p.venda.recebidoEm && (
+            <p className="mt-2 text-xs">
+              Recebido em {data(p.venda.recebidoEm)}
+              {p.venda.recebidoPor ? ` por ${p.venda.recebidoPor}` : ""}.
+            </p>
+          )}
+        </section>
+        {(p.venda.freteCentavos ?? 0) > 0 && (
+          <p className="text-ink-3 text-xs">
+            Inclui frete de {moeda(p.venda.freteCentavos ?? 0)}.
           </p>
         )}
-        {!p.origem && (
-          <p className="mt-2 text-xs">Conferência manual do operador.</p>
-        )}
-        {p.venda.recebidoEm && (
-          <p className="mt-2 text-xs">
-            Recebido em {data(p.venda.recebidoEm)}
-            {p.venda.recebidoPor ? ` por ${p.venda.recebidoPor}` : ""}.
+        {p.venda.motivoCancelamento && (
+          <p className="text-bad mt-3 text-sm">
+            Motivo: {p.venda.motivoCancelamento}
           </p>
         )}
-      </section>
-      <div className={styles.total}>
-        <span>Total</span>
-        <span>{moeda(p.venda.totalCentavos)}</span>
+        <details className={styles.historico}>
+          <summary>Histórico do pedido</summary>
+          <ol>
+            {p.historico.map((e) => (
+              <li key={e.id}>
+                <strong>
+                  {e.para === "AGENDADO" ? "Agendado" : nomes[e.para]}
+                </strong>{" "}
+                · {e.operador}
+                <time dateTime={e.criadoEm}>{data(e.criadoEm)}</time>
+                {e.observacao && <p>{e.observacao}</p>}
+              </li>
+            ))}
+          </ol>
+        </details>
       </div>
-      {(p.venda.freteCentavos ?? 0) > 0 && (
-        <p className="text-ink-3 text-xs">
-          Inclui frete de {moeda(p.venda.freteCentavos ?? 0)}.
-        </p>
-      )}
       <div className={styles.acoes}>
+        <div className={styles.total}>
+          <span>Total</span>
+          <span>{moeda(p.venda.totalCentavos)}</span>
+        </div>
+        {!p.origem && p.status === "AGENDADO" && (
+          <GerenciarAgendamento
+            key={p.id}
+            pedido={p}
+            podeVender={podeReceber}
+            podeOperar={podeOperar}
+            bloqueado={pendente}
+            aoOcupar={aoOcupar}
+            aoConfirmar={aoConfirmarAgendamento}
+          />
+        )}
+
         {p.vendaId && p.venda.status === "PENDENTE" && podeReceber && (
           <Botao
             peso="secundario"
@@ -1230,50 +1263,33 @@ function DetalhesPedido({
           </p>
         )}
         {!p.origem && p.status !== "CANCELADO" && podeCancelar && (
-          <Botao
-            peso="fantasma"
-            disabled={pendente}
-            onClick={() => void aoMover(p, "CANCELADO")}
-          >
-            Cancelar pedido
-          </Botao>
+          <details className={styles.maisAcoes}>
+            <summary>Mais ações</summary>
+            <Botao
+              peso="fantasma"
+              disabled={pendente}
+              onClick={() => void aoMover(p, "CANCELADO")}
+            >
+              Cancelar pedido
+            </Botao>
+          </details>
+        )}
+        {p.origem?.codigo === "CARDAPIO_WEB" && (
+          <div className="space-y-2 text-sm">
+            <p className="text-ink-3">
+              A situação e o pagamento são atualizados pela Cardápio Web.
+            </p>
+            <a
+              href="https://portal.cardapioweb.com/latest-orders"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={estiloDeBotao("secundario", "pequeno")}
+            >
+              Gerenciar na Cardápio Web
+            </a>
+          </div>
         )}
       </div>
-      {p.origem?.codigo === "CARDAPIO_WEB" && (
-        <div className="space-y-2 text-sm">
-          <p className="text-ink-3">
-            A situação e o pagamento são atualizados pela Cardápio Web.
-          </p>
-          <a
-            href="https://portal.cardapioweb.com/latest-orders"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={estiloDeBotao("secundario", "pequeno")}
-          >
-            Gerenciar na Cardápio Web
-          </a>
-        </div>
-      )}
-      {p.venda.motivoCancelamento && (
-        <p className="text-bad mt-3 text-sm">
-          Motivo: {p.venda.motivoCancelamento}
-        </p>
-      )}
-      <details className={styles.historico}>
-        <summary>Histórico do pedido</summary>
-        <ol>
-          {p.historico.map((e) => (
-            <li key={e.id}>
-              <strong>
-                {e.para === "AGENDADO" ? "Agendado" : nomes[e.para]}
-              </strong>{" "}
-              · {e.operador}
-              <time dateTime={e.criadoEm}>{data(e.criadoEm)}</time>
-              {e.observacao && <p>{e.observacao}</p>}
-            </li>
-          ))}
-        </ol>
-      </details>
     </div>
   );
 }

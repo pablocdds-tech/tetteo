@@ -53,6 +53,7 @@ export default async function PaginaGestaoPedidos({
       key={`${contexto.unidadeAtiva.id}:${quadro.dia}:${quadro.visao}`}
       inicial={quadro}
       unidade={contexto.unidadeAtiva.nome}
+      preferenciasId={`${contexto.usuario.id}:${contexto.unidadeAtiva.id}`}
       podeVender={pode(contexto, "pdv.vender")}
       podeOperar={pode(contexto, "pdv.operar")}
       podeCancelar={pode(contexto, "pdv.cancelar")}

@@ -370,6 +370,19 @@
   background: var(--surface-2);
 }
 
+.editarItem {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 4px 8px;
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.editarItem:disabled {
+  opacity: 0.45;
+}
+
 .rodape {
   flex: none;
   border-top: 1px solid var(--line);

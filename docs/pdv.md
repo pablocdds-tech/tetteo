@@ -30,6 +30,8 @@ Após a mudança de direção solicitada pelo usuário, o visual passou a acompa
 
 ## Gestão de pedidos
 
+O resumo lateral mantém total e próximas ações em um rodapé fixo; os dados e o histórico rolam acima dele. Cancelamento fica em **Mais ações**. A preferência de listas/kanban e distribuição é preservada no navegador por operador/unidade; etapas em andamento não podem ser ocultadas. Veja a [revisão de usabilidade pela central de ajuda](pdv-usabilidade-cardapioweb.md).
+
 A Gestão reúne todos os pedidos na mesma tela: **Agendado**, **Na cozinha**, **Aguardando coleta**, **Saiu para entrega**, **Entregue** e **Cancelado**. O padrão traz duas listas compactas com estados misturados e detalhe à direita. **Ajustar layout** distribui cada estado entre as listas, permite ocultá-lo ou trocar para kanban. Os filtros **Todos**, **Em andamento**, **Agendados**, **Retiradas**, **Entregas** e **Balcão** consultam a mesma gestão, antes dos limites de resultados, com contagens completas por período.
 
 Entregas avançam cozinha → coleta do motoboy → saiu para entrega → entregue. Retirada/balcão avançam cozinha → coleta → entregue, sem marcar uma saída de entrega inexistente. O cartão diferencia **Esperando retirada**, **Aguardando motoboy** e **Pronto no balcão**. Há botões no detalhe e arraste para a próxima etapa no kanban; cancelamento por arraste também pede confirmação e motivo. Agendados aguardando preparo não podem ser arrastados.

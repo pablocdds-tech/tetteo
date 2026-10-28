@@ -105,6 +105,7 @@ export function FrenteDeCaixa({
   const [categoria, setCategoria] = useState<string | null>(null);
   const [itens, setItens] = useState<Linha[]>([]);
   const [produto, setProduto] = useState<ProdutoPdv | null>(null);
+  const [itemEmEdicao, setItemEmEdicao] = useState<Linha | null>(null);
   const [cliente, setCliente] = useState("");
   const [clienteSelecionado, setClienteSelecionado] =
     useState<ClienteAtendimentoPdv | null>(null);
@@ -438,6 +439,7 @@ export function FrenteDeCaixa({
 
   function abrirProduto(p: ProdutoPdv) {
     if (incerta || ocupado) return;
+    setItemEmEdicao(null);
     if (p.grupos.length) {
       setProduto(p);
       return;
@@ -450,7 +452,14 @@ export function FrenteDeCaixa({
     nota: string,
     quantidade: number,
   ) {
+    if (incerta || ocupado) return;
     setItens((anteriores) => {
+      if (itemEmEdicao)
+        return anteriores.map((i) =>
+          i.chave === itemEmEdicao.chave
+            ? { ...i, opcoes, observacao: nota, quantidade }
+            : i,
+        );
       const igual = anteriores.find(
         (i) =>
           i.produtoId === p.id &&
@@ -477,7 +486,14 @@ export function FrenteDeCaixa({
       ];
     });
     setProduto(null);
-    setAviso("");
+    setItemEmEdicao(null);
+    setPagamentos([]);
+    setValor("");
+    setAviso(
+      itemEmEdicao
+        ? "Item atualizado no carrinho."
+        : `${p.nome} adicionado ao carrinho.`,
+    );
     setErro("");
   }
   function registrarPagamento() {
@@ -985,6 +1001,23 @@ export function FrenteDeCaixa({
                 <article className={styles.item} key={item.chave}>
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="text-sm font-semibold">{nome}</h4>
+                    {p && (
+                      <button
+                        type="button"
+                        aria-label={`Editar ${nome}`}
+                        className={styles.editarItem}
+                        disabled={incerta || ocupado}
+                        onClick={() => {
+                          setItemEmEdicao({
+                            ...item,
+                            opcoes: [...item.opcoes],
+                          });
+                          setProduto(p);
+                        }}
+                      >
+                        Editar
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-label={`Remover ${nome}`}
@@ -1134,8 +1167,13 @@ export function FrenteDeCaixa({
       )}
       {produto && (
         <PersonalizarProduto
+          key={itemEmEdicao?.chave ?? produto.id}
           produto={produto}
-          aoFechar={() => setProduto(null)}
+          inicial={itemEmEdicao ?? undefined}
+          aoFechar={() => {
+            setProduto(null);
+            setItemEmEdicao(null);
+          }}
           aoAdicionar={adicionar}
         />
       )}
@@ -1269,7 +1307,7 @@ export function FrenteDeCaixa({
           </fieldset>
           <section>
             <h3 className="mb-2 text-sm font-semibold">
-              Pagamentos registrados
+              Formas adicionadas ao pedido
             </h3>
             {!pagamentos.length && (
               <p className="text-ink-3 text-sm">
@@ -1387,10 +1425,12 @@ export function FrenteDeCaixa({
 
 function PersonalizarProduto({
   produto,
+  inicial,
   aoFechar,
   aoAdicionar,
 }: {
   produto: ProdutoPdv;
+  inicial?: Linha;
   aoFechar: () => void;
   aoAdicionar: (
     produto: ProdutoPdv,
@@ -1399,9 +1439,11 @@ function PersonalizarProduto({
     quantidade: number,
   ) => void;
 }) {
-  const [opcoes, setOpcoes] = useState<string[]>([]);
-  const [observacao, setObservacao] = useState("");
-  const [quantidade, setQuantidade] = useState("1");
+  const [opcoes, setOpcoes] = useState<string[]>(() => inicial?.opcoes ?? []);
+  const [observacao, setObservacao] = useState(inicial?.observacao ?? "");
+  const [quantidade, setQuantidade] = useState(
+    String(inicial?.quantidade ?? 1),
+  );
   let preco = produto.precoCentavos;
   let valida = true;
   try {
@@ -1418,7 +1460,11 @@ function PersonalizarProduto({
       aberto
       aoFechar={aoFechar}
       titulo={produto.nome}
-      apoio="Escolha os complementos antes de adicionar."
+      apoio={
+        inicial
+          ? "Ajuste a quantidade, os complementos ou a observação deste item."
+          : "Escolha os complementos antes de adicionar."
+      }
       rodape={
         <Botao
           className="w-full"
@@ -1427,7 +1473,7 @@ function PersonalizarProduto({
             aoAdicionar(produto, opcoes, observacao, Number(quantidade))
           }
         >
-          Adicionar ·{" "}
+          {inicial ? "Salvar alterações" : "Adicionar"} ·{" "}
           {moeda(preco * (quantidadeValida ? Number(quantidade) : 1))}
         </Botao>
       }
@@ -1504,7 +1550,7 @@ function PersonalizarProduto({
         </label>
         {!valida && (
           <p className="text-warn text-sm">
-            Complete as escolhas obrigatórias para adicionar.
+            Complete as escolhas obrigatórias para continuar.
           </p>
         )}
       </div>
