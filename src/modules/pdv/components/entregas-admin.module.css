@@ -1,6 +1,5 @@
 .pagina {
   width: 100%;
-  max-width: 1180px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -22,7 +21,7 @@
   max-width: 680px;
   margin-top: 5px;
   color: var(--ink-3);
-  font-size: 13px;
+  font-size: 14px;
 }
 .filtros {
   display: flex;
@@ -79,14 +78,14 @@
 }
 .tabela th,
 .tabela td {
-  padding: 13px 16px;
+  padding: 18px 16px;
   border-bottom: 1px solid var(--line);
   vertical-align: middle;
 }
 .tabela thead th {
-  background: var(--surface-2);
+  background: var(--surface-3);
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
 }
 .tabela tbody th {
@@ -135,4 +134,12 @@
 .campo :is(select, textarea):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+.situacaoFiltro select {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  background: var(--surface);
+  font-size: 14px;
 }

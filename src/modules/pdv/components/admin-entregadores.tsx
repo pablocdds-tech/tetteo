@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
-import { PainelLateral } from "@/design-system/painel-lateral";
+import { useAmbienteProprio } from "@/core/shell/link-integrado";
+import { Icone } from "@/design-system/icones";
+import { ModalPdv } from "./modal-pdv";
+import comum from "./secoes-pdv.module.css";
 import { salvarEntregadorAcao } from "../acoes-entregas";
 import type { Entregador } from "../entrega-types";
 import { esquemaEntregador } from "../schemas/entrega";
@@ -16,6 +19,7 @@ export function AdminEntregadores({
   entregadores: Entregador[];
 }) {
   const router = useRouter();
+  const proprio = useAmbienteProprio();
   const [busca, setBusca] = useState("");
   const [situacao, setSituacao] = useState("TODOS");
   const [edicao, setEdicao] = useState<Entregador | "NOVO" | null>(null);
@@ -30,47 +34,49 @@ export function AdminEntregadores({
   );
   return (
     <div className={styles.pagina}>
-      <header className={styles.cabecalho}>
-        <div>
-          <h1>Entregadores</h1>
-          <p>
-            Cadastre quem faz as entregas desta unidade e mantenha os contatos
-            atualizados.
-          </p>
+      {!proprio && <h1 className={comum.titulo}>Entregadores</h1>}
+      {mensagem && (
+        <p role="status" className="bg-ok-sub text-ok rounded p-3 text-sm">
+          {mensagem}
+        </p>
+      )}
+      <div className={comum.barra}>
+        <div className={comum.acoes}>
+          <label className={comum.busca}>
+            <Icone nome="lupa" tamanho={18} />
+            <input
+              aria-label="Buscar entregador ou telefone"
+              placeholder="Buscar entregador ou telefone"
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </label>
+          <label className={styles.situacaoFiltro}>
+            <span className="sr-only">Situação</span>
+            <select
+              aria-label="Situação"
+              value={situacao}
+              onChange={(e) => setSituacao(e.target.value)}
+            >
+              <option value="TODOS">Todos os status</option>
+              <option value="ATIVOS">Ativos</option>
+              <option value="INATIVOS">Inativos</option>
+            </select>
+          </label>
         </div>
-        <Botao
+        <button
+          className={comum.primario}
           onClick={() => {
             setMensagem("");
             setEdicao("NOVO");
           }}
         >
-          Novo entregador
-        </Botao>
-      </header>
-      {mensagem && (
-        <p role="status" className="bg-ok-sub text-ok rounded-md p-3 text-sm">
-          {mensagem}
-        </p>
-      )}
-      <div className={styles.filtros}>
-        <Campo
-          rotulo="Buscar entregador ou telefone"
-          type="search"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
-        <label>
-          Situação
-          <select
-            value={situacao}
-            onChange={(e) => setSituacao(e.target.value)}
-          >
-            <option value="TODOS">Todos</option>
-            <option value="ATIVOS">Ativos</option>
-            <option value="INATIVOS">Inativos</option>
-          </select>
-        </label>
+          <Icone nome="mais" tamanho={16} />
+          Adicionar entregador
+        </button>
       </div>
+
       <div className={styles.tabela}>
         <table>
           <thead>
@@ -206,12 +212,11 @@ function EditorEntregador({
     })();
   }
   return (
-    <PainelLateral
+    <ModalPdv
       aberto
       aoFechar={aoFechar}
-      podeFechar={() => !pendente && !incerta}
+      ocupado={pendente || incerta}
       titulo={entregador ? "Editar entregador" : "Novo entregador"}
-      apoio="Cadastro por unidade. Não envia mensagens nem solicita acesso a outros aplicativos."
       rodape={
         <>
           <Botao
@@ -274,6 +279,6 @@ function EditorEntregador({
           </a>
         )}
       </form>
-    </PainelLateral>
+    </ModalPdv>
   );
 }

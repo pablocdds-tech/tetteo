@@ -5,7 +5,10 @@ import { useRef, useState } from "react";
 
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
-import { PainelLateral } from "@/design-system/painel-lateral";
+import { useAmbienteProprio } from "@/core/shell/link-integrado";
+import { Icone } from "@/design-system/icones";
+import { ModalPdv } from "./modal-pdv";
+import comum from "./secoes-pdv.module.css";
 import { lerNumeroBr } from "@/lib/numero";
 import { salvarAreaEntregaAcao } from "../acoes-entregas";
 import type { AreaEntrega } from "../entrega-types";
@@ -18,6 +21,7 @@ type EntradaArea = Omit<AreaEntrega, "atualizadoEm">;
 
 export function AdminAreasEntrega({ areas }: { areas: AreaEntrega[] }) {
   const router = useRouter();
+  const proprio = useAmbienteProprio();
   const [busca, setBusca] = useState("");
   const [situacao, setSituacao] = useState("TODAS");
   const [edicao, setEdicao] = useState<AreaEntrega | "NOVA" | null>(null);
@@ -33,47 +37,52 @@ export function AdminAreasEntrega({ areas }: { areas: AreaEntrega[] }) {
   );
   return (
     <div className={styles.pagina}>
-      <header className={styles.cabecalho}>
-        <div>
-          <h1>Áreas de entrega</h1>
-          <p>
-            Defina os bairros atendidos, o frete e o prazo de cada região desta
-            unidade.
-          </p>
+      {!proprio && <h1 className={comum.titulo}>Áreas de entrega</h1>}
+      {mensagem && (
+        <p role="status" className="bg-ok-sub text-ok rounded p-3 text-sm">
+          {mensagem}
+        </p>
+      )}
+      <div className={comum.barra}>
+        <div className={comum.acoes}>
+          <label className={comum.busca}>
+            <Icone nome="lupa" tamanho={18} />
+            <input
+              aria-label="Buscar área, cidade ou bairro"
+              placeholder="Buscar área, cidade ou bairro"
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </label>
+          <label className={styles.situacaoFiltro}>
+            <span className="sr-only">Situação</span>
+            <select
+              aria-label="Situação"
+              value={situacao}
+              onChange={(e) => setSituacao(e.target.value)}
+            >
+              <option value="TODAS">Todas as situações</option>
+              <option value="ATIVAS">Ativas</option>
+              <option value="INATIVAS">Inativas</option>
+            </select>
+          </label>
         </div>
-        <Botao
+        <button
+          className={comum.primario}
           onClick={() => {
             setMensagem("");
             setEdicao("NOVA");
           }}
         >
+          <Icone nome="mais" tamanho={16} />
           Nova área
-        </Botao>
-      </header>
-      {mensagem && (
-        <p role="status" className="bg-ok-sub text-ok rounded-md p-3 text-sm">
-          {mensagem}
-        </p>
-      )}
-      <div className={styles.filtros}>
-        <Campo
-          rotulo="Buscar área, cidade ou bairro"
-          type="search"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-        />
-        <label>
-          Situação
-          <select
-            value={situacao}
-            onChange={(e) => setSituacao(e.target.value)}
-          >
-            <option value="TODAS">Todas</option>
-            <option value="ATIVAS">Ativas</option>
-            <option value="INATIVAS">Inativas</option>
-          </select>
-        </label>
+        </button>
       </div>
+      <p className={comum.legenda}>
+        Cobertura por cidade e bairro. O frete e o prazo são aplicados aos novos
+        pedidos.
+      </p>
       <div className={styles.tabela}>
         <table>
           <thead>
@@ -254,12 +263,11 @@ function EditorArea({
     })();
   }
   return (
-    <PainelLateral
+    <ModalPdv
       aberto
       aoFechar={aoFechar}
-      podeFechar={() => !pendente && !incerta}
+      ocupado={pendente || incerta}
       titulo={area ? "Editar área de entrega" : "Nova área de entrega"}
-      apoio="O frete é conferido no servidor ao concluir a venda."
       rodape={
         <>
           <Botao
@@ -372,6 +380,6 @@ function EditorArea({
           </a>
         )}
       </form>
-    </PainelLateral>
+    </ModalPdv>
   );
 }

@@ -4,9 +4,12 @@ import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { Botao, estiloDeBotao } from "@/design-system/botao";
+import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
-import { PainelLateral } from "@/design-system/painel-lateral";
+import { useAmbienteProprio } from "@/core/shell/link-integrado";
+import { Icone } from "@/design-system/icones";
+import { ModalPdv } from "./modal-pdv";
+import styles from "./secoes-pdv.module.css";
 import { lerNumeroBr } from "@/lib/numero";
 
 import { salvarComplementosAcao } from "../acoes";
@@ -25,99 +28,149 @@ export function CatalogoPdv({
   produtos: ProdutoPdv[];
   podeConfigurar: boolean;
 }) {
+  const proprio = useAmbienteProprio();
   const [busca, setBusca] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [aba, setAba] = useState("produtos");
   const [selecionado, setSelecionado] = useState<ProdutoPdv | null>(null);
+  const categorias = [
+    ...new Set(produtos.map((p) => p.categoria || "Sem categoria")),
+  ].sort((a, b) => a.localeCompare(b, "pt-BR"));
   const termo = busca.trim().toLocaleLowerCase("pt-BR");
-  const filtrados = produtos.filter((produto) =>
-    `${produto.nome} ${produto.categoria} ${produto.codigo}`
-      .toLocaleLowerCase("pt-BR")
-      .includes(termo),
+  const filtrados = produtos.filter(
+    (p) =>
+      (!categoria || (p.categoria || "Sem categoria") === categoria) &&
+      (aba !== "complementos" || p.grupos.length > 0) &&
+      `${p.nome} ${p.categoria} ${p.codigo} ${p.grupos.map((g) => g.nome).join(" ")}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(termo),
   );
-
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Catálogo do PDV
-          </h1>
-          <p className="text-ink-3 mt-1 max-w-2xl text-sm">
-            Produtos das fichas técnicas, com os mesmos nomes e preços.
-            Configure aqui os códigos e as escolhas que o operador oferece na
-            venda.
-          </p>
-        </div>
-        <Link href="/cardapio/fichas" className={estiloDeBotao("secundario")}>
-          Gerenciar produtos
+    <div className={styles.pagina}>
+      {!proprio && <h1 className={styles.titulo}>Catálogo</h1>}
+      <nav className={styles.abas} aria-label="Catálogo">
+        <button
+          aria-pressed={aba === "produtos"}
+          onClick={() => setAba("produtos")}
+        >
+          Produtos
+        </button>
+        <button
+          aria-pressed={aba === "complementos"}
+          onClick={() => setAba("complementos")}
+        >
+          Complementos
+        </button>
+      </nav>
+      <div className={styles.barra}>
+        <label className={styles.busca}>
+          <Icone nome="lupa" tamanho={18} />
+          <input
+            type="search"
+            aria-label="Buscar produto, categoria ou código"
+            placeholder="Pesquise um produto ou complemento"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+          />
+        </label>
+        <Link className={styles.primario} href="/cardapio/fichas">
+          Gerenciar produtos no Tetteo
         </Link>
-      </header>
-      <div className="max-w-lg">
-        <Campo
-          rotulo="Buscar produto, categoria ou código"
-          value={busca}
-          onChange={(evento) => setBusca(evento.target.value)}
-          placeholder="Ex.: Pizza grande"
-          type="search"
-        />
       </div>
-      <section className="border-line bg-surface overflow-hidden rounded-xl border">
-        <div className="border-line flex items-center justify-between border-b px-5 py-4">
-          <h2 className="font-semibold">Produtos disponíveis</h2>
-          <span className="text-ink-3 text-sm">
-            {filtrados.length} {filtrados.length === 1 ? "produto" : "produtos"}
-          </span>
-        </div>
-        {filtrados.length ? (
-          <div className="divide-line divide-y">
-            {filtrados.map((produto) => (
-              <div
-                key={produto.id}
-                className="flex flex-wrap items-center gap-3 px-5 py-4"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{produto.nome}</p>
-                  <p className="text-ink-3 mt-1 text-sm">
-                    {produto.categoria}
-                    {produto.codigo
-                      ? ` · Código ${produto.codigo}`
-                      : " · Sem código"}
-                  </p>
-                  <p className="text-ink-3 mt-1 text-sm">
-                    {produto.grupos.length
-                      ? `${produto.grupos.length} ${produto.grupos.length === 1 ? "grupo de complementos" : "grupos de complementos"}`
-                      : "Produto simples"}
-                  </p>
+      <div className={styles.catalogo}>
+        <aside className={styles.categorias} aria-label="Categorias">
+          <h2>Categorias</h2>
+          <button aria-pressed={!categoria} onClick={() => setCategoria("")}>
+            Todas <span>{produtos.length}</span>
+          </button>
+          {categorias.map((c) => (
+            <button
+              key={c}
+              aria-pressed={categoria === c}
+              onClick={() => setCategoria(c)}
+            >
+              {c}
+              <span>
+                {
+                  produtos.filter((p) => (p.categoria || "Sem categoria") === c)
+                    .length
+                }
+              </span>
+            </button>
+          ))}
+        </aside>
+        <section
+          className={styles.superficie}
+          aria-label="Produtos disponíveis"
+        >
+          {categorias
+            .filter((c) =>
+              filtrados.some((p) => (p.categoria || "Sem categoria") === c),
+            )
+            .map((c) => (
+              <section key={c} className={styles.grupoProdutos}>
+                <header>
+                  <h2>{c}</h2>
+                  <span className={styles.legenda}>
+                    {
+                      filtrados.filter(
+                        (p) => (p.categoria || "Sem categoria") === c,
+                      ).length
+                    }{" "}
+                    produtos
+                  </span>
+                </header>
+                <div className={styles.produtos}>
+                  {filtrados
+                    .filter((p) => (p.categoria || "Sem categoria") === c)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        className={styles.produto}
+                        disabled={!podeConfigurar}
+                        onClick={() => setSelecionado(p)}
+                        aria-label={`Editar ${p.nome}`}
+                      >
+                        <Icone nome="prato" tamanho={28} />
+                        <span>
+                          <strong>{p.nome}</strong>
+                          <span className={styles.preco}>
+                            {moeda(p.precoCentavos)}
+                          </span>
+                          <small>
+                            {aba === "complementos"
+                              ? p.grupos.map((g) => g.nome).join(" · ")
+                              : p.grupos.length
+                                ? `${p.grupos.length} grupos de complementos`
+                                : "Produto simples"}
+                            {p.codigo ? ` · Cód. ${p.codigo}` : ""}
+                          </small>
+                        </span>
+                      </button>
+                    ))}
                 </div>
-                <span className="font-semibold tabular-nums">
-                  {moeda(produto.precoCentavos)}
-                </span>
-                {podeConfigurar && (
-                  <Botao
-                    peso="secundario"
-                    tamanho="pequeno"
-                    onClick={() => setSelecionado(produto)}
-                  >
-                    Configurar
-                  </Botao>
-                )}
-              </div>
+              </section>
             ))}
-          </div>
-        ) : (
-          <div className="px-5 py-10 text-center">
-            <h3 className="font-semibold">
-              {busca
-                ? "Nenhum produto encontrado"
-                : "Seu catálogo começa nas fichas técnicas"}
-            </h3>
-            <p className="text-ink-3 mx-auto mt-2 max-w-md text-sm">
-              {busca
-                ? "Tente outro nome, categoria ou código."
-                : "Cadastre uma ficha do tipo prato, ative-a e informe o preço de venda para disponibilizá-la no PDV."}
-            </p>
-          </div>
-        )}
-      </section>
+          {!filtrados.length && (
+            <div className={styles.vazio}>
+              <h2>
+                {produtos.length
+                  ? "Nenhum produto neste filtro"
+                  : "Seu catálogo começa no Tetteo"}
+              </h2>
+              <p>
+                {produtos.length
+                  ? "Tente outro nome ou categoria."
+                  : "Ative um prato e informe o preço de venda no cadastro de produtos."}
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
+      <p className={styles.legenda}>
+        {filtrados.length} produtos. Nomes, categorias e preços vêm do cadastro
+        do Tetteo. Selecione um produto para configurar código e complementos.
+      </p>
       {selecionado && (
         <EditorProduto
           key={selecionado.id}
@@ -129,7 +182,6 @@ export function CatalogoPdv({
     </div>
   );
 }
-
 function EditorProduto({
   produto,
   produtos,
@@ -226,12 +278,12 @@ function EditorProduto({
   }
 
   return (
-    <PainelLateral
+    <ModalPdv
       aberto
       aoFechar={aoFechar}
-      podeFechar={() => !pendente}
+      ocupado={pendente}
       titulo={produto.nome}
-      apoio="Código e complementos do produto no PDV"
+      amplo
       rodape={
         <>
           <Botao peso="secundario" onClick={aoFechar} disabled={pendente}>
@@ -497,6 +549,6 @@ function EditorProduto({
           </p>
         )}
       </form>
-    </PainelLateral>
+    </ModalPdv>
   );
 }
