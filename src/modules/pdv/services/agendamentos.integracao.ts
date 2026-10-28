@@ -115,6 +115,7 @@ test("agendamentos paginam sem perder atrasados, repetem fatos e nunca reescreve
   const futuro = await db.pdvPedido.findFirstOrThrow({
     where: { ...e, numero: 2 },
   });
+  assert.ok(futuro.vendaId, "Este agendamento foi criado por uma venda local.");
   const entrada = {
     pedidoId: futuro.id,
     versao: 1,

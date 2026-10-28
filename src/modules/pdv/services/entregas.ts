@@ -284,6 +284,10 @@ export async function atribuirEntregador(
       where: { ...escopo, id: dados.pedidoId },
     });
     if (!pedido) throw new ErroPdv("Pedido indisponível nesta unidade.");
+    if (!pedido.vendaId || pedido.recebidoId)
+      throw new ErroPdv(
+        "A entrega deste pedido é gerenciada pela plataforma de origem.",
+      );
     const venda = await tx.pdvVenda.findFirst({
       where: { ...escopo, id: pedido.vendaId },
       select: { modalidade: true, status: true },

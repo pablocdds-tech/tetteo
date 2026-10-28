@@ -1,4 +1,5 @@
 import { Cartao, TituloDeSecao } from "@/design-system/cartao";
+import Link from "next/link";
 import { painelRecebimentoCw } from "@/connectors/cardapioweb/recebimento";
 import { urlWebhookCw, type AmbienteCw } from "@/connectors/cardapioweb/config";
 import type { EscopoCw } from "@/connectors/cardapioweb/seguranca";
@@ -30,7 +31,13 @@ const status: Record<string, string> = {
   scheduled_confirmed: "Agendado confirmado",
 };
 
-export async function PainelRecebimentoCw({ scope }: { scope: EscopoCw }) {
+export async function PainelRecebimentoCw({
+  scope,
+  podeVerPdv = false,
+}: {
+  scope: EscopoCw;
+  podeVerPdv?: boolean;
+}) {
   const { vinculos, pedidos } = await painelRecebimentoCw(scope);
   let pronta = false;
   try {
@@ -162,9 +169,16 @@ export async function PainelRecebimentoCw({ scope }: { scope: EscopoCw }) {
         </div>
       </Cartao>
       <Cartao>
-        <TituloDeSecao apoio="Pedidos conferidos pela API. Eles não são somados novamente às vendas do Saipos.">
-          Pedidos recebidos
+        <TituloDeSecao apoio="Conferência técnica do recebimento. A operação dos pedidos fica no PDV.">
+          Conferência da integração
         </TituloDeSecao>
+        {podeVerPdv && (
+          <p className="px-5 py-3 text-sm">
+            <Link href="/pdv" className="text-accent font-semibold underline">
+              Ver pedidos no kanban do PDV
+            </Link>
+          </p>
+        )}
         {pedidos.length ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">

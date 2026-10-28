@@ -107,7 +107,11 @@ before(() => {
       status: estado,
       updated_at: revisao,
       total: 52.35,
-      customer: { phone: "NAO_PERSISTIR" },
+      customer: {
+        name: "Cliente fictício",
+        phone: "11999999999",
+        fiscal_document: "NAO_PERSISTIR",
+      },
     });
   };
 });
@@ -216,6 +220,12 @@ test("fila retoma eventos e polling recupera pedido sem webhook, sem duplicar ou
   );
   const audit = await db.auditoria.findMany();
   assert.ok(!JSON.stringify(audit).includes("api-ficticia"));
+  assert.ok(!JSON.stringify(audit).includes("11999999999"));
+  assert.ok(
+    !JSON.stringify(await db.pedidoRecebido.findMany()).includes(
+      "NAO_PERSISTIR",
+    ),
+  );
 });
 test("mesmo número de pedido em duas lojas mantém o isolamento", async () => {
   const idA = await conectar();

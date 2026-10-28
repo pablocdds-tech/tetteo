@@ -129,6 +129,7 @@ model CardapioWebPedido {
   criadoNoProvedorEm DateTime
   atualizadoNoProvedorEm DateTime
   conferidoEm DateTime @default(now())
+  pdvPublicadoEm DateTime?
   @@unique([recebimentoId, orderId])
   @@index([organizacaoId, unidadeId, atualizadoNoProvedorEm])
   @@map("cardapioweb_pedido")

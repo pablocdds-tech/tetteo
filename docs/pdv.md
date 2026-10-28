@@ -40,7 +40,21 @@ O cancelamento usa o mesmo fluxo financeiro autorizado por `pdv.cancelar`: prese
 
 O quadro atualiza a cada 15 segundos enquanto visível, ao voltar à janela ou pelo botão Atualizar, sem sobrepor consultas. Respostas anteriores a uma mudança local não podem regredir o cartão. A busca por número/cliente filtra os cartões carregados. Pedidos ativos e entregues ainda não pagos continuam visíveis em qualquer dia; demais entregues/cancelados seguem o dia selecionado no fuso `America/Sao_Paulo`. Os limites de 500 ativos e 200 finalizados são informados com contagens completas e aviso quando atingidos.
 
-Somente vendas novas após a implantação geram a fila operacional. A migração não cria pedidos para vendas antigas nem presume que foram entregues: elas permanecem no histórico financeiro. O quadro não recebe pedidos do Cardápio Web automaticamente.
+Vendas locais novas geram a fila operacional. A migração não cria pedidos para vendas locais antigas nem presume que foram entregues: elas permanecem no histórico financeiro.
+
+### Pedidos recebidos da Cardápio Web
+
+Com a loja conectada, pedidos conferidos pela API entram automaticamente neste mesmo kanban. O número grande é a sequência da unidade no Tetteo, compartilhada com pedidos de balcão. O selo mostra a origem e o número original: **#0025** pode trazer **Cardápio Web · pedido #10**. A busca aceita os dois números e o nome da origem. As colunas ordenam pelos números do Tetteo; cartões anteriores não são renumerados.
+
+O identificador técnico da loja e do pedido identifica a integração. O número amigável da origem pode se repetir e nunca é usado para fundir pedidos. Reenvios e mudanças de situação atualizam o mesmo cartão e mantêm o número atribuído. A mesma trava de unidade usada pelo caixa protege a sequência quando chegam pedidos externos e locais ao mesmo tempo.
+
+Os resumos recebidos antes desta ligação com o PDV são consultados novamente em lotes e incorporados com a situação atual, sem colocar um pedido finalizado na cozinha. Confirmado fica **Na cozinha**; pronto/aguardando retirada fica **Aguardando coleta**; despachado fica **Saiu para entrega**; entregue/finalizado fica **Entregue**; cancelado fica **Cancelado**. Situações de confirmação/pagamento pendente são destacadas com o estado informado pela origem. Agendados confirmados aparecem em **Agendado** na mesma gestão e no filtro **Agendados**, aguardando a confirmação do preparo na origem. Os filtros de entrega, retirada e balcão incluem pedidos locais e recebidos, com contagens completas.
+
+Itens, complementos, combos, observações e valores vêm do pedido consultado. O detalhe informa canal, situação e pagamentos da origem, distinguindo pagamento online de pagamento no recebimento e sem presumir que um Pix pendente já foi pago. Nome do cliente exige `crm.ver`; telefone/endereço exigem `pdv.entrega`. Documentos, dados de cartão e coordenadas não são importados para o quadro.
+
+Nesta ligação, situação, agendamento, entrega, cobrança, cancelamento e impressão do pedido externo são gerenciados na Cardápio Web; o cartão oferece **Gerenciar na Cardápio Web**. Atualizações da origem chegam ao quadro automaticamente. A integração não cria `PdvVenda`, não registra pagamento local e não movimenta estoque, evitando segunda cobrança ou baixa sobre pedidos já tratados por outra plataforma. Pedidos locais conservam suas ações e regras atuais.
+
+O conector grava a projeção operacional e publica `pedido_externo.conferido` na mesma transação. O evento contém somente a referência do pedido recebido; o consumidor do PDV cria/atualiza o cartão, histórico e auditoria e confirma a entrega atomicamente. Falhas preservam a entrega pendente. O consumidor roda a cada 15 segundos e também ao consultar o quadro, com escopo e unidade ativa conferidos no servidor.
 
 ## Pedido com pagamento pendente
 

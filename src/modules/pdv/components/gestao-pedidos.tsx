@@ -22,6 +22,11 @@ import { BotoesImpressao } from "./botoes-impressao";
 import { EtiquetaPagamento } from "./etiqueta-pagamento";
 import { ReceberPedido } from "./receber-pedido";
 import { GerenciarAgendamento } from "./gerenciar-agendamento";
+import {
+  EtiquetaOrigemPedido,
+  PagamentosOrigemPedido,
+  EntregaOrigemPedido,
+} from "./origem-pedido";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -103,6 +108,7 @@ function etapaPedido(p: PedidoPdv) {
   return nomes[p.status];
 }
 function proximo(p: PedidoPdv): { status: DestinoPedido; nome: string } | null {
+  if (p.origem) return null;
   if (p.status === "COZINHA")
     return { status: "AGUARDANDO_COLETA", nome: "Pedido pronto" };
   if (p.status === "AGUARDANDO_COLETA")
@@ -201,7 +207,7 @@ export function GestaoPedidos({
     quadro.pedidos.find((p) => p.id === selecionadoId) ?? null;
   const filtro = busca.trim().toLocaleLowerCase("pt-BR");
   const filtrados = quadro.pedidos.filter((p) =>
-    `${identificacao(p)} ${p.numero} ${p.venda.cliente ?? ""} ${p.entrega?.destinatario ?? ""} ${p.entregadorNome ?? ""}`
+    `${identificacao(p)} ${p.numero} ${p.origem?.nome ?? "Tetteo"} ${p.origem?.numero ?? ""} ${p.venda.cliente ?? ""} ${p.entrega?.destinatario ?? ""} ${p.origem?.entrega?.destinatario ?? ""} ${p.entregadorNome ?? ""}`
       .toLocaleLowerCase("pt-BR")
       .includes(filtro),
   );
@@ -281,6 +287,7 @@ export function GestaoPedidos({
     });
   }
   async function mover(p: PedidoPdv, destino: StatusPedido) {
+    if (p.origem) return;
     if (alterando.current || p.status === destino) return;
     if (destino === "CANCELADO") {
       if (podeCancelar) {
@@ -322,7 +329,13 @@ export function GestaoPedidos({
     }
   }
   async function cancelar() {
-    if (!cancelando || alterando.current || motivo.trim().length < 3) return;
+    if (
+      !cancelando?.vendaId ||
+      cancelando.origem ||
+      alterando.current ||
+      motivo.trim().length < 3
+    )
+      return;
     alterando.current = true;
     epoca.current++;
     setMutando(true);
@@ -620,7 +633,7 @@ export function GestaoPedidos({
                         aria-pressed={selecionadoId === p.id}
                         disabled={mutando}
                         onClick={() => setSelecionadoId(p.id)}
-                        aria-label={`Pedido ${identificacao(p)}, ${modalidade(p)}, ${etapaPedido(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}`}
+                        aria-label={`Pedido ${identificacao(p)}, ${p.origem ? `${p.origem.nome} pedido ${p.origem.numero}, ` : "Tetteo, "}${modalidade(p)}, ${etapaPedido(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}`}
                       >
                         <span
                           className={styles.iconeModalidade}
@@ -639,6 +652,7 @@ export function GestaoPedidos({
                         <span className={styles.nomeLinha}>
                           {p.venda.cliente ?? "Cliente não identificado"}
                           <small>{modalidade(p)}</small>
+                          <EtiquetaOrigemPedido origem={p.origem} />
                         </span>
                         <span className={styles.numero}>
                           {identificacao(p)}
@@ -664,11 +678,13 @@ export function GestaoPedidos({
                               p.venda.pagamentos.length > 0)
                           }
                           title={
-                            p.venda.status === "PENDENTE"
-                              ? "Aguardando pagamento"
-                              : p.venda.status === "CANCELADA"
-                                ? "Cancelado"
-                                : "Pagamento registrado"
+                            p.origem
+                              ? "Pagamento gerenciado na origem"
+                              : p.venda.status === "PENDENTE"
+                                ? "Aguardando pagamento"
+                                : p.venda.status === "CANCELADA"
+                                  ? "Cancelado"
+                                  : "Pagamento registrado"
                           }
                         >
                           <EtiquetaPagamento venda={p.venda} />
@@ -699,6 +715,7 @@ export function GestaoPedidos({
               const pDrag = quadro.pedidos.find((p) => p.id === arrastando);
               const aceita =
                 !!pDrag &&
+                !pDrag.origem &&
                 ((c.status === "CANCELADO" && podeCancelar) ||
                   (podeOperar && proximo(pDrag)?.status === c.status));
               return (
@@ -752,7 +769,7 @@ export function GestaoPedidos({
                         key={p.id}
                         type="button"
                         className={styles.card}
-                        aria-label={`Pedido ${identificacao(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}${p.venda.status === "PENDENTE" ? ", aguardando pagamento" : ""}`}
+                        aria-label={`Pedido ${identificacao(p)}, ${p.origem ? `${p.origem.nome} pedido ${p.origem.numero}, ` : "Tetteo, "}${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}${p.venda.status === "PENDENTE" ? ", aguardando pagamento" : ""}`}
                         aria-pressed={selecionadoId === p.id}
                         draggable={podeOperar && !mutando && !!proximo(p)}
                         onDragStart={(e) => {
@@ -777,6 +794,7 @@ export function GestaoPedidos({
                             {tempo(p, agora)}
                           </time>
                         </span>
+                        <EtiquetaOrigemPedido origem={p.origem} />
                         <span className={styles.cliente}>
                           {p.venda.cliente ?? "Cliente não identificado"}
                         </span>
@@ -787,6 +805,7 @@ export function GestaoPedidos({
                           {etapaPedido(p)}
                         </span>
                         <EtiquetaPagamento venda={p.venda} />
+                        {p.origem && <small>{p.origem.situacao}</small>}
                         {p.agendadoPara && (
                           <small className="text-accent">
                             Agendado para {data(p.agendadoPara)}
@@ -990,7 +1009,14 @@ function DetalhesPedido({
         )}
       </header>
       <span className={styles.etapa}>{etapaPedido(p)}</span>
-      {p.status === "AGENDADO" && (
+      <EtiquetaOrigemPedido origem={p.origem} />
+      {p.origem && (
+        <p className="text-ink-3 text-xs">
+          {p.origem.situacao} · atualizado pela {p.origem.nome} em{" "}
+          {data(p.origem.atualizadoEm)}. Canal: {p.origem.canal}.
+        </p>
+      )}
+      {!p.origem && p.status === "AGENDADO" && (
         <GerenciarAgendamento
           key={p.id}
           pedido={p}
@@ -1016,11 +1042,13 @@ function DetalhesPedido({
           )}
         </p>
       )}
-      <BotoesImpressao vendaId={p.vendaId} />
+      {p.vendaId && <BotoesImpressao vendaId={p.vendaId} />}
       {p.venda.modalidade === "ENTREGA" && (
         <section className={styles.secao}>
           <h3>Entrega</h3>
-          {p.entrega ? (
+          {p.origem ? (
+            <EntregaOrigemPedido origem={p.origem} podeEntrega={podeEntrega} />
+          ) : p.entrega ? (
             <>
               <p>
                 <strong>{p.entrega.destinatario}</strong>
@@ -1058,7 +1086,8 @@ function DetalhesPedido({
                   : "Pedido anterior ao cadastro de endereços. Confira a entrega com o responsável."}
             </p>
           )}
-          {podeEntrega &&
+          {!p.origem &&
+          podeEntrega &&
           (p.status === "COZINHA" || p.status === "AGUARDANDO_COLETA") ? (
             <label className="text-ink-2 mt-3 block text-sm font-semibold">
               Entregador
@@ -1090,11 +1119,11 @@ function DetalhesPedido({
                 </Link>
               )}
             </label>
-          ) : (
+          ) : !p.origem ? (
             <p className="mt-3">
               Entregador: {p.entregadorNome ?? "Não atribuído"}
             </p>
-          )}
+          ) : null}
         </section>
       )}
       <section className={styles.secao}>
@@ -1129,6 +1158,7 @@ function DetalhesPedido({
       <section className={styles.secao}>
         <h3>Pagamento</h3>
         <EtiquetaPagamento venda={p.venda} />
+        {p.origem && <PagamentosOrigemPedido origem={p.origem} />}
         {p.venda.status === "PENDENTE" && (
           <p className="mt-2">
             Valor a receber: {moeda(p.venda.totalCentavos)}.
@@ -1155,7 +1185,9 @@ function DetalhesPedido({
             <span>{moeda(p.venda.trocoCentavos)}</span>
           </p>
         )}
-        <p className="mt-2 text-xs">Conferência manual do operador.</p>
+        {!p.origem && (
+          <p className="mt-2 text-xs">Conferência manual do operador.</p>
+        )}
         {p.venda.recebidoEm && (
           <p className="mt-2 text-xs">
             Recebido em {data(p.venda.recebidoEm)}
@@ -1173,11 +1205,11 @@ function DetalhesPedido({
         </p>
       )}
       <div className={styles.acoes}>
-        {p.venda.status === "PENDENTE" && podeReceber && (
+        {p.vendaId && p.venda.status === "PENDENTE" && podeReceber && (
           <Botao
             peso="secundario"
             disabled={pendente}
-            onClick={() => aoReceber(p.vendaId)}
+            onClick={() => aoReceber(p.vendaId!)}
           >
             Receber pagamento
           </Botao>
@@ -1197,7 +1229,7 @@ function DetalhesPedido({
             operação.
           </p>
         )}
-        {p.status !== "CANCELADO" && podeCancelar && (
+        {!p.origem && p.status !== "CANCELADO" && podeCancelar && (
           <Botao
             peso="fantasma"
             disabled={pendente}
@@ -1207,6 +1239,21 @@ function DetalhesPedido({
           </Botao>
         )}
       </div>
+      {p.origem?.codigo === "CARDAPIO_WEB" && (
+        <div className="space-y-2 text-sm">
+          <p className="text-ink-3">
+            A situação e o pagamento são atualizados pela Cardápio Web.
+          </p>
+          <a
+            href="https://portal.cardapioweb.com/latest-orders"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={estiloDeBotao("secundario", "pequeno")}
+          >
+            Gerenciar na Cardápio Web
+          </a>
+        </div>
+      )}
       {p.venda.motivoCancelamento && (
         <p className="text-bad mt-3 text-sm">
           Motivo: {p.venda.motivoCancelamento}

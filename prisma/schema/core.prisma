@@ -49,6 +49,7 @@ model Organizacao {
 /// Cada loja física. Fuso e CNPJ próprios porque redes que crescem para outro
 /// estado precisam disso — e adicionar depois sairia caro.
 model Unidade {
+  pedidosRecebidos PedidoRecebido[]
   cardapioWebConexoes CardapioWebConexao[]
   cardapioWebAutorizacoes CardapioWebAutorizacao[]
   cardapioWebRecebimentos CardapioWebRecebimento[]

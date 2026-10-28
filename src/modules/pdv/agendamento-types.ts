@@ -1,5 +1,9 @@
-import type { EventoPedido, StatusPedido } from "./pedido-types";
-import type { VendaPdv } from "./types";
+import type {
+  EventoPedido,
+  StatusPedido,
+  ResumoVendaPedido,
+  OrigemPedido,
+} from "./pedido-types";
 
 /** Data civil informada e exibida no fuso America/Sao_Paulo. */
 export type AgendamentoEntrada = {
@@ -15,7 +19,8 @@ export type AgendamentoPdv = {
   iniciarPreparoEm: string;
   preparoIniciadoEm: string | null;
   antecedenciaMinutos: number;
-  venda: VendaPdv;
+  venda: ResumoVendaPedido;
+  origem?: OrigemPedido;
   historico: EventoPedido[];
 };
 export type EstadoFiltroAgendamento =

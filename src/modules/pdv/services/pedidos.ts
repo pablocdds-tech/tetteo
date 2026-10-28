@@ -21,8 +21,11 @@ import {
   validarTransicaoPedido,
 } from "../schemas/pedido";
 import { exigirEscopo } from "./escopo";
+import { processarPedidosRecebidos } from "./pedidos-recebidos";
+import { serializarPedidoExterno } from "./pedido-externo-dto";
 
 const incluirEventos = {
+  recebido: true,
   eventos: { orderBy: { versao: "asc" as const } },
 } satisfies Prisma.PdvPedidoInclude;
 type PedidoBanco = Prisma.PdvPedidoGetPayload<{
@@ -42,7 +45,12 @@ function filtroVisao(visao: VisaoPedidos): Prisma.PdvPedidoWhereInput {
   if (visao === "EM_ANDAMENTO")
     return { status: { in: ["COZINHA", "AGUARDANDO_COLETA", "SAIU_ENTREGA"] } };
   if (visao === "RETIRADA" || visao === "ENTREGA" || visao === "BALCAO")
-    return { venda: { modalidade: visao } };
+    return {
+      OR: [
+        { venda: { modalidade: visao } },
+        { recebido: { conteudo: { path: ["modalidade"], equals: visao } } },
+      ],
+    };
   return {};
 }
 function serializarPedido(
@@ -90,6 +98,7 @@ export async function listarPedidos(
 ): Promise<QuadroPedidos> {
   const escopo = await exigirEscopo(ctx);
   const dados = esquemaListaPedidos.parse(entrada);
+  await processarPedidosRecebidos(escopo);
   await processarAgendamentosVencidos(escopo);
   const dia = dados.dia ?? diaPedidos();
   const periodo = periodoPedidos(dia);
@@ -129,13 +138,13 @@ export async function listarPedidos(
           tx.pdvPedido.findMany({
             where: ativo,
             include: incluirEventos,
-            orderBy: [{ criadoEm: "asc" }, { id: "asc" }],
+            orderBy: [{ numero: "asc" }, { id: "asc" }],
             take: 500,
           }),
           tx.pdvPedido.findMany({
             where: finalizado,
             include: incluirEventos,
-            orderBy: [{ atualizadoEm: "desc" }, { id: "desc" }],
+            orderBy: [{ numero: "desc" }, { id: "desc" }],
             take: 200,
           }),
           tx.pdvPedido.groupBy({
@@ -160,9 +169,14 @@ export async function listarPedidos(
             ),
           ),
         ]);
-      const todos = [...ativos, ...finalizados];
+      const todos = [...ativos, ...finalizados].sort(
+        (a, b) => a.numero - b.numero,
+      );
       const vendas = await tx.pdvVenda.findMany({
-        where: { ...escopo, id: { in: todos.map((p) => p.vendaId) } },
+        where: {
+          ...escopo,
+          id: { in: todos.flatMap((p) => (p.vendaId ? [p.vendaId] : [])) },
+        },
       });
       const mapa = new Map(vendas.map((v) => [v.id, v]));
       const totais = Object.fromEntries(
@@ -185,7 +199,8 @@ export async function listarPedidos(
           number
         >,
         pedidos: todos.map((p) => {
-          const venda = mapa.get(p.vendaId);
+          if (p.recebido) return serializarPedidoExterno(p, ctx);
+          const venda = p.vendaId ? mapa.get(p.vendaId) : null;
           if (!venda)
             throw new ErroPdv("Pedido sem venda disponível nesta unidade.");
           return serializarPedido(p, venda, ctx);
@@ -220,6 +235,10 @@ export async function moverPedido(
       include: incluirEventos,
     });
     if (!pedido) throw new ErroPdv("Pedido indisponível nesta unidade.");
+    if (!pedido.vendaId || pedido.recebidoId)
+      throw new ErroPdv(
+        "Este pedido é atualizado pela origem. Altere sua situação na plataforma de origem.",
+      );
     const venda = await tx.pdvVenda.findFirst({
       where: { ...escopo, id: pedido.vendaId },
     });

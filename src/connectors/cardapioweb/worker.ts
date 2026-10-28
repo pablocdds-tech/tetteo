@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { CardapioWebRecebimento, Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import { publicarPedidoRecebido } from "@/server/pedidos-recebidos";
+import { normalizarPedidoRecebidoCw } from "./pedido-recebido";
 import { ClienteCw } from "./client";
 import { configApiCw, ErroCw, type AmbienteCw } from "./config";
 import { auditarRecebimentoCw, contextoLegadoCw } from "./recebimento";
@@ -60,13 +62,39 @@ export async function processarRecebimentoCw(id: string) {
       row.apiKeyCifrada!,
       contextoLegadoCw(row, row.ambiente, row.merchantId),
     );
+    // Recupera também os resumos recebidos antes de existir a entrada no PDV.
+    if (row.ambiente === "producao") {
+      const antigos = await db.cardapioWebPedido.findMany({
+        where: { recebimentoId: id, pdvPublicadoEm: null },
+        orderBy: [{ criadoNoProvedorEm: "asc" }, { orderId: "asc" }],
+        take: 50,
+      });
+      if (antigos.length)
+        await db.$transaction(async (tx) => {
+          await conferirConcessao(tx, row);
+          await tx.cardapioWebEvento.createMany({
+            skipDuplicates: true,
+            data: antigos.map((p) => ({
+              organizacaoId: row.organizacaoId,
+              unidadeId: row.unidadeId,
+              recebimentoId: id,
+              eventId: `pdv-v1:${p.id}`,
+              origem: "REPROCESSAMENTO",
+              tipo: "CONFERENCIA_PDV",
+              orderId: p.orderId,
+              statusInformado: p.estado,
+              ocorridoEm: p.criadoNoProvedorEm,
+            })),
+          });
+        });
+    }
     const pendentes = await db.cardapioWebEvento.findMany({
       where: {
         recebimentoId: id,
         estado: "PENDENTE",
         proximaTentativaEm: { lte: new Date() },
       },
-      orderBy: { recebidoEm: "asc" },
+      orderBy: [{ recebidoEm: "asc" }, { orderId: "asc" }, { eventId: "asc" }],
       take: 3,
     });
     for (const evento of pendentes) {
@@ -88,6 +116,16 @@ export async function processarRecebimentoCw(id: string) {
             },
           });
           const revisaoRemota = new Date(pedido.updated_at);
+          if (
+            row.ambiente === "producao" &&
+            atual &&
+            !atual.pdvPublicadoEm &&
+            revisaoRemota < atual.atualizadoNoProvedorEm
+          )
+            throw new ErroCw(
+              "revisao",
+              "A revisão atual do pedido ainda não está disponível para o PDV.",
+            );
           // O evento pode ser antigo. Só o detalhe atual e sua revisão alteram a projeção.
           if (!atual || revisaoRemota >= atual.atualizadoNoProvedorEm) {
             const dados = {
@@ -100,6 +138,9 @@ export async function processarRecebimentoCw(id: string) {
               criadoNoProvedorEm: new Date(pedido.created_at),
               atualizadoNoProvedorEm: revisaoRemota,
               conferidoEm: new Date(),
+              ...(row.ambiente === "producao"
+                ? { pdvPublicadoEm: new Date() }
+                : {}),
             };
             await tx.cardapioWebPedido.upsert({
               where: {
@@ -117,6 +158,14 @@ export async function processarRecebimentoCw(id: string) {
               },
               update: dados,
             });
+            if (row.ambiente === "producao")
+              await publicarPedidoRecebido(
+                tx,
+                { organizacaoId: row.organizacaoId, unidadeId: row.unidadeId },
+                "CARDAPIO_WEB",
+                `${row.ambiente}:${row.merchantId}:${pedido.id}`,
+                normalizarPedidoRecebidoCw(pedido),
+              );
           }
           await tx.cardapioWebEvento.update({
             where: { id: evento.id },

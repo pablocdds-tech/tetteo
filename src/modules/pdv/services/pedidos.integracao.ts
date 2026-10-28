@@ -452,6 +452,14 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
   assert.equal(volumoso.limiteAtivos, 500);
   assert.equal(volumoso.ativosTotal, 502);
   assert.equal(volumoso.finalizadosExibidos, 200);
+  const entregues = volumoso.pedidos.filter((p) => p.status === "ENTREGUE");
+  assert.equal(entregues[0].numero, 506);
+  assert.equal(entregues.at(-1)!.numero, 705);
+  assert.ok(
+    volumoso.pedidos.every(
+      (p, n, todos) => n === 0 || p.numero > todos[n - 1].numero,
+    ),
+  );
   assert.ok(volumoso.finalizadosTotal >= 201);
   assert.equal(volumoso.truncado, true);
   // O filtro é executado no banco: uma retirada agendada fora dos primeiros

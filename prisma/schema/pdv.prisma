@@ -119,8 +119,11 @@ model PdvPedido {
   id String @id @default(uuid())
   organizacaoId String
   unidadeId String
-  vendaId String @unique
-  venda PdvVenda @relation(fields: [organizacaoId, unidadeId, vendaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict, map: "pdv_pedido_venda_fkey")
+  vendaId String? @unique
+  venda PdvVenda? @relation(fields: [organizacaoId, unidadeId, vendaId], references: [organizacaoId, unidadeId, id], onDelete: Restrict, map: "pdv_pedido_venda_fkey")
+  recebidoId String? @unique
+  recebido PedidoRecebido? @relation(fields: [organizacaoId, unidadeId, recebidoId], references: [organizacaoId, unidadeId, id], onDelete: Restrict)
+  revisaoOrigemEm DateTime?
   numero Int
   status String @default("COZINHA")
   versao Int @default(1)

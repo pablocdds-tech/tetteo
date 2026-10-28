@@ -1,0 +1,21 @@
+/// Projeção operacional compartilhada. Somente o conector proprietário escreve.
+model PedidoRecebido {
+  id String @id @default(uuid())
+  organizacaoId String
+  unidadeId String
+  unidade Unidade @relation(fields: [organizacaoId, unidadeId], references: [organizacaoId, id], onDelete: Restrict)
+  origem String
+  referencia String
+  numeroOrigem String
+  situacao String
+  conteudo Json
+  criadoNaOrigemEm DateTime
+  atualizadoNaOrigemEm DateTime
+  recebidoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  pedidosPdv PdvPedido[]
+  @@unique([organizacaoId, unidadeId, origem, referencia], map: "pedido_recebido_referencia_key")
+  @@unique([organizacaoId, unidadeId, id], map: "pedido_recebido_escopo_key")
+  @@index([organizacaoId, unidadeId, recebidoEm])
+  @@map("pedido_recebido")
+}

@@ -21,7 +21,9 @@ automática pausa durante a configuração de credenciais. Isso atualiza a lista
 e os indicadores sem fazer uma nova consulta direta ao fornecedor. **Último
 webhook recebido** informa somente entregas do webhook; pedidos obtidos pela
 consulta automática da API aparecem na mesma lista, mesmo sem esse evento.
-O quadro do PDV e os totais financeiros continuam separados desta conferência.
+Os pedidos recebidos entram também em **PDV → Gestão de pedidos**, com a
+sequência numérica da unidade no Tetteo e um selo com a origem e o número
+original. Esta tela de configurações mantém somente a conferência da conexão.
 
 Com `APP_URL=https://app.vitalianopizzaria.com.br`, a URL de produção é:
 
@@ -65,10 +67,24 @@ inválido ou identidade incompatível interrompem a conexão para nova conferên
 `CARDAPIOWEB_WORKER_ENABLED=false` pausa o processamento; os eventos já gravados
 continuam no banco. Nenhum evento é apagado ao desconectar.
 
-Os pedidos desta integração são uma conferência operacional. Não entram nos
-totais do Saipos, não movimentam estoque, não enviam mensagens e não alteram
-automaticamente o estado do pedido remoto. O resumo persistido descarta
-cliente, telefone, endereço, observações e documentos fiscais.
+Os pedidos entram no kanban pela projeção operacional compartilhada
+`PedidoRecebido` e pelo evento durável `pedido_externo.conferido`. Reenvios
+atualizam o mesmo cartão. A sequência é reservada sob a mesma trava usada
+pelos pedidos locais; o número original não substitui o número do Tetteo.
+Os resumos anteriores à implantação são recuperados em lotes para preencher
+os detalhes e publicar sua entrada no PDV. Somente produção é publicada;
+Sandbox fica na conferência da integração.
+
+O detalhe preserva itens/complementos/combos, cliente, endereço, observações
+e pagamentos necessários à operação. A resposta é validada e campos fiscais,
+dados de cartão e coordenadas são descartados. Cliente segue `crm.ver` e
+entrega segue `pdv.entrega` no PDV; o evento e a auditoria não carregam esses
+dados pessoais. A conferência em configurações continua devolvendo só resumos.
+
+Esta entrada não cria venda ou pagamento no caixa local, não soma aos totais
+do Saipos, não movimenta estoque e não altera o pedido remoto. A situação é
+atualizada pela origem, e o cartão leva ao portal para gerenciar o pedido.
+Consulte as regras de operação e agendados em [PDV](pdv.md).
 
 O token legado da loja permite consulta de pedidos. A consulta de catálogo
 legado também exige `X-PARTNER-KEY`, que não é solicitado por este fluxo. Para
@@ -90,6 +106,10 @@ o token global de um app da Store.
 
 - Migração aditiva `20261027010000_cardapioweb`: cinco tabelas novas; nenhum
   reset ou alteração de dados de outros módulos. Produção usa `prisma migrate deploy`.
+- `20261028001000_cardapioweb_pdv` acrescenta a projeção operacional recebida,
+  seu vínculo ao pedido do PDV e o marcador de recuperação dos resumos antigos.
+  Preserva números e vendas anteriores. Um cartão exige uma venda local ou
+  um pedido recebido, nunca ambos; os vínculos de unidade são compostos.
 - `configuracoes.cardapioweb` permite gerenciar a conexão. Diretor com `*`
   mantém acesso; outros papéis precisam receber a permissão explicitamente.
 - Organização/unidade são obtidas da sessão. A loja é retornada pela API.

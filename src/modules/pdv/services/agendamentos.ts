@@ -15,8 +15,11 @@ import { periodoPedidos } from "../schemas/pedido";
 import { esquemaEntregaSnapshot } from "../schemas/entrega";
 import { exigirEscopo, type EscopoPdv } from "./escopo";
 import { serializarVendaPdv } from "./venda-dto";
+import { processarPedidosRecebidos } from "./pedidos-recebidos";
+import { serializarPedidoExterno } from "./pedido-externo-dto";
 
 const incluir = {
+  recebido: true,
   venda: true,
   eventos: { orderBy: { versao: "asc" as const } },
 } satisfies Prisma.PdvPedidoInclude;
@@ -27,8 +30,25 @@ async function trava(tx: Tx, e: EscopoPdv) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pdv:${e.organizacaoId}:${e.unidadeId}`},0))`;
 }
 function dto(p: Pedido, ctx: ContextoSessao): AgendamentoPdv {
-  if (!p.agendadoPara || !p.iniciarPreparoEm || !p.antecedenciaMinutos)
+  if (!p.agendadoPara || !p.iniciarPreparoEm || p.antecedenciaMinutos === null)
     throw new ErroPdv("Pedido sem agendamento disponível.");
+  if (p.recebido) {
+    const externo = serializarPedidoExterno(p, ctx);
+    return {
+      pedidoId: p.id,
+      numero: p.numero,
+      versao: p.versao,
+      status: p.status as AgendamentoPdv["status"],
+      agendadoPara: p.agendadoPara.toISOString(),
+      iniciarPreparoEm: p.iniciarPreparoEm.toISOString(),
+      preparoIniciadoEm: p.preparoIniciadoEm?.toISOString() ?? null,
+      antecedenciaMinutos: p.antecedenciaMinutos,
+      venda: externo.venda,
+      origem: externo.origem,
+      historico: externo.historico,
+    };
+  }
+  if (!p.venda) throw new ErroPdv("Venda indisponível nesta unidade.");
   return {
     pedidoId: p.id,
     numero: p.numero,
@@ -55,6 +75,7 @@ export async function listarAgendamentos(
   entrada: unknown = {},
 ): Promise<PaginaAgendamentos> {
   const e = await exigirEscopo(ctx);
+  await processarPedidosRecebidos(e);
   const dados = esquemaListaAgendamentos.parse(entrada);
   const agora = new Date();
   const base: Prisma.PdvPedidoWhereInput = {
@@ -174,6 +195,10 @@ async function alterar(
       include: incluir,
     });
     if (!p) throw new ErroPdv("Agendamento indisponível nesta unidade.");
+    if (!p.vendaId || !p.venda || p.recebidoId)
+      throw new ErroPdv(
+        "Este agendamento é atualizado pela plataforma de origem.",
+      );
     if (anterior) return dto(p, ctx);
     if (p.versao !== dados.versao)
       throw new ErroPdv(

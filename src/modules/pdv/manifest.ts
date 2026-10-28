@@ -36,5 +36,6 @@ export const manifestoPdv: ManifestoDoApp = {
   ],
   permissaoParaVer: "pdv.ver",
   permissoes: PERMISSOES_PDV,
+  eventosQueEscuta: ["pedido_externo.conferido"],
   comportamentoNaRede: "exige-unidade",
 };

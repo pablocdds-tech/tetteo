@@ -54,7 +54,7 @@ async function filtroBanco(
         where: { ...escopo, numero },
         select: { vendaId: true },
       });
-      if (pedido) alternativas.push({ id: pedido.vendaId });
+      if (pedido?.vendaId) alternativas.push({ id: pedido.vendaId });
     }
     onde.OR = alternativas;
   }

@@ -126,7 +126,12 @@ export default async function CardapioWeb({
           {avisos[aviso]}
         </p>
       )}
-      {sessao.unidadeAtiva && <PainelRecebimentoCw scope={escopoCw(sessao)} />}
+      {sessao.unidadeAtiva && (
+        <PainelRecebimentoCw
+          scope={escopoCw(sessao)}
+          podeVerPdv={pode(sessao, "pdv.ver")}
+        />
+      )}
       {!sessao.unidadeAtiva ? (
         <Cartao className="p-5">
           <p>Selecione uma unidade no topo para gerenciar a conexão.</p>

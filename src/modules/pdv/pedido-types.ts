@@ -1,5 +1,20 @@
 import type { VendaPdv } from "./types";
 import type { EntregaSnapshot } from "./entrega-types";
+import type { PedidoRecebido } from "@/lib/pedido-recebido";
+
+export type ResumoVendaPedido = Omit<VendaPdv, "status"> & {
+  status: VendaPdv["status"] | "EXTERNA";
+};
+export type OrigemPedido = {
+  codigo: string;
+  nome: string;
+  numero: string;
+  situacao: string;
+  canal: string;
+  atualizadoEm: string;
+  pagamentos: PedidoRecebido["pagamentos"];
+  entrega: PedidoRecebido["entrega"];
+};
 
 export type StatusPedido =
   | "AGENDADO"
@@ -29,7 +44,8 @@ export type PedidoPdv = {
   iniciarPreparoEm?: string | null;
   preparoIniciadoEm?: string | null;
   id: string;
-  vendaId: string;
+  vendaId: string | null;
+  origem?: OrigemPedido;
   numero: number;
   versao: number;
   status: StatusPedido;
@@ -43,7 +59,7 @@ export type PedidoPdv = {
   temEnderecoEntrega?: boolean;
   entregadorId?: string | null;
   entregadorNome?: string | null;
-  venda: VendaPdv;
+  venda: ResumoVendaPedido;
   historico: EventoPedido[];
 };
 export type QuadroPedidos = {

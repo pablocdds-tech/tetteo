@@ -98,11 +98,84 @@ export const catalogoCw = z.object({
 export type PedidosCw = z.output<typeof pedidosCw>;
 export type CatalogoCw = z.output<typeof catalogoCw>;
 
-export const detalhePedidoCw = pedidoCw.extend({
-  merchant_id: id,
-  display_id: z.union([texto, z.number().int()]).nullish(),
-  total: centavosCw,
+const opcaoPedidoCw = z.object({
+  name: texto,
+  quantity: z.number().nonnegative().max(10000),
+  option_group_name: texto.nullish(),
+  unit_price: centavosCw.optional(),
+  total_price: centavosCw.optional(),
 });
+const linhaPedidoCw = z.object({
+  item_id: id,
+  name: texto,
+  quantity: z.number().nonnegative().max(10000),
+  unit_price: centavosCw,
+  total_price: centavosCw,
+  status: texto.optional(),
+  observation: z.string().max(1000).nullish(),
+  options: z.array(opcaoPedidoCw).max(1000).default([]),
+});
+const linhaComboCw = linhaPedidoCw.extend({
+  items: z.array(linhaPedidoCw).max(1000).default([]),
+});
+export const detalhePedidoCw = pedidoCw
+  .extend({
+    merchant_id: id,
+    display_id: z.union([texto, z.number().int()]).nullish(),
+    total: centavosCw,
+    observation: z.string().max(1000).nullish(),
+    cancellation_reason: z.string().max(1000).nullish(),
+    delivery_fee: centavosCw.default(0),
+    customer: z.object({ name: texto, phone: texto.nullish() }).nullish(),
+    delivery_address: z
+      .object({
+        street: texto,
+        number: texto.nullish(),
+        address_block: texto.nullish(),
+        address_lot: texto.nullish(),
+        neighborhood: texto,
+        complement: texto.nullish(),
+        reference: z.string().max(1000).nullish(),
+        postal_code: texto.nullish(),
+        city: texto,
+        state: texto,
+      })
+      .nullish(),
+    schedule: z
+      .object({
+        scheduled_date_time_start: data,
+        scheduled_date_time_end: data.optional(),
+      })
+      .nullish(),
+    items: z
+      .array(
+        linhaComboCw.extend({
+          items: z.array(linhaComboCw).max(1000).default([]),
+        }),
+      )
+      .max(1000)
+      .default([]),
+    payments: z
+      .array(
+        z.object({
+          total: centavosCw,
+          payment_method: texto,
+          payment_type: texto,
+          status: texto,
+          change_for: centavosCw.nullish(),
+        }),
+      )
+      .max(100)
+      .default([]),
+  })
+  .superRefine((pedido, ctx) => {
+    if (pedido.status === "scheduled_confirmed" && !pedido.schedule)
+      ctx.addIssue({
+        code: "custom",
+        path: ["schedule"],
+        message: "Pedido agendado sem horário na origem.",
+      });
+  });
 export const eventoWebhookCw = z.object({
   event_id: z.string().min(1).max(128),
   event_type: z.enum(["ORDER_CREATED", "ORDER_STATUS_UPDATED"]),

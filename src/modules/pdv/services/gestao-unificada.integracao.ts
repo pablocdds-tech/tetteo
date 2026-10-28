@@ -310,11 +310,6 @@ test("gestão mistura modalidades e agendados sem confundir receber com iniciar 
 
 test("gestão filtra modalidade antes do limite de 500 e conta integralmente sem duplicar cartões", async () => {
   const f = await cenario();
-  const retiradaId = await finalizarVenda(f.ctx, f.entrada());
-  const retirada = await f.pedido(retiradaId);
-  const modelo = await db.pdvVenda.findUniqueOrThrow({
-    where: { id: retiradaId },
-  });
   const antigas = new Date(Date.now() - 86400000);
   const ids = Array.from({ length: 501 }, () => randomUUID());
   await db.pdvVenda.createMany({
@@ -345,11 +340,17 @@ test("gestão filtra modalidade antes do limite de 500 e conta integralmente sem
       organizacaoId: f.org.id,
       unidadeId: f.unidade.id,
       vendaId,
-      numero: retirada.numero + i + 1,
+      numero: i + 1,
       status: "COZINHA",
       criadoEm: antigas,
     })),
   });
+  // A retirada chega depois do volume anterior e recebe o próximo número real.
+  const retiradaId = await finalizarVenda(f.ctx, f.entrada());
+  const modelo = await db.pdvVenda.findUniqueOrThrow({
+    where: { id: retiradaId },
+  });
+  assert.equal((await f.pedido(retiradaId)).numero, 502);
   const todos = await listarPedidos(f.ctx);
   assert.equal(todos.pedidos.length, 500);
   assert.equal(todos.ativosTotal, 502);
