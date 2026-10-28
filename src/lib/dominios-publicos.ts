@@ -57,6 +57,26 @@ export function ambienteDaRequisicao(
 
 const abaixo = (p: string, base: string) =>
   p === base || p.startsWith(`${base}/`);
+
+/** O servidor standalone pode entregar uma URL interna, apesar do Host público. */
+export function urlDaRequisicaoPublica(
+  url: string,
+  h: Pick<Headers, "get">,
+  c: DominiosPublicos | null,
+) {
+  const ambiente = ambienteDaRequisicao(h, c);
+  if (!ambiente) return null;
+  const publica = new URL(url);
+  if (c) {
+    const origem = new URL(c[ambiente]);
+    publica.protocol = origem.protocol;
+    publica.hostname = origem.hostname;
+    publica.port = origem.port;
+    publica.username = "";
+    publica.password = "";
+  }
+  return publica;
+}
 const comuns = [
   "/login",
   "/conta",

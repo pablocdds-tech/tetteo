@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import {
   NextResponse,
-  type NextRequest,
+  NextRequest,
   type NextFetchEvent,
   type NextMiddleware,
 } from "next/server";
@@ -9,6 +9,7 @@ import {
   ambienteDaRequisicao,
   configurarDominios,
   destinoEntreAmbientes,
+  urlDaRequisicaoPublica,
 } from "@/lib/dominios-publicos";
 
 import { authConfigBase } from "@/core/auth/config-base";
@@ -23,8 +24,8 @@ import { authConfigBase } from "@/core/auth/config-base";
  * `proxy.ts` — mesma função, nome novo.)
  */
 const { auth } = NextAuth(authConfigBase);
-const continuar: NextMiddleware = () => NextResponse.next();
-const verificarSessao = auth(continuar);
+// A chamada direta conserva o authorized e o redirecionamento do Auth.js.
+const verificarSessao = auth as NextMiddleware;
 
 export default async function proxy(
   request: NextRequest,
@@ -52,7 +53,11 @@ export default async function proxy(
     return new NextResponse("Endereço indisponível neste ambiente.", {
       status: destino.status,
     });
-  return verificarSessao(request, event);
+  const publica = urlDaRequisicaoPublica(request.url, request.headers, config);
+  return verificarSessao(
+    publica ? new NextRequest(publica, request) : request,
+    event,
+  );
 }
 
 /**

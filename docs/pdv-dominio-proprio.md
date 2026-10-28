@@ -44,6 +44,9 @@ compartilhados. Não há segundo worker nem sincronização entre bancos.
    Remover `AUTH_URL` e `NEXTAUTH_URL`, se presentes. Eles fixariam a origem das
    ações do Auth.js no endereço antigo. Não trocar `AUTH_SECRET`, as chaves das
    integrações nem a conexão do banco.
+   O proxy autenticado e o handler Auth reconstruem a URL pública a partir do
+   Host estritamente validado: o servidor standalone entrega inicialmente uma
+   origem interna, que não deve aparecer no login, callback ou lista de provedores.
 
 6. Reimplantar o mesmo aplicativo e validar login, gestão, novo pedido, CRM,
    impressão, caixa, links administrativos e acesso ao Tetteo. Não criar vendas
@@ -74,3 +77,6 @@ credenciais fictícias. Os testes em `src/lib/dominios-publicos.test.ts` cobrem
 configuração, hosts, redirecionamentos, POSTs e retorno seguro do login.
 O Playwright valida menus, acesso com a mesma conta, cookies host-only, catálogo
 compartilhado e navegação entre os dois endereços. Nenhuma migração é necessária.
+`src/proxy-dominio.test.ts` exercita o middleware e o Auth.js reais com origem
+interna de contêiner, incluindo POST com CSRF, callback público e cookie de
+sessão Secure/HttpOnly/SameSite sem Domain no domínio pai.

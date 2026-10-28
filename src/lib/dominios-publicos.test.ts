@@ -5,6 +5,7 @@ import {
   configurarDominios,
   destinoEntreAmbientes,
   redirecionamentoAutenticacao,
+  urlDaRequisicaoPublica,
 } from "./dominios-publicos";
 
 const config = configurarDominios(
@@ -19,6 +20,42 @@ const host = (valor: string, encaminhado?: string) =>
   });
 
 describe("domínios integrados", () => {
+  test("standalone reconstrói origem pública a partir do Host validado e conserva callback e query", () => {
+    const interna =
+      "https://0.0.0.0:3000/api/auth/callback/google?code=ficticio&state=estado%2Bteste";
+    assert.equal(
+      urlDaRequisicaoPublica(interna, host("pdv.example.com"), config)?.href,
+      "https://pdv.example.com/api/auth/callback/google?code=ficticio&state=estado%2Bteste",
+    );
+    assert.equal(
+      urlDaRequisicaoPublica(interna, host("app.example.com"), config)?.origin,
+      config.principal,
+    );
+    assert.equal(
+      urlDaRequisicaoPublica(interna, host("evil.example"), config),
+      null,
+    );
+    assert.equal(
+      urlDaRequisicaoPublica(
+        interna,
+        host("pdv.example.com", "evil.example"),
+        config,
+      ),
+      null,
+    );
+    assert.equal(
+      urlDaRequisicaoPublica(interna, host("localhost:3000"), null)?.href,
+      interna,
+    );
+    assert.equal(
+      urlDaRequisicaoPublica(
+        "http://interno:3000//evil.example/pdv",
+        host("pdv.example.com"),
+        config,
+      )?.host,
+      "pdv.example.com",
+    );
+  });
   test("a instalação sem domínio operacional conserva as rotas e os hosts atuais", () => {
     assert.equal(configurarDominios("http://localhost:3000"), null);
     assert.equal(

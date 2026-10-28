@@ -28,6 +28,8 @@ flowchart LR
   de autenticação. Cabeçalho encaminhado divergente é recusado.
   Evidência: `src/lib/dominios-publicos.ts`, `src/proxy.ts` e
   `src/app/api/auth/[...nextauth]/route.ts`.
+  Proxy e handler Auth substituem a origem interna do standalone pela origem
+  pública validada antes de chamar o Auth.js, preservando caminho, corpo e query.
 - Navegador → login e ações: cookies Auth.js host-only, HttpOnly, SameSite=Lax
   e Secure em produção; limite de tentativas e bcrypt permanecem em
   `core/auth/config.ts`. Server Actions conservam a verificação nativa de
@@ -64,6 +66,8 @@ banco. Controle administrativo dessas dependências altera esse modelo.
 Validação: testes de configuração, hosts e retornos seguros em
 `lib/dominios-publicos.test.ts`; origem por host em
 `modules/crm/services/request.test.ts`; matcher público existente preservado.
+`proxy-dominio.test.ts` verifica middleware e Auth.js reais com URL interna de
+contêiner, POST/CSRF, callback público e cookie de sessão com Secure e sem Domain.
 Playwright com banco local e dados fictícios confirmou login nos dois hosts,
 cookies separados, menu desktop/celular, catálogo e cliente compartilhados,
 atalho e redirecionamento antigo, impressão e recusas de origem/unidade/host.
