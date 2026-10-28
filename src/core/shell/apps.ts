@@ -13,7 +13,7 @@ import type { NomeDeIcone } from "@/design-system/icones";
  * no servidor.
  */
 
-export type DestinoDoApp = { rota: string; nome: string };
+export type DestinoDoApp = { rota: string; nome: string; icone?: NomeDeIcone };
 
 export type AppNaBarra = {
   chave: string;

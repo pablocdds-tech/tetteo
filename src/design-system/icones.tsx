@@ -188,6 +188,19 @@ const ICONES: Record<string, ReactNode> = {
       <rect x="13.2" y="13.2" width="7" height="7" rx="1.6" />
     </>
   ),
+  colunas: (
+    <>
+      <rect x="3" y="4" width="5" height="16" rx="1" />
+      <rect x="9.5" y="4" width="5" height="16" rx="1" />
+      <path d="M17 4h4v16h-4z" />
+    </>
+  ),
+  impressora: (
+    <>
+      <path d="M7 8V3.5h10V8M7 17H4V8h16v9h-3M7 14h10v6.5H7z" />
+      <path d="M16.5 11h1" />
+    </>
+  ),
 
   filtro: <path d="M3.8 5.4h16.4l-6.4 7.5v5.6l-3.6 2v-7.6L3.8 5.4Z" />,
 

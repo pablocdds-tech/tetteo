@@ -73,7 +73,12 @@ export type ManifestoDoApp = {
    * ela mostra só o que existe dentro do módulo escolhido. Trocar de módulo é
    * um gesto separado, no painel flutuante do topo.
    */
-  navegacao: { rota: string; nome: string; permissao?: string }[];
+  navegacao: {
+    rota: string;
+    nome: string;
+    permissao?: string;
+    icone?: NomeDeIcone;
+  }[];
 
   /**
    * A permissão mínima para o App sequer aparecer. Quem não tem, não vê o

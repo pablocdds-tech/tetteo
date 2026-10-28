@@ -1,5 +1,40 @@
 # Usabilidade do PDV a partir da central de ajuda
 
+## Revisão visual no domínio próprio — 28/10/2026
+
+Inspeção autenticada e somente de leitura da Gestão de pedidos no portal do
+Cardápio Web: barra curta com busca e novo pedido, duas listas compactas,
+identificação e valor à esquerda da linha, tempo/situação à direita, resumo
+amplo com situação destacada e ações disponíveis durante a rolagem. Não houve
+alteração de pedidos ou configurações da referência, nem cópia de dados pessoais.
+
+Aplicado ao PDV em seu domínio próprio:
+
+- Identificação da página sem título repetido; navegação com ícones e menor largura.
+- Barra de busca/ações compacta e filtros em abas, preservando os totais e as
+  visões existentes de agendados, entregas, retiradas e balcão.
+- Duas listas com linhas compactas, indicação de etapa e pendências financeiras
+  explícitas. A origem externa permanece identificada; o rótulo Tetteo não se
+  repete em cada pedido local.
+- Resumo com cabeçalho, faixa de situação e rodapé fixos; cliente antes da entrega,
+  itens com quantidade separada e impressões no cabeçalho. O diálogo do celular
+  apresenta o título uma única vez.
+- Kanban usa toda a largura quando não há seleção. As seis etapas cabem em
+  1440 px; em telas menores o quadro conserva sua rolagem horizontal.
+- Busca por `/`, seleção limpa ao pesquisar, layout fechado por Esc ou clique
+  externo e restauração do padrão. Preferências por operador/unidade mantidas.
+
+Validação local com Playwright em 1440×960, 1280×800, 1920×1080 e 390×844:
+busca com resultado vazio, remoção de seleção antiga, filtros por modalidade,
+persistência/restauração de layout, seis colunas, cabeçalho e próxima ação visíveis
+ao rolar, menu e detalhe móveis e ausência de ações locais em pedido externo.
+As capturas usam apenas dados fictícios do banco local. A revisão visual ocorreu
+em duas rodadas delimitadas; não foi alterado o serviço de vendas, caixa ou estoque.
+
+As lacunas funcionais do mapa abaixo, como reabrir ou editar pedido já emitido,
+continuam exigindo implementação transacional própria. A nova apresentação não
+simula essas funções nem amplia permissões.
+
 Revisão em 27/10/2026, após o usuário apontar que a operação do Tetteo continua menos fluida. Fonte: documentação pública oficial em [ajuda.cardapioweb.com](https://ajuda.cardapioweb.com), incluindo o índice completo. A inspeção anterior da conta autenticada complementa a disposição visual. A documentação descreve funcionalidades; não comprova contratos internos ou transações não executadas. Nenhum dado ou configuração da referência foi alterado.
 
 ## O caminho de atendimento

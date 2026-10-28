@@ -3,11 +3,25 @@
 ## Ambiente próprio do PDV
 
 Quando o domínio operacional está configurado, o PDV recebe uma casca própria:
-menu fixo de 240 px no desktop, seções operacionais sem seletor de módulos,
+menu fixo de 224 px no desktop, seções operacionais com ícones e sem seletor de módulos,
 cabeçalho compacto e link para abrir o Tetteo. No celular, o menu usa o diálogo
 nativo com foco contido e fecha após a navegação. O seletor de unidade e a conta
 continuam visíveis no menu. A casca herda os mesmos tokens roxos claros e escuros
 do PDV; os demais módulos mantêm a identidade atual do Tetteo.
+
+A gestão usa uma única identificação de página, barra de busca e ações, filtros
+em abas e duas listas compactas com resumo à direita (aproximadamente 62/38).
+Cada linha agrupa cliente/número, valor/modalidade e tempo/situação. A faixa fina
+na lateral da linha reproduz a convenção observada no Cardápio Web e codifica a
+etapa com os tokens semânticos existentes; o texto da situação permanece visível.
+É uma escolha funcional da referência solicitada, apesar do alerta genérico do
+detector sobre bordas laterais coloridas.
+
+O resumo mantém cabeçalho, situação, total e ações fixos; só o conteúdo interno
+rola. No celular, o diálogo nativo fornece o título, evitando repeti-lo no corpo.
+O kanban ocupa a largura disponível sem seleção e abre o resumo ao selecionar.
+Busca e filtros continuam na mesma gestão; pesquisar limpa o pedido selecionado.
+O atalho `/` foca a busca e Esc fecha o layout ou limpa a seleção fora de diálogos.
 
 ## PDV — referência operacional em 27/10/2026
 

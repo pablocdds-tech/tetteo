@@ -13,6 +13,10 @@ const Ambientes = createContext<{
   rotaAplicativo: string;
 } | null>(null);
 
+export function useAmbienteProprio() {
+  return useContext(Ambientes) !== null;
+}
+
 export function ProvedorDeAmbientes({
   principal,
   rotaAplicativo,

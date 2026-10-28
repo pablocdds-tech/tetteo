@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAmbienteProprio } from "@/core/shell/link-integrado";
 import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 import { Icone } from "@/design-system/icones";
@@ -28,7 +29,10 @@ import {
   EntregaOrigemPedido,
 } from "./origem-pedido";
 import { useLayoutPedidos } from "../hooks/use-layout-pedidos";
-import { ESTADOS_OCULTAVEIS } from "../schemas/layout-pedidos";
+import {
+  ESTADOS_OCULTAVEIS,
+  LAYOUT_PEDIDOS_PADRAO,
+} from "../schemas/layout-pedidos";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -165,6 +169,9 @@ export function GestaoPedidos({
   instante: string;
 }) {
   const router = useRouter();
+  const ambienteProprio = useAmbienteProprio();
+  const buscaRef = useRef<HTMLInputElement>(null);
+  const layoutRef = useRef<HTMLDetailsElement>(null);
   const [quadro, setQuadro] = useState(inicial);
   const [busca, setBusca] = useState("");
   const [layout, setLayout] = useLayoutPedidos(preferenciasId);
@@ -179,6 +186,47 @@ export function GestaoPedidos({
   const [aviso, setAviso] = useState("");
   const [atualizando, setAtualizando] = useState(false);
   const [mutando, setMutando] = useState(false);
+  useEffect(() => {
+    function fecharLayout(evento: PointerEvent) {
+      if (
+        layoutRef.current?.open &&
+        evento.target instanceof Node &&
+        !layoutRef.current.contains(evento.target)
+      )
+        layoutRef.current.open = false;
+    }
+    function atalhos(evento: KeyboardEvent) {
+      if (evento.key === "Escape" && layoutRef.current?.open) {
+        layoutRef.current.open = false;
+        layoutRef.current.querySelector("summary")?.focus();
+        evento.preventDefault();
+        return;
+      }
+      if (mutando || document.querySelector("dialog[open]")) return;
+      const editando =
+        evento.target instanceof Element &&
+        evento.target.closest(
+          'input, textarea, select, [contenteditable="true"]',
+        );
+      if (
+        evento.key === "/" &&
+        !editando &&
+        !evento.ctrlKey &&
+        !evento.metaKey &&
+        !evento.altKey
+      ) {
+        evento.preventDefault();
+        buscaRef.current?.focus();
+      }
+      if (evento.key === "Escape" && !editando) setSelecionadoId(null);
+    }
+    document.addEventListener("pointerdown", fecharLayout);
+    document.addEventListener("keydown", atalhos);
+    return () => {
+      document.removeEventListener("pointerdown", fecharLayout);
+      document.removeEventListener("keydown", atalhos);
+    };
+  }, [mutando]);
   const [agora, setAgora] = useState(instante);
   const [ultima, setUltima] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
@@ -409,60 +457,60 @@ export function GestaoPedidos({
     setAviso("Programação do pedido atualizada.");
   }, []);
   return (
-    <div className={styles.pagina}>
-      <header className={styles.topo}>
+    <div
+      className={styles.pagina}
+      data-ambiente={ambienteProprio ? "proprio" : "integrado"}
+    >
+      <header className={ambienteProprio ? "sr-only" : styles.topo}>
         <div>
           <h1>Gestão de pedidos</h1>
           <p>{unidade} · agendados, retiradas, balcão e entregas</p>
         </div>
-        <Link
-          href="/pdv/caixa"
-          className={estiloDeBotao("fantasma", "pequeno")}
-        >
-          Caixa
-        </Link>
-      </header>
-      <nav className={styles.filtrosVisao} aria-label="Filtrar pedidos">
-        {VISOES.map((v) => (
-          <button
-            type="button"
-            key={v.valor}
-            aria-pressed={quadro.visao === v.valor}
-            disabled={mutando}
-            onClick={() => {
-              const params = new URLSearchParams(window.location.search);
-              params.set("visao", v.valor);
-              params.set("dia", dia);
-              router.replace(`/pdv?${params}`);
-            }}
+        {!ambienteProprio && (
+          <Link
+            href="/pdv/caixa"
+            className={estiloDeBotao("fantasma", "pequeno")}
           >
-            {v.nome}
-            <span>{quadro.totaisVisao[v.valor]}</span>
-          </button>
-        ))}
-      </nav>
+            Caixa
+          </Link>
+        )}
+      </header>
       <div className={styles.toolbar}>
         <div className={styles.busca}>
-          <label htmlFor="busca-pedidos">Buscar pedido</label>
+          <label htmlFor="busca-pedidos" className="sr-only">
+            Buscar pedido
+          </label>
+          <Icone nome="lupa" tamanho={18} />
           <input
+            ref={buscaRef}
             id="busca-pedidos"
             type="search"
             placeholder="Pesquise por cliente ou número do pedido"
             value={busca}
-            onChange={(e) => setBusca(e.target.value)}
+            disabled={mutando}
+            aria-keyshortcuts="/"
+            onChange={(e) => {
+              setBusca(e.target.value);
+              setSelecionadoId(null);
+            }}
           />
+          <kbd aria-hidden="true">/</kbd>
         </div>
         {podeVender && (
           <Link href="/pdv/novo-pedido" className={estiloDeBotao("primario")}>
-            + Novo pedido
+            <Icone nome="mais" tamanho={17} /> Novo pedido
           </Link>
         )}
         <div className={styles.dia}>
-          <label htmlFor="dia-pedidos">Entregues/cancelados em</label>
+          <label htmlFor="dia-pedidos" className="sr-only">
+            Entregues/cancelados em
+          </label>
           <input
             id="dia-pedidos"
             type="date"
             value={dia}
+            title="Data dos pedidos entregues e cancelados. Pedidos em andamento continuam visíveis."
+            disabled={mutando}
             onChange={(e) => {
               if (e.target.value) {
                 const params = new URLSearchParams(window.location.search);
@@ -475,14 +523,20 @@ export function GestaoPedidos({
         </div>
         <Botao
           peso="secundario"
+          className={styles.botaoAtualizar}
+          aria-label="Atualizar pedidos"
+          title="Atualizar pedidos"
           carregando={atualizando}
           disabled={mutando}
           onClick={() => void atualizar(true)}
         >
-          Atualizar
+          <Icone nome="atualizar" tamanho={17} />
         </Botao>
-        <details className={styles.layout}>
-          <summary>Ajustar layout</summary>
+        <details className={styles.layout} ref={layoutRef}>
+          <summary title="Ajustar layout" aria-label="Ajustar layout">
+            <Icone nome="colunas" tamanho={17} />
+            <span>Ajustar layout</span>
+          </summary>
           <fieldset className={styles.opcoes}>
             <legend className="sr-only">Organização dos pedidos</legend>
             <label>
@@ -552,13 +606,39 @@ export function GestaoPedidos({
                 ),
               )}
             </div>
+            <button
+              type="button"
+              className={styles.restaurarLayout}
+              onClick={() => setLayout(() => LAYOUT_PEDIDOS_PADRAO)}
+            >
+              Restaurar padrão
+            </button>
           </fieldset>
         </details>
       </div>
+      <nav className={styles.filtrosVisao} aria-label="Filtrar pedidos">
+        {VISOES.map((v) => (
+          <button
+            type="button"
+            key={v.valor}
+            aria-pressed={quadro.visao === v.valor}
+            disabled={mutando}
+            onClick={() => {
+              const params = new URLSearchParams(window.location.search);
+              params.set("visao", v.valor);
+              params.set("dia", dia);
+              router.replace(`/pdv?${params}`);
+            }}
+          >
+            {v.nome}
+            <span>{quadro.totaisVisao[v.valor]}</span>
+          </button>
+        ))}
+      </nav>
       <div className={styles.linhaAtualizacao}>
-        <p>
-          Pedidos em andamento e entregues com pagamento pendente aparecem mesmo
-          quando iniciados em outro dia.
+        <p title="Pedidos em andamento e entregues com pagamento pendente continuam visíveis, mesmo quando iniciados em outro dia.">
+          <Icone nome="relogio" tamanho={14} /> Em andamento + finalizados do
+          dia
         </p>
         <p>
           {ultima
@@ -595,7 +675,9 @@ export function GestaoPedidos({
         Cancelar exige justificativa.
       </p>
       <div
-        className={`${styles.workspace} ${modoLayout === "LISTAS" ? styles.workspaceListas : ""}`}
+        className={styles.workspace}
+        data-modo={modoLayout}
+        data-selecionado={!!selecionado}
       >
         {modoLayout === "LISTAS" ? (
           <section className={styles.listas} aria-label="Listas de pedidos">
@@ -613,7 +695,7 @@ export function GestaoPedidos({
                   aria-label={`Lista ${lista}`}
                 >
                   <header className={styles.topoLista}>
-                    <h2>Pedidos · lista {lista}</h2>
+                    <h2>Lista {lista}</h2>
                     <span>
                       {filtro ? `${pedidos.length}/` : ""}
                       {total}
@@ -632,6 +714,7 @@ export function GestaoPedidos({
                         key={p.id}
                         type="button"
                         className={styles.cardLinha}
+                        data-status={p.status}
                         aria-pressed={selecionadoId === p.id}
                         disabled={mutando}
                         onClick={() => setSelecionadoId(p.id)}
@@ -652,24 +735,35 @@ export function GestaoPedidos({
                           <span className="sr-only">{modalidade(p)}</span>
                         </span>
                         <span className={styles.nomeLinha}>
-                          {p.venda.cliente ?? "Cliente não identificado"}
-                          <small>{modalidade(p)}</small>
-                          <EtiquetaOrigemPedido origem={p.origem} />
+                          <span className={styles.identidadeLinha}>
+                            <strong
+                              title={
+                                p.venda.cliente ?? "Cliente não identificado"
+                              }
+                            >
+                              {p.venda.cliente ?? "Cliente não identificado"}
+                            </strong>
+                            <span className={styles.numero}>
+                              {identificacao(p)}
+                            </span>
+                          </span>
+                          <span className={styles.resumoLinha}>
+                            <strong className={styles.valorLinha}>
+                              {moeda(p.venda.totalCentavos)}
+                            </strong>
+                            <span>{modalidade(p)}</span>
+                          </span>
                         </span>
-                        <span className={styles.numero}>
-                          {identificacao(p)}
-                        </span>
-                        <strong className={styles.valorLinha}>
-                          {moeda(p.venda.totalCentavos)}
-                        </strong>
-                        <span className={styles.tempo}>
-                          {p.status === "AGENDADO" ? "—" : tempo(p, agora)}
-                        </span>
-                        <span
-                          className={styles.statusLinha}
-                          data-status={p.status}
-                        >
-                          {etapaPedido(p)}
+                        <span className={styles.situacaoLinha}>
+                          <span className={styles.tempo}>
+                            {p.status === "AGENDADO" ? "—" : tempo(p, agora)}
+                          </span>
+                          <span
+                            className={styles.statusLinha}
+                            data-status={p.status}
+                          >
+                            {etapaPedido(p)}
+                          </span>
                         </span>
                         <span
                           className={styles.financeiroLinha}
@@ -691,6 +785,11 @@ export function GestaoPedidos({
                         >
                           <EtiquetaPagamento venda={p.venda} />
                         </span>
+                        {p.origem && (
+                          <span className={styles.origemLinha}>
+                            <EtiquetaOrigemPedido origem={p.origem} />
+                          </span>
+                        )}
                         {p.status === "AGENDADO" && p.agendadoPara && (
                           <span className={styles.horariosLinha}>
                             Para {data(p.agendadoPara)}
@@ -796,7 +895,7 @@ export function GestaoPedidos({
                             {tempo(p, agora)}
                           </time>
                         </span>
-                        <EtiquetaOrigemPedido origem={p.origem} />
+                        {p.origem && <EtiquetaOrigemPedido origem={p.origem} />}
                         <span className={styles.cliente}>
                           {p.venda.cliente ?? "Cliente não identificado"}
                         </span>
@@ -865,7 +964,7 @@ export function GestaoPedidos({
           ) : (
             <div className={styles.semSelecao}>
               <Icone nome="caixa" tamanho={65} />
-              <p>Nenhum pedido selecionado</p>
+              <h2>Nenhum pedido selecionado</h2>
               <p className="text-xs">
                 Selecione um cartão para acompanhar o pedido.
               </p>
@@ -881,6 +980,7 @@ export function GestaoPedidos({
       >
         {selecionado && (
           <DetalhesPedido
+            emPainel
             aoOcupar={ocuparAgendamento}
             aoConfirmarAgendamento={confirmarAgendamento}
             pedido={selecionado}
@@ -961,6 +1061,7 @@ export function GestaoPedidos({
 }
 
 function DetalhesPedido({
+  emPainel = false,
   pedido: p,
   aoOcupar,
   aoConfirmarAgendamento,
@@ -975,6 +1076,7 @@ function DetalhesPedido({
   aoMover,
   aoFechar,
 }: {
+  emPainel?: boolean;
   pedido: PedidoPdv;
   aoOcupar: (ocupado: boolean) => void;
   aoConfirmarAgendamento: () => void;
@@ -992,19 +1094,25 @@ function DetalhesPedido({
   const seguinte = proximo(p);
   return (
     <div className={styles.detalheConteudo}>
-      <div
-        className={styles.corpoDetalhe}
-        tabIndex={0}
-        role="region"
-        aria-label={`Resumo do pedido ${identificacao(p)}`}
+      <header
+        className={`${styles.detalheTopo} ${emPainel ? styles.detalheNoPainel : ""}`}
       >
-        <header className={styles.detalheTopo}>
-          <div>
-            <h2>Pedido {identificacao(p)}</h2>
-            <p>
-              {data(p.criadoEm)} · {modalidade(p)}
-            </p>
-          </div>
+        {!emPainel && (
+          <span className={styles.iconeDetalhe} aria-hidden="true">
+            <Icone
+              nome={p.venda.modalidade === "ENTREGA" ? "entrega" : "pessoa"}
+              tamanho={22}
+            />
+          </span>
+        )}
+        <div className={styles.tituloDetalhe}>
+          {!emPainel && <h2>Pedido {identificacao(p)}</h2>}
+          <p>
+            {data(p.criadoEm)} · {modalidade(p)}
+          </p>
+        </div>
+        <div className={styles.acoesCabecalho}>
+          {p.vendaId && <BotoesImpressao vendaId={p.vendaId} compacto />}
           {aoFechar && (
             <button
               type="button"
@@ -1012,12 +1120,24 @@ function DetalhesPedido({
               className={styles.fechar}
               onClick={aoFechar}
             >
-              ×
+              <Icone nome="fechar" tamanho={18} />
             </button>
           )}
-        </header>
-        <span className={styles.etapa}>{etapaPedido(p)}</span>
-        <EtiquetaOrigemPedido origem={p.origem} />
+        </div>
+      </header>
+      <div className={styles.faixaEtapa} data-status={p.status}>
+        {etapaPedido(p)}
+      </div>
+      <div
+        className={styles.corpoDetalhe}
+        tabIndex={0}
+        role="region"
+        aria-label={`Resumo do pedido ${identificacao(p)}`}
+      >
+        <div className={styles.metadadosPedido}>
+          <span>{modalidade(p)}</span>
+          <EtiquetaOrigemPedido origem={p.origem} />
+        </div>
         {p.origem && (
           <p className="text-ink-3 text-xs">
             {p.origem.situacao} · atualizado pela {p.origem.nome} em{" "}
@@ -1039,10 +1159,17 @@ function DetalhesPedido({
             )}
           </p>
         )}
-        {p.vendaId && <BotoesImpressao vendaId={p.vendaId} />}
+        <section className={styles.secao}>
+          <h3>
+            <Icone nome="pessoa" tamanho={18} /> Cliente
+          </h3>
+          <p>{p.venda.cliente ?? "Não identificado"}</p>
+        </section>
         {p.venda.modalidade === "ENTREGA" && (
           <section className={styles.secao}>
-            <h3>Entrega</h3>
+            <h3>
+              <Icone nome="entrega" tamanho={18} /> Entrega
+            </h3>
             {p.origem ? (
               <EntregaOrigemPedido
                 origem={p.origem}
@@ -1127,17 +1254,16 @@ function DetalhesPedido({
           </section>
         )}
         <section className={styles.secao}>
-          <h3>Cliente</h3>
-          <p>{p.venda.cliente ?? "Não identificado"}</p>
-        </section>
-        <section className={styles.secao}>
-          <h3>Itens do pedido</h3>
+          <h3>
+            <Icone nome="prato" tamanho={18} /> Itens do pedido
+          </h3>
           {p.venda.itens.map((item, i) => (
             <div key={i} className={styles.item}>
               <div className={styles.linha}>
-                <strong>
-                  {item.quantidade}× {item.nome}
-                </strong>
+                <span className={styles.quantidadeItem}>
+                  {item.quantidade}×
+                </span>
+                <strong className={styles.nomeItem}>{item.nome}</strong>
                 <strong>{moeda(item.totalCentavos)}</strong>
               </div>
               {item.complementos.map((o, n) => (
@@ -1156,7 +1282,9 @@ function DetalhesPedido({
           </section>
         )}
         <section className={styles.secao}>
-          <h3>Pagamento</h3>
+          <h3>
+            <Icone nome="moeda" tamanho={18} /> Pagamento
+          </h3>
           <EtiquetaPagamento venda={p.venda} />
           {p.origem && <PagamentosOrigemPedido origem={p.origem} />}
           {p.venda.status === "PENDENTE" && (
@@ -1264,7 +1392,9 @@ function DetalhesPedido({
         )}
         {!p.origem && p.status !== "CANCELADO" && podeCancelar && (
           <details className={styles.maisAcoes}>
-            <summary>Mais ações</summary>
+            <summary>
+              Mais ações <Icone nome="seta-baixo" tamanho={14} />
+            </summary>
             <Botao
               peso="fantasma"
               disabled={pendente}

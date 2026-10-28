@@ -62,8 +62,9 @@ export function AmbienteAplicativo({
                 href={destino.rota}
                 onClick={() => setMenuAberto(false)}
                 aria-current={atual?.rota === destino.rota ? "page" : undefined}
-                className={`focus-visible:outline-accent flex min-h-11 items-center rounded-lg px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 ${atual?.rota === destino.rota ? "bg-accent-sub text-accent font-semibold" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}
+                className={`focus-visible:outline-accent flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 lg:min-h-10 ${atual?.rota === destino.rota ? "bg-accent-sub text-accent font-semibold" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}
               >
+                {destino.icone && <Icone nome={destino.icone} tamanho={18} />}
                 {destino.nome}
               </Link>
             </li>
@@ -90,7 +91,7 @@ export function AmbienteAplicativo({
       >
         <aside
           aria-label={`Menu do ${app.nome}`}
-          className="border-line bg-surface sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r lg:flex"
+          className="border-line bg-surface sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r lg:flex"
         >
           {navegacao}
         </aside>
@@ -112,7 +113,7 @@ export function AmbienteAplicativo({
             >
               <Icone nome="menu" tamanho={21} />
             </button>
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+            <span className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
               {atual?.nome ?? app.nome}
             </span>
             <span className="text-ink-3 hidden text-xs sm:block">

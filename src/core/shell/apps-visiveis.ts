@@ -43,6 +43,10 @@ export function appsVisiveis(
         ? []
         : app.navegacao
             .filter((item) => !item.permissao || pode(contexto, item.permissao))
-            .map((item) => ({ rota: item.rota, nome: item.nome })),
+            .map((item) => ({
+              rota: item.rota,
+              nome: item.nome,
+              icone: item.icone,
+            })),
   }));
 }
