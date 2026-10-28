@@ -418,7 +418,7 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
     caixaId,
     usuarioId: usuario.id,
     operador: usuario.nome,
-    modalidade: "RETIRADA",
+    modalidade: "BALCAO",
     observacao: "Volume fictício",
     payloadHash: "teste",
     subtotalCentavos: 1000,
@@ -454,4 +454,54 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
   assert.equal(volumoso.finalizadosExibidos, 200);
   assert.ok(volumoso.finalizadosTotal >= 201);
   assert.equal(volumoso.truncado, true);
+  // O filtro é executado no banco: uma retirada agendada fora dos primeiros
+  // quinhentos pedidos gerais continua encontrável pela visão específica.
+  const agendadoPara = new Date(Date.now() + 86400000);
+  await db.pdvVenda.update({
+    where: { id: ids[500] },
+    data: { modalidade: "RETIRADA" },
+  });
+  await db.pdvPedido.update({
+    where: { vendaId: ids[500] },
+    data: {
+      status: "AGENDADO",
+      agendadoPara,
+      iniciarPreparoEm: new Date(agendadoPara.getTime() - 1800000),
+      antecedenciaMinutos: 30,
+      criadoEm: new Date(Date.now() + 60000),
+    },
+  });
+  const todosUnificados = await listarPedidos(ctx, { dia: hoje });
+  assert.equal(todosUnificados.totais.AGENDADO, 1);
+  assert.equal(todosUnificados.ativosTotal, volumoso.ativosTotal);
+  assert.equal(
+    todosUnificados.pedidos.some((p) => p.vendaId === ids[500]),
+    false,
+  );
+  const retiradaFiltrada = await listarPedidos(ctx, {
+    dia: hoje,
+    visao: "RETIRADA",
+  });
+  assert.equal(retiradaFiltrada.visao, "RETIRADA");
+  assert.equal(
+    retiradaFiltrada.pedidos.some(
+      (p) => p.vendaId === ids[500] && p.status === "AGENDADO",
+    ),
+    true,
+  );
+  assert.ok(
+    retiradaFiltrada.pedidos.every((p) => p.venda.modalidade === "RETIRADA"),
+  );
+  assert.deepEqual(retiradaFiltrada.totaisVisao, todosUnificados.totaisVisao);
+  assert.equal(
+    todosUnificados.totaisVisao.TODOS,
+    todosUnificados.ativosTotal + todosUnificados.finalizadosTotal,
+  );
+  const agendados = await listarPedidos(ctx, { visao: "AGENDADOS" });
+  assert.equal(agendados.ativosTotal, 1);
+  assert.equal(agendados.pedidos[0].vendaId, ids[500]);
+  assert.equal(
+    (await listarPedidos(ctx, { visao: "EM_ANDAMENTO" })).ativosTotal,
+    volumoso.ativosTotal - 1,
+  );
 });

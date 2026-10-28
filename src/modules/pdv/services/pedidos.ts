@@ -7,6 +7,7 @@ import type {
   QuadroPedidos,
   StatusPedido,
   StatusEventoPedido,
+  VisaoPedidos,
 } from "../pedido-types";
 import { processarAgendamentosVencidos } from "./agendamentos";
 import { ErroPdv } from "../schemas/erro";
@@ -28,6 +29,22 @@ type PedidoBanco = Prisma.PdvPedidoGetPayload<{
   include: typeof incluirEventos;
 }>;
 type VendaBanco = Prisma.PdvVendaGetPayload<object>;
+const VISOES: VisaoPedidos[] = [
+  "TODOS",
+  "EM_ANDAMENTO",
+  "AGENDADOS",
+  "RETIRADA",
+  "ENTREGA",
+  "BALCAO",
+];
+function filtroVisao(visao: VisaoPedidos): Prisma.PdvPedidoWhereInput {
+  if (visao === "AGENDADOS") return { status: "AGENDADO" };
+  if (visao === "EM_ANDAMENTO")
+    return { status: { in: ["COZINHA", "AGUARDANDO_COLETA", "SAIU_ENTREGA"] } };
+  if (visao === "RETIRADA" || visao === "ENTREGA" || visao === "BALCAO")
+    return { venda: { modalidade: visao } };
+  return {};
+}
 function serializarPedido(
   p: PedidoBanco,
   v: VendaBanco,
@@ -72,15 +89,17 @@ export async function listarPedidos(
   entrada: unknown = {},
 ): Promise<QuadroPedidos> {
   const escopo = await exigirEscopo(ctx);
-  await processarAgendamentosVencidos(escopo);
   const dados = esquemaListaPedidos.parse(entrada);
+  await processarAgendamentosVencidos(escopo);
   const dia = dados.dia ?? diaPedidos();
   const periodo = periodoPedidos(dia);
-  const ativo: Prisma.PdvPedidoWhereInput = {
+  const ativoBase: Prisma.PdvPedidoWhereInput = {
     ...escopo,
-    status: { in: ["COZINHA", "AGUARDANDO_COLETA", "SAIU_ENTREGA"] },
+    status: {
+      in: ["AGENDADO", "COZINHA", "AGUARDANDO_COLETA", "SAIU_ENTREGA"],
+    },
   };
-  const finalizado: Prisma.PdvPedidoWhereInput = {
+  const finalizadoBase: Prisma.PdvPedidoWhereInput = {
     ...escopo,
     OR: [
       {
@@ -97,27 +116,50 @@ export async function listarPedidos(
       },
     ],
   };
+  const ativo: Prisma.PdvPedidoWhereInput = {
+    AND: [ativoBase, filtroVisao(dados.visao)],
+  };
+  const finalizado: Prisma.PdvPedidoWhereInput = {
+    AND: [finalizadoBase, filtroVisao(dados.visao)],
+  };
   return db.$transaction(
     async (tx) => {
-      const [ativos, finalizados, contagens] = await Promise.all([
-        tx.pdvPedido.findMany({
-          where: ativo,
-          include: incluirEventos,
-          orderBy: [{ criadoEm: "asc" }, { id: "asc" }],
-          take: 500,
-        }),
-        tx.pdvPedido.findMany({
-          where: finalizado,
-          include: incluirEventos,
-          orderBy: [{ atualizadoEm: "desc" }, { id: "desc" }],
-          take: 200,
-        }),
-        tx.pdvPedido.groupBy({
-          by: ["status"],
-          where: { OR: [ativo, finalizado] },
-          _count: { _all: true },
-        }),
-      ]);
+      const [ativos, finalizados, contagens, contagensVisao] =
+        await Promise.all([
+          tx.pdvPedido.findMany({
+            where: ativo,
+            include: incluirEventos,
+            orderBy: [{ criadoEm: "asc" }, { id: "asc" }],
+            take: 500,
+          }),
+          tx.pdvPedido.findMany({
+            where: finalizado,
+            include: incluirEventos,
+            orderBy: [{ atualizadoEm: "desc" }, { id: "desc" }],
+            take: 200,
+          }),
+          tx.pdvPedido.groupBy({
+            by: ["status"],
+            where: { OR: [ativo, finalizado] },
+            _count: { _all: true },
+          }),
+          Promise.all(
+            VISOES.map(
+              async (visao) =>
+                [
+                  visao,
+                  await tx.pdvPedido.count({
+                    where: {
+                      AND: [
+                        { OR: [ativoBase, finalizadoBase] },
+                        filtroVisao(visao),
+                      ],
+                    },
+                  }),
+                ] as const,
+            ),
+          ),
+        ]);
       const todos = [...ativos, ...finalizados];
       const vendas = await tx.pdvVenda.findMany({
         where: { ...escopo, id: { in: todos.map((p) => p.vendaId) } },
@@ -130,10 +172,18 @@ export async function listarPedidos(
         ]),
       ) as Record<StatusPedido, number>;
       const ativosTotal =
-        totais.COZINHA + totais.AGUARDANDO_COLETA + totais.SAIU_ENTREGA;
+        totais.AGENDADO +
+        totais.COZINHA +
+        totais.AGUARDANDO_COLETA +
+        totais.SAIU_ENTREGA;
       const finalizadosTotal = totais.ENTREGUE + totais.CANCELADO;
       return {
         dia,
+        visao: dados.visao,
+        totaisVisao: Object.fromEntries(contagensVisao) as Record<
+          VisaoPedidos,
+          number
+        >,
         pedidos: todos.map((p) => {
           const venda = mapa.get(p.vendaId);
           if (!venda)

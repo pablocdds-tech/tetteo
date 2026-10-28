@@ -96,7 +96,7 @@ export async function finalizarVendaAcao(
       dados !== null &&
       "agendamento" in dados &&
       dados.agendamento
-      ? "Pedido agendado. Confira o horário de entrada na cozinha na aba Agendados."
+      ? "Pedido agendado. Acompanhe o horário de preparo na Gestão de pedidos."
       : typeof dados === "object" &&
           dados !== null &&
           "pagamentoPendente" in dados &&

@@ -15,16 +15,22 @@ export default async function PaginaGestaoPedidos({
   searchParams: Promise<{
     dia?: string | string[];
     novaVenda?: string | string[];
+    visao?: string | string[];
   }>;
 }) {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
   if (!contexto.unidadeAtiva) return null;
   const consulta = await searchParams;
-  if (Array.isArray(consulta.dia) || Array.isArray(consulta.novaVenda))
+  if (
+    Array.isArray(consulta.dia) ||
+    Array.isArray(consulta.novaVenda) ||
+    Array.isArray(consulta.visao)
+  )
     notFound();
   if (
-    !esquemaListaPedidos.safeParse({ dia: consulta.dia }).success ||
+    !esquemaListaPedidos.safeParse({ dia: consulta.dia, visao: consulta.visao })
+      .success ||
     (consulta.novaVenda?.length ?? 0) > 100
   )
     notFound();
@@ -37,14 +43,14 @@ export default async function PaginaGestaoPedidos({
     }
   }
   const [quadro, entregadores] = await Promise.all([
-    listarPedidos(contexto, { dia: consulta.dia }),
+    listarPedidos(contexto, { dia: consulta.dia, visao: consulta.visao }),
     pode(contexto, "pdv.entrega")
       ? listarEntregadores(contexto)
       : Promise.resolve([]),
   ]);
   return (
     <GestaoPedidos
-      key={`${contexto.unidadeAtiva.id}:${quadro.dia}`}
+      key={`${contexto.unidadeAtiva.id}:${quadro.dia}:${quadro.visao}`}
       inicial={quadro}
       unidade={contexto.unidadeAtiva.nome}
       podeVender={pode(contexto, "pdv.vender")}

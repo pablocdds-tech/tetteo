@@ -2,7 +2,7 @@
 
 ## PDV — referência operacional em 27/10/2026
 
-Por solicitação explícita do usuário, o PDV passou a seguir de perto a disposição visual do Cardápio Web: superfícies claras do sistema, bordas finas, cartões compactos, gestão de pedidos com detalhe à direita e novo pedido em janela ampla de três colunas. A marca continua Tetteo. O quadro tem as cinco etapas escolhidas pelo usuário; não reproduz integralmente todos os estados da plataforma de referência.
+Por solicitação explícita do usuário, o PDV segue de perto a disposição visual do Cardápio Web: superfícies claras do sistema, bordas finas, cartões compactos, gestão de pedidos com detalhe à direita e novo pedido em janela ampla de três colunas. A marca continua Tetteo. A Gestão de pedidos reúne atendimentos imediatos, agendados e todas as modalidades. O padrão apresenta duas listas mistas; “Ajustar layout” distribui os seis estados entre as listas e permite optar pelo kanban. Agendado é uma etapa do mesmo pedido; retirada é uma modalidade identificada no cartão e no detalhe.
 
 O roxo fica escopado a `pdv-aparencia.module.css`, sem trocar o acento global dos demais módulos. Pares claros: `#8b2fd0`/`#ffffff` (6,15:1) e sobre `#f2e7fb` (5,15:1). Pares escuros: `#d2a8f4`/`#281336` (8,61:1) e sobre `#362344` (7,19:1). O layout conserva foco visível, navegação por teclado, movimento reduzido e alternativa por botões ao arraste do kanban. No celular, o detalhe abre em diálogo nativo com o fundo inerte.
 

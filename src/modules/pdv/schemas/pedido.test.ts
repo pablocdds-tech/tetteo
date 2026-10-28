@@ -4,10 +4,41 @@ import { esquemaCancelar } from "./venda";
 import {
   diaPedidos,
   esquemaMoverPedido,
+  esquemaListaPedidos,
   periodoPedidos,
   proximaEtapa,
   validarTransicaoPedido,
 } from "./pedido";
+
+test("gestão inclui agendados e valida visões sem permitir avanço livre", () => {
+  assert.equal(esquemaListaPedidos.parse({}).visao, "TODOS");
+  for (const visao of [
+    "TODOS",
+    "EM_ANDAMENTO",
+    "AGENDADOS",
+    "RETIRADA",
+    "ENTREGA",
+    "BALCAO",
+  ])
+    assert.equal(esquemaListaPedidos.safeParse({ visao }).success, true);
+  assert.equal(
+    esquemaListaPedidos.safeParse({ visao: "CANAL" }).success,
+    false,
+  );
+  assert.equal(proximaEtapa("AGENDADO", "RETIRADA"), null);
+  assert.equal(
+    esquemaMoverPedido.safeParse({
+      pedidoId: "p",
+      versao: 1,
+      destino: "AGENDADO",
+    }).success,
+    false,
+  );
+  assert.throws(
+    () => validarTransicaoPedido("AGENDADO", "AGUARDANDO_COLETA", "RETIRADA"),
+    /não é permitida/,
+  );
+});
 
 test("entrega segue cozinha, coleta, saída e entrega sem atalhos", () => {
   assert.equal(proximaEtapa("COZINHA", "ENTREGA"), "AGUARDANDO_COLETA");

@@ -15,12 +15,13 @@ import type {
   PedidoPdv,
   QuadroPedidos,
   StatusPedido,
+  VisaoPedidos,
 } from "../pedido-types";
 import styles from "./gestao-pedidos.module.css";
 import { BotoesImpressao } from "./botoes-impressao";
 import { EtiquetaPagamento } from "./etiqueta-pagamento";
 import { ReceberPedido } from "./receber-pedido";
-import { AbasPedidos } from "./abas-pedidos";
+import { GerenciarAgendamento } from "./gerenciar-agendamento";
 
 const COLUNAS: {
   status: StatusPedido;
@@ -28,6 +29,12 @@ const COLUNAS: {
   classe: string;
   vazio: string;
 }[] = [
+  {
+    status: "AGENDADO",
+    nome: "Agendado",
+    classe: styles.agendado,
+    vazio: "Pedidos aguardando o horário do preparo.",
+  },
   {
     status: "COZINHA",
     nome: "Na cozinha",
@@ -78,6 +85,23 @@ const modalidade = (p: PedidoPdv) =>
       : "Retirada";
 const identificacao = (p: PedidoPdv) =>
   `#${p.numero.toString().padStart(4, "0")}`;
+const VISOES: { valor: VisaoPedidos; nome: string }[] = [
+  { valor: "TODOS", nome: "Todos" },
+  { valor: "EM_ANDAMENTO", nome: "Em andamento" },
+  { valor: "AGENDADOS", nome: "Agendados" },
+  { valor: "RETIRADA", nome: "Retiradas" },
+  { valor: "ENTREGA", nome: "Entregas" },
+  { valor: "BALCAO", nome: "Balcão" },
+];
+function etapaPedido(p: PedidoPdv) {
+  if (p.status === "AGUARDANDO_COLETA")
+    return p.venda.modalidade === "ENTREGA"
+      ? "Aguardando motoboy"
+      : p.venda.modalidade === "BALCAO"
+        ? "Pronto no balcão"
+        : "Esperando retirada";
+  return nomes[p.status];
+}
 function proximo(p: PedidoPdv): { status: DestinoPedido; nome: string } | null {
   if (p.status === "COZINHA")
     return { status: "AGUARDANDO_COLETA", nome: "Pedido pronto" };
@@ -133,6 +157,17 @@ export function GestaoPedidos({
   const router = useRouter();
   const [quadro, setQuadro] = useState(inicial);
   const [busca, setBusca] = useState("");
+  const [modoLayout, setModoLayout] = useState<"LISTAS" | "KANBAN">("LISTAS");
+  const [distribuicao, setDistribuicao] = useState<
+    Record<StatusPedido, "1" | "2" | "OCULTO">
+  >({
+    AGENDADO: "1",
+    COZINHA: "1",
+    AGUARDANDO_COLETA: "1",
+    SAIU_ENTREGA: "2",
+    ENTREGUE: "2",
+    CANCELADO: "2",
+  });
   const [visiveis, setVisiveis] = useState<StatusPedido[]>(
     COLUNAS.map((c) => c.status),
   );
@@ -182,7 +217,7 @@ export function GestaoPedidos({
       const epocaLeitura = epoca.current;
       if (manual) setAtualizando(true);
       try {
-        const resposta = await listarPedidosAcao({ dia });
+        const resposta = await listarPedidosAcao({ dia, visao: inicial.visao });
         if (!montado.current || epocaLeitura !== epoca.current) return;
         if (resposta.erro || !resposta.quadro) {
           setErroAtualizacao(
@@ -208,7 +243,7 @@ export function GestaoPedidos({
         }
       }
     },
-    [dia],
+    [dia, inicial.visao],
   );
   useEffect(() => {
     montado.current = true;
@@ -357,12 +392,21 @@ export function GestaoPedidos({
     void atualizar();
   }
 
+  const ocuparAgendamento = useCallback((ocupado: boolean) => {
+    alterando.current = ocupado;
+    epoca.current++;
+    setMutando(ocupado);
+    if (!ocupado) void atualizarDepois.current();
+  }, []);
+  const confirmarAgendamento = useCallback(() => {
+    setAviso("Programação do pedido atualizada.");
+  }, []);
   return (
     <div className={styles.pagina}>
       <header className={styles.topo}>
         <div>
           <h1>Gestão de pedidos</h1>
-          <p>{unidade} · cozinha, coleta e entregas</p>
+          <p>{unidade} · agendados, retiradas, balcão e entregas</p>
         </div>
         <Link
           href="/pdv/caixa"
@@ -371,7 +415,25 @@ export function GestaoPedidos({
           Caixa
         </Link>
       </header>
-      <AbasPedidos atual="quadro" />
+      <nav className={styles.filtrosVisao} aria-label="Filtrar pedidos">
+        {VISOES.map((v) => (
+          <button
+            type="button"
+            key={v.valor}
+            aria-pressed={quadro.visao === v.valor}
+            disabled={mutando}
+            onClick={() => {
+              const params = new URLSearchParams(window.location.search);
+              params.set("visao", v.valor);
+              params.set("dia", dia);
+              router.replace(`/pdv?${params}`);
+            }}
+          >
+            {v.nome}
+            <span>{quadro.totaisVisao[v.valor]}</span>
+          </button>
+        ))}
+      </nav>
       <div className={styles.toolbar}>
         <div className={styles.busca}>
           <label htmlFor="busca-pedidos">Buscar pedido</label>
@@ -395,10 +457,12 @@ export function GestaoPedidos({
             type="date"
             value={dia}
             onChange={(e) => {
-              if (e.target.value)
-                router.replace(
-                  `/pdv?dia=${encodeURIComponent(e.target.value)}`,
-                );
+              if (e.target.value) {
+                const params = new URLSearchParams(window.location.search);
+                params.set("dia", e.target.value);
+                params.set("visao", quadro.visao);
+                router.replace(`/pdv?${params}`);
+              }
             }}
           />
         </div>
@@ -413,26 +477,66 @@ export function GestaoPedidos({
         <details className={styles.layout}>
           <summary>Ajustar layout</summary>
           <fieldset className={styles.opcoes}>
-            <legend className="sr-only">Colunas visíveis</legend>
-            {COLUNAS.map((c) => (
-              <label key={c.status}>
-                <input
-                  type="checkbox"
-                  checked={visiveis.includes(c.status)}
-                  disabled={
-                    visiveis.length === 1 && visiveis.includes(c.status)
-                  }
-                  onChange={(e) =>
-                    setVisiveis((v) =>
-                      e.target.checked
-                        ? [...v, c.status]
-                        : v.filter((s) => s !== c.status),
-                    )
-                  }
-                />
-                {c.nome}
-              </label>
-            ))}
+            <legend className="sr-only">Organização dos pedidos</legend>
+            <label>
+              <input
+                type="radio"
+                name="modo-gestao"
+                checked={modoLayout === "LISTAS"}
+                onChange={() => setModoLayout("LISTAS")}
+              />
+              Listas compactas
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="modo-gestao"
+                checked={modoLayout === "KANBAN"}
+                onChange={() => setModoLayout("KANBAN")}
+              />
+              Kanban
+            </label>
+            <div className={styles.configEstados}>
+              {COLUNAS.map((c) =>
+                modoLayout === "LISTAS" ? (
+                  <label key={c.status}>
+                    <span>{c.nome}</span>
+                    <select
+                      aria-label={`Posição de ${c.nome}`}
+                      value={distribuicao[c.status]}
+                      onChange={(e) =>
+                        setDistribuicao((d) => ({
+                          ...d,
+                          [c.status]: e.target.value as "1" | "2" | "OCULTO",
+                        }))
+                      }
+                    >
+                      <option value="1">Lista 1</option>
+                      <option value="2">Lista 2</option>
+                      <option value="OCULTO">Ocultar</option>
+                    </select>
+                  </label>
+                ) : (
+                  <label key={c.status}>
+                    <input
+                      type="checkbox"
+                      checked={visiveis.includes(c.status)}
+                      disabled={
+                        visiveis.length === 1 && visiveis.includes(c.status)
+                      }
+                      onChange={(e) =>
+                        setVisiveis((v) =>
+                          e.target.checked
+                            ? [...v, c.status]
+                            : v.filter((s) => s !== c.status),
+                        )
+                      }
+                    />
+                    {c.nome}
+                  </label>
+                ),
+              )}
+            </div>
           </fieldset>
         </details>
       </div>
@@ -475,137 +579,256 @@ export function GestaoPedidos({
         computador, também é possível arrastar o cartão para a próxima coluna.
         Cancelar exige justificativa.
       </p>
-      <div className={styles.workspace}>
-        <section
-          className={styles.quadro}
-          aria-label="Quadro de pedidos"
-          aria-describedby="ajuda-quadro"
-        >
-          {COLUNAS.filter((c) => visiveis.includes(c.status)).map((c) => {
-            const pedidos = filtrados.filter((p) => p.status === c.status);
-            const pDrag = quadro.pedidos.find((p) => p.id === arrastando);
-            const aceita =
-              !!pDrag &&
-              ((c.status === "CANCELADO" && podeCancelar) ||
-                (podeOperar && proximo(pDrag)?.status === c.status));
-            return (
-              <section
-                key={c.status}
-                className={`${styles.coluna} ${c.classe}`}
-                aria-label={c.nome}
-                data-destino={destinoDrag === c.status && aceita}
-                onDragOver={(e) => {
-                  if (aceita) {
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = "move";
-                    setDestinoDrag(c.status);
-                  }
-                }}
-                onDragLeave={(e) => {
-                  if (
-                    !(e.relatedTarget instanceof Node) ||
-                    !e.currentTarget.contains(e.relatedTarget)
-                  )
-                    setDestinoDrag(null);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDestinoDrag(null);
-                  setArrastando(null);
-                  if (aceita && pDrag) void mover(pDrag, c.status);
-                }}
-              >
-                <header className={styles.cabecalhoColuna}>
-                  <span className={styles.marcador} aria-hidden="true" />
-                  <h2>{c.nome}</h2>
-                  <span
-                    className={styles.contador}
-                    aria-label={`${quadro.totais[c.status]} pedidos`}
-                  >
-                    {filtro ? `${pedidos.length}/` : ""}
-                    {quadro.totais[c.status]}
-                  </span>
-                </header>
-                <div className={styles.lista}>
-                  {!pedidos.length && (
-                    <p className={styles.vazio}>
-                      {filtro
-                        ? "Nenhum pedido encontrado nesta coluna."
-                        : c.vazio}
-                    </p>
-                  )}
-                  {pedidos.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={styles.card}
-                      aria-label={`Pedido ${identificacao(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}${p.venda.status === "PENDENTE" ? ", aguardando pagamento" : ""}`}
-                      aria-pressed={selecionadoId === p.id}
-                      draggable={podeOperar && !mutando && !!proximo(p)}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", p.id);
-                        e.dataTransfer.effectAllowed = "move";
-                        setArrastando(p.id);
-                      }}
-                      onDragEnd={() => {
-                        setArrastando(null);
-                        setDestinoDrag(null);
-                      }}
-                      onClick={() => setSelecionadoId(p.id)}
-                    >
-                      <span className={styles.linha}>
+      <div
+        className={`${styles.workspace} ${modoLayout === "LISTAS" ? styles.workspaceListas : ""}`}
+      >
+        {modoLayout === "LISTAS" ? (
+          <section className={styles.listas} aria-label="Listas de pedidos">
+            {(["1", "2"] as const).map((lista) => {
+              const pedidos = filtrados.filter(
+                (p) => distribuicao[p.status] === lista,
+              );
+              const total = COLUNAS.filter(
+                (c) => distribuicao[c.status] === lista,
+              ).reduce((n, c) => n + quadro.totais[c.status], 0);
+              return (
+                <section
+                  key={lista}
+                  className={styles.listaMista}
+                  aria-label={`Lista ${lista}`}
+                >
+                  <header className={styles.topoLista}>
+                    <h2>Pedidos · lista {lista}</h2>
+                    <span>
+                      {filtro ? `${pedidos.length}/` : ""}
+                      {total}
+                    </span>
+                  </header>
+                  <div className={styles.linhasPedidos}>
+                    {!pedidos.length && (
+                      <p className={styles.vazio}>
+                        {filtro
+                          ? "Nenhum pedido encontrado."
+                          : "Nenhum pedido nos estados desta lista."}
+                      </p>
+                    )}
+                    {pedidos.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={styles.cardLinha}
+                        aria-pressed={selecionadoId === p.id}
+                        disabled={mutando}
+                        onClick={() => setSelecionadoId(p.id)}
+                        aria-label={`Pedido ${identificacao(p)}, ${modalidade(p)}, ${etapaPedido(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}`}
+                      >
+                        <span
+                          className={styles.iconeModalidade}
+                          title={modalidade(p)}
+                        >
+                          <Icone
+                            nome={
+                              p.venda.modalidade === "ENTREGA"
+                                ? "entrega"
+                                : "pessoa"
+                            }
+                            tamanho={17}
+                          />
+                          <span className="sr-only">{modalidade(p)}</span>
+                        </span>
+                        <span className={styles.nomeLinha}>
+                          {p.venda.cliente ?? "Cliente não identificado"}
+                          <small>{modalidade(p)}</small>
+                        </span>
                         <span className={styles.numero}>
                           {identificacao(p)}
                         </span>
-                        <time
-                          className={styles.tempo}
-                          dateTime={p.preparoIniciadoEm ?? p.criadoEm}
-                        >
-                          {tempo(p, agora)}
-                        </time>
-                      </span>
-                      <span className={styles.cliente}>
-                        {p.venda.cliente ?? "Cliente não identificado"}
-                      </span>
-                      <EtiquetaPagamento venda={p.venda} />
-                      {p.agendadoPara && (
-                        <small className="text-accent">
-                          Agendado para {data(p.agendadoPara)}
-                          {!["ENTREGUE", "CANCELADO"].includes(p.status) &&
-                          p.agendadoPara < agora
-                            ? " · Atrasado"
-                            : ""}
-                        </small>
-                      )}
-                      {p.status === "ENTREGUE" &&
-                        p.venda.status === "PENDENTE" &&
-                        p.entregueEm && (
-                          <small>Entregue em {data(p.entregueEm)}</small>
-                        )}
-                      <span className={styles.resumo}>
-                        {p.venda.itens
-                          .slice(0, 3)
-                          .map((i) => `${i.quantidade}× ${i.nome}`)
-                          .join(" · ")}
-                      </span>
-                      <span className={styles.rodapeCard}>
-                        <span>
-                          {modalidade(p)} ·{" "}
-                          {p.venda.itens.reduce((s, i) => s + i.quantidade, 0)}{" "}
-                          itens
+                        <strong className={styles.valorLinha}>
+                          {moeda(p.venda.totalCentavos)}
+                        </strong>
+                        <span className={styles.tempo}>
+                          {p.status === "AGENDADO" ? "—" : tempo(p, agora)}
                         </span>
-                        <strong>{moeda(p.venda.totalCentavos)}</strong>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            );
-          })}
-        </section>
+                        <span
+                          className={styles.statusLinha}
+                          data-status={p.status}
+                        >
+                          {etapaPedido(p)}
+                        </span>
+                        <span
+                          className={styles.financeiroLinha}
+                          data-financeiro={p.venda.status}
+                          data-excecao={
+                            p.venda.status === "PENDENTE" ||
+                            (p.venda.status === "CANCELADA" &&
+                              p.venda.pagamentos.length > 0)
+                          }
+                          title={
+                            p.venda.status === "PENDENTE"
+                              ? "Aguardando pagamento"
+                              : p.venda.status === "CANCELADA"
+                                ? "Cancelado"
+                                : "Pagamento registrado"
+                          }
+                        >
+                          <EtiquetaPagamento venda={p.venda} />
+                        </span>
+                        {p.status === "AGENDADO" && p.agendadoPara && (
+                          <span className={styles.horariosLinha}>
+                            Para {data(p.agendadoPara)}
+                            {p.iniciarPreparoEm
+                              ? ` · Preparo ${data(p.iniciarPreparoEm)}`
+                              : ""}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </section>
+        ) : (
+          <section
+            className={styles.quadro}
+            aria-label="Quadro de pedidos"
+            aria-describedby="ajuda-quadro"
+          >
+            {COLUNAS.filter((c) => visiveis.includes(c.status)).map((c) => {
+              const pedidos = filtrados.filter((p) => p.status === c.status);
+              const pDrag = quadro.pedidos.find((p) => p.id === arrastando);
+              const aceita =
+                !!pDrag &&
+                ((c.status === "CANCELADO" && podeCancelar) ||
+                  (podeOperar && proximo(pDrag)?.status === c.status));
+              return (
+                <section
+                  key={c.status}
+                  className={`${styles.coluna} ${c.classe}`}
+                  aria-label={c.nome}
+                  data-destino={destinoDrag === c.status && aceita}
+                  onDragOver={(e) => {
+                    if (aceita) {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      setDestinoDrag(c.status);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    if (
+                      !(e.relatedTarget instanceof Node) ||
+                      !e.currentTarget.contains(e.relatedTarget)
+                    )
+                      setDestinoDrag(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDestinoDrag(null);
+                    setArrastando(null);
+                    if (aceita && pDrag) void mover(pDrag, c.status);
+                  }}
+                >
+                  <header className={styles.cabecalhoColuna}>
+                    <span className={styles.marcador} aria-hidden="true" />
+                    <h2>{c.nome}</h2>
+                    <span
+                      className={styles.contador}
+                      aria-label={`${quadro.totais[c.status]} pedidos`}
+                    >
+                      {filtro ? `${pedidos.length}/` : ""}
+                      {quadro.totais[c.status]}
+                    </span>
+                  </header>
+                  <div className={styles.lista}>
+                    {!pedidos.length && (
+                      <p className={styles.vazio}>
+                        {filtro
+                          ? "Nenhum pedido encontrado nesta coluna."
+                          : c.vazio}
+                      </p>
+                    )}
+                    {pedidos.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={styles.card}
+                        aria-label={`Pedido ${identificacao(p)}, ${p.venda.cliente ?? "Cliente não identificado"}, ${moeda(p.venda.totalCentavos)}${p.venda.status === "PENDENTE" ? ", aguardando pagamento" : ""}`}
+                        aria-pressed={selecionadoId === p.id}
+                        draggable={podeOperar && !mutando && !!proximo(p)}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", p.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          setArrastando(p.id);
+                        }}
+                        onDragEnd={() => {
+                          setArrastando(null);
+                          setDestinoDrag(null);
+                        }}
+                        onClick={() => setSelecionadoId(p.id)}
+                      >
+                        <span className={styles.linha}>
+                          <span className={styles.numero}>
+                            {identificacao(p)}
+                          </span>
+                          <time
+                            className={styles.tempo}
+                            dateTime={p.preparoIniciadoEm ?? p.criadoEm}
+                          >
+                            {tempo(p, agora)}
+                          </time>
+                        </span>
+                        <span className={styles.cliente}>
+                          {p.venda.cliente ?? "Cliente não identificado"}
+                        </span>
+                        <span
+                          className={styles.statusLinha}
+                          data-status={p.status}
+                        >
+                          {etapaPedido(p)}
+                        </span>
+                        <EtiquetaPagamento venda={p.venda} />
+                        {p.agendadoPara && (
+                          <small className="text-accent">
+                            Agendado para {data(p.agendadoPara)}
+                            {p.status === "AGENDADO" && p.iniciarPreparoEm
+                              ? ` · Preparo ${data(p.iniciarPreparoEm)}`
+                              : ""}
+                            {!["ENTREGUE", "CANCELADO"].includes(p.status) &&
+                            p.agendadoPara < agora
+                              ? " · Atrasado"
+                              : ""}
+                          </small>
+                        )}
+                        {p.status === "ENTREGUE" &&
+                          p.venda.status === "PENDENTE" &&
+                          p.entregueEm && (
+                            <small>Entregue em {data(p.entregueEm)}</small>
+                          )}
+
+                        <span className={styles.rodapeCard}>
+                          <span>
+                            {modalidade(p)} ·{" "}
+                            {p.venda.itens.reduce(
+                              (s, i) => s + i.quantidade,
+                              0,
+                            )}{" "}
+                            itens
+                          </span>
+                          <strong>{moeda(p.venda.totalCentavos)}</strong>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </section>
+        )}
         <aside className={styles.detalhe} aria-label="Detalhes do pedido">
           {selecionado ? (
             <DetalhesPedido
+              aoOcupar={ocuparAgendamento}
+              aoConfirmarAgendamento={confirmarAgendamento}
               pedido={selecionado}
               podeOperar={podeOperar}
               podeCancelar={podeCancelar}
@@ -637,6 +860,8 @@ export function GestaoPedidos({
       >
         {selecionado && (
           <DetalhesPedido
+            aoOcupar={ocuparAgendamento}
+            aoConfirmarAgendamento={confirmarAgendamento}
             pedido={selecionado}
             podeOperar={podeOperar}
             podeCancelar={podeCancelar}
@@ -716,6 +941,8 @@ export function GestaoPedidos({
 
 function DetalhesPedido({
   pedido: p,
+  aoOcupar,
+  aoConfirmarAgendamento,
   podeOperar,
   podeCancelar,
   podeReceber,
@@ -728,6 +955,8 @@ function DetalhesPedido({
   aoFechar,
 }: {
   pedido: PedidoPdv;
+  aoOcupar: (ocupado: boolean) => void;
+  aoConfirmarAgendamento: () => void;
   podeOperar: boolean;
   podeCancelar: boolean;
   podeReceber: boolean;
@@ -760,10 +989,26 @@ function DetalhesPedido({
           </button>
         )}
       </header>
-      <span className={styles.etapa}>{nomes[p.status]}</span>
+      <span className={styles.etapa}>{etapaPedido(p)}</span>
+      {p.status === "AGENDADO" && (
+        <GerenciarAgendamento
+          key={p.id}
+          pedido={p}
+          podeVender={podeReceber}
+          podeOperar={podeOperar}
+          bloqueado={pendente}
+          aoOcupar={aoOcupar}
+          aoConfirmar={aoConfirmarAgendamento}
+        />
+      )}
       {p.agendadoPara && (
         <p className="border-line rounded-md border p-3 text-sm">
           Agendado para <strong>{data(p.agendadoPara)}</strong>
+          {!p.preparoIniciadoEm && p.iniciarPreparoEm && (
+            <span className="text-ink-3 mt-1 block">
+              Preparo previsto para {data(p.iniciarPreparoEm)}.
+            </span>
+          )}
           {p.preparoIniciadoEm && (
             <span className="text-ink-3 mt-1 block">
               Preparo iniciado em {data(p.preparoIniciadoEm)}.

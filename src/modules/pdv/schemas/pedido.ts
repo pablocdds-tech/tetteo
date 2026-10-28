@@ -3,6 +3,7 @@ import type { DestinoPedido, StatusPedido } from "../pedido-types";
 import { ErroPdv } from "./erro";
 
 export const STATUS_PEDIDO = [
+  "AGENDADO",
   "COZINHA",
   "AGUARDANDO_COLETA",
   "SAIU_ENTREGA",
@@ -10,6 +11,7 @@ export const STATUS_PEDIDO = [
   "CANCELADO",
 ] as const;
 export const ROTULO_PEDIDO: Record<StatusPedido, string> = {
+  AGENDADO: "Agendado",
   COZINHA: "Na cozinha",
   AGUARDANDO_COLETA: "Aguardando coleta",
   SAIU_ENTREGA: "Saiu para entrega",
@@ -25,6 +27,16 @@ export const esquemaMoverPedido = z
   .strict();
 export const esquemaListaPedidos = z
   .object({
+    visao: z
+      .enum([
+        "TODOS",
+        "EM_ANDAMENTO",
+        "AGENDADOS",
+        "RETIRADA",
+        "ENTREGA",
+        "BALCAO",
+      ])
+      .default("TODOS"),
     dia: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)

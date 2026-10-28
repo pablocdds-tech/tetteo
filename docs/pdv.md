@@ -25,12 +25,14 @@ Após a mudança de direção solicitada pelo usuário, o visual passou a acompa
 3. Escolha complementos, quantidades, cliente opcional do CRM, retirada/balcão/entrega e observação. Para entrega, informe destinatário, endereço e prazo, escolha uma área cadastrada ou justifique o frete manual. Frete e taxa adicional são separados no total.
 4. Registre pagamentos conferidos ou confirme **Enviar à cozinha e cobrar depois**, sem pagamentos preenchidos. Pagamentos podem ser divididos; excedente só gera troco em dinheiro. Desconto exige permissão própria.
 5. Confirme o pedido. Preços, total, permissões, caixa e estoque são verificados no servidor, na mesma transação da auditoria. A baixa de estoque ocorre neste momento, inclusive quando o pagamento fica pendente.
-6. O pedido entra **Na cozinha** e retorna à gestão. Acompanhe o kanban em `/pdv` e o histórico financeiro em `/pdv/vendas`. Cancelamentos exigem justificativa e permissão; recebimentos e devoluções não reescrevem caixas já fechados.
+6. O pedido retorna à Gestão em `/pdv`, como **Na cozinha** ou **Agendado**, conforme o horário escolhido. O histórico financeiro fica em `/pdv/vendas`. Cancelamentos exigem justificativa e permissão; recebimentos e devoluções não reescrevem caixas já fechados.
 7. Registre sangria/suprimento com motivo e feche contando o dinheiro físico. O sistema registra esperado, contado e diferença.
 
 ## Gestão de pedidos
 
-O quadro tem cinco colunas: **Na cozinha**, **Aguardando coleta**, **Saiu para entrega**, **Entregue** e **Cancelado**. Entregas avançam cozinha → coleta do motoboy → saiu para entrega → entregue. Retirada/balcão avançam cozinha → coleta → entregue, sem marcar uma saída de entrega inexistente. Há botões no detalhe e arraste para a próxima etapa no computador; cancelamento por arraste também pede confirmação e motivo.
+A Gestão reúne todos os pedidos na mesma tela: **Agendado**, **Na cozinha**, **Aguardando coleta**, **Saiu para entrega**, **Entregue** e **Cancelado**. O padrão traz duas listas compactas com estados misturados e detalhe à direita. **Ajustar layout** distribui cada estado entre as listas, permite ocultá-lo ou trocar para kanban. Os filtros **Todos**, **Em andamento**, **Agendados**, **Retiradas**, **Entregas** e **Balcão** consultam a mesma gestão, antes dos limites de resultados, com contagens completas por período.
+
+Entregas avançam cozinha → coleta do motoboy → saiu para entrega → entregue. Retirada/balcão avançam cozinha → coleta → entregue, sem marcar uma saída de entrega inexistente. O cartão diferencia **Esperando retirada**, **Aguardando motoboy** e **Pronto no balcão**. Há botões no detalhe e arraste para a próxima etapa no kanban; cancelamento por arraste também pede confirmação e motivo. Agendados aguardando preparo não podem ser arrastados.
 
 O estado operacional (`PdvPedido`) é separado da situação financeira (`PdvVenda`). Avançar uma etapa não registra pagamento nem movimenta estoque. Cada alteração confere organização, unidade, permissão `pdv.operar` e versão do pedido, com histórico auditado e horários em São Paulo. Uma requisição repetida não cria outro pedido nem repete o evento.
 
@@ -42,7 +44,7 @@ Somente vendas novas após a implantação geram a fila operacional. A migraçã
 
 ## Pedido com pagamento pendente
 
-O estado financeiro **Aguardando pagamento** é uma indicação no cartão, sem criar uma sexta coluna. O pedido pode avançar até entregue antes da cobrança. Criá-lo exige caixa aberto para definir o local da baixa, e consome o atendimento salvo na mesma transação. Não reserva estoque para baixar depois: o consumo original fica congelado junto dos preços, desconto, taxa e frete.
+O estado financeiro **Aguardando pagamento** é uma indicação no cartão, sem coluna exclusiva para cobrança. O pedido pode avançar até entregue antes da cobrança. Criá-lo exige caixa aberto para definir o local da baixa, e consome o atendimento salvo na mesma transação. Não reserva estoque para baixar depois: o consumo original fica congelado junto dos preços, desconto, taxa e frete.
 
 No detalhe do quadro ou histórico, **Receber pagamento** exige `pdv.ver` e `pdv.vender`. O operador quita todo o total congelado em uma operação, podendo dividir entre dinheiro, Pix, crédito e débito. Não há parcelas de cobrança ou depósitos progressivos nesta etapa. O recebimento usa o caixa atualmente aberto na unidade, mesmo se o caixa de origem já fechou ou utilizava outro local. Não consulta preços/receitas atuais e não baixa estoque novamente.
 
@@ -58,7 +60,7 @@ No novo pedido, **Pedido para agora** abre a escolha entre atendimento imediato 
 
 Confirmar o pedido continua validando caixa, catálogo, receita, preço e estoque. A baixa e o registro de pagamento ou pendência ocorrem uma única vez na confirmação. O agendamento controla a produção; não representa reserva sem consumo nem pagamento futuro automático. Frete e endereço permanecem congelados, com a previsão da entrega definida pelo horário prometido.
 
-`/pdv/agendamentos` e a aba **Agendados** mostram os horários, início previsto/real, situação operacional e financeira, próximos preparos e pedidos atrasados. Há filtros pelo período prometido e situação, com páginas de vinte. O padrão traz todos os agendamentos em aberto, incluindo os atrasados de outros dias. O estado interno **AGENDADO** aguarda fora das cinco colunas do quadro; quando liberado, entra em **Na cozinha**.
+Os agendados aparecem desde a confirmação na própria **Gestão de pedidos**, junto dos imediatos e das retiradas. O filtro **Agendados** seleciona os que ainda aguardam preparo; ao liberar a produção, o mesmo cartão passa para **Na cozinha**, sem duplicação. O detalhe reúne horários, reagendamento, início manual, pagamento, impressão e cancelamento, conforme as permissões. Links antigos para `/pdv/agendamentos` redirecionam ao filtro da mesma gestão; não há uma seção de agenda separada no menu.
 
 O servidor verifica a fila a cada trinta segundos, em lotes de até cem, inclusive sem navegador aberto. Reinício ou indisponibilidade são recuperados pela próxima verificação. O quadro também confere os vencidos da unidade ao atualizar. Trava e revalidação no banco coordenam instâncias; o evento automático usa ator nulo e operador Sistema. A liberação não exige caixa aberto nem repete preço, pagamento ou estoque.
 
@@ -108,7 +110,7 @@ O nome congelado do cliente do CRM só aparece nessas vias para quem possui `crm
 
 A exportação CSV aplica o mesmo filtro e não depende da página. Até 5.000 vendas podem ser exportadas por arquivo; acima disso, o sistema exige refinar o filtro, sem baixar uma parte silenciosamente. Exportações são auditadas e células de texto são protegidas contra interpretação como fórmula de planilha. Cliente só integra resultados, busca e CSV para quem tem `crm.ver`; o arquivo não inclui telefone/endereço ou dados de contato atuais do CRM.
 
-O filtro de pagamento seleciona vendas que contêm aquele meio, inclusive pagamentos divididos. O total é o valor integral dessas vendas, não apenas a parcela recebida pelo meio escolhido. Pagamentos Pix/cartão continuam registros manuais. Não há filtro por canal ou agendamento enquanto esses fluxos não existirem.
+O filtro de pagamento seleciona vendas que contêm aquele meio, inclusive pagamentos divididos. O total é o valor integral dessas vendas, não apenas a parcela recebida pelo meio escolhido. Pagamentos Pix/cartão continuam registros manuais. O histórico financeiro não possui filtro por canal ou agendamento; o acompanhamento de produção agendada fica na Gestão de pedidos.
 
 ## Conexão e limites
 
@@ -124,7 +126,7 @@ O navegador avisa antes de recarregar uma página com itens, e os links da inter
 
 “Sem impedimento de cadastro” não garante saldo suficiente para todas as combinações de complementos. O diagnóstico separa bloqueios de cadastro, alertas de estoque e avisos; a venda continua validando a combinação e o estoque dentro da transação.
 
-Esta versão não contempla roteirização, agendamento de produção, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
+Esta versão não contempla roteirização, capacidade de produção por janela, mesas/comandas, múltiplos terminais de caixa por unidade, devolução parcial ou devolução após caixa fechado. Esses fluxos precisam de regras próprias; o histórico de vendas permanece preservado.
 
 O histórico de caixas ainda consulta os 30 últimos fechamentos. A busca de clientes é paginada no CRM e exige `crm.ver`. Nesta entrega as vendas aparecem no histórico próprio do PDV; não alimentam automaticamente os relatórios antigos de Saipos/Analytics, os lançamentos do Financeiro ou as métricas de campanhas do CRM.
 

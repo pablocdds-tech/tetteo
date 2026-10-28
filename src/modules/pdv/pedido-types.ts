@@ -2,8 +2,18 @@ import type { VendaPdv } from "./types";
 import type { EntregaSnapshot } from "./entrega-types";
 
 export type StatusPedido =
-  "COZINHA" | "AGUARDANDO_COLETA" | "SAIU_ENTREGA" | "ENTREGUE" | "CANCELADO";
-export type DestinoPedido = Exclude<StatusPedido, "COZINHA" | "CANCELADO">;
+  | "AGENDADO"
+  | "COZINHA"
+  | "AGUARDANDO_COLETA"
+  | "SAIU_ENTREGA"
+  | "ENTREGUE"
+  | "CANCELADO";
+export type DestinoPedido = Exclude<
+  StatusPedido,
+  "AGENDADO" | "COZINHA" | "CANCELADO"
+>;
+export type VisaoPedidos =
+  "TODOS" | "EM_ANDAMENTO" | "AGENDADOS" | "RETIRADA" | "ENTREGA" | "BALCAO";
 export type StatusEventoPedido = StatusPedido | "AGENDADO";
 export type EventoPedido = {
   id: string;
@@ -38,6 +48,8 @@ export type PedidoPdv = {
 };
 export type QuadroPedidos = {
   dia: string;
+  visao: VisaoPedidos;
+  totaisVisao: Record<VisaoPedidos, number>;
   pedidos: PedidoPdv[];
   totais: Record<StatusPedido, number>;
   ativosTotal: number;

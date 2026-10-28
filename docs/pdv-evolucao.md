@@ -29,9 +29,19 @@ O levantamento atualizado está em [Comparação com o Cardápio Web](pdv-refere
 
 Cada incremento precisa de testes das regras afetadas, integração em PostgreSQL local exclusivo de teste, navegação Playwright com dados fictícios, `npm run check` e `npm run build`. Migrações devem ser aditivas e aplicadas em produção somente pelo `prisma migrate deploy` do deploy normal. Fazer commit apenas dos arquivos da tarefa, enviar sem força para a `main` configurada no Dokploy e confirmar o deploy antes de informar disponibilidade.
 
-### Seção agendamento de pedidos
+### Correção: uma única Gestão de pedidos
 
-- Data/hora prometida de São Paulo e antecedência no checkout, carrinhos salvos e revalidação na confirmação. Página/aba de agendados, filtros/paginação, próximos preparos, atrasos e detalhes operacionais/financeiros. As cinco colunas do quadro continuam preservadas.
+- Reinspeção da referência com pedidos em operação: duas listas mistas e detalhe à direita, modalidades identificadas por cartão, estados Agendado e Esperando retirada nas opções de layout.
+- A Gestão reúne agendados desde a confirmação, retiradas, entregas e balcão. Filtros da mesma tela são aplicados no servidor antes dos limites, com contagens completas; o modo padrão usa duas listas e mantém o kanban como opção.
+- Reagendar e iniciar preparo vivem no detalhe do mesmo pedido, junto de recebimento, impressão e cancelamento. O menu separado foi removido e links anteriores redirecionam para o filtro Agendados. O checkout retorna ao cartão na Gestão.
+- A liberação continua alterando apenas o estado do pedido existente. Não houve migração ou mudança nas regras de estoque, caixa, pagamento, autorização ou proteção de dados.
+- Vinte testes de integração do PDV passaram, incluindo estados misturados, transição da agenda sem duplicação, privacidade e retirada encontrada além dos primeiros quinhentos pedidos.
+- Playwright com dados fictícios confirmou criação de retirada e entrega agendadas, retorno ao cartão selecionado, filtros na mesma rota, recebimento sem iniciar preparo, reagendamento e início manual preservando o detalhe, listas/kanban, distribuição de estados e redirecionamento do link anterior. Desktop em 1600/1280 e celular de 390 pixels foram conferidos, com foco no diálogo e sem overflow horizontal do documento.
+- Uma resposta de reagendamento foi interrompida depois de o servidor confirmar a transação. A tela bloqueou edição/saída e a retentativa enviou o mesmo corpo e chave, recuperando a confirmação. A leitura do banco local comprovou um único evento desse reagendamento, uma baixa por venda fictícia e recebimento apenas no pedido escolhido.
+
+### Seção agendamento de pedidos — entrega anterior
+
+- Data/hora prometida de São Paulo e antecedência no checkout, carrinhos salvos e revalidação na confirmação. A página/aba de agendados desta entrega foi posteriormente reunida na Gestão, conforme a correção acima.
 - Estado interno AGENDADO até o início planejado; relógio do servidor a cada trinta segundos e conferência na atualização do quadro. A criação mantém baixa e financeiro existentes; liberação apenas inicia produção. Reagendamento/início antecipado com motivo, versão e idempotência; cancelamento preserva regras financeiras.
 - Migração aditiva `20261027220000_pdv_agendamentos`, mantendo os CHECKs anteriores, consistência de datas e metadados de retentativa. Aplicação local em transação protegida por host/porta/nome do banco `_test`; produção somente pelo `prisma migrate deploy` normal.
 - Quatro testes de domínio novos cobrem fuso IANA, datas inválidas, limites e transições históricas de horário de verão. Uma integração própria e quatro cenários independentes passaram, incluindo dois workers, corridas com cancelamento/recebimento/reprogramação/início manual, inativos, paginação, rascunho vencido, comprovante/cozinha e rejeição no banco de metadados inválidos. Sete integrações de regressão passaram no PostgreSQL local exclusivo.

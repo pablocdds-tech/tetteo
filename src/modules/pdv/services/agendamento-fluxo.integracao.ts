@@ -213,7 +213,15 @@ test("agenda confirma estoque/financeiro uma vez, recebe sem liberar preparo e p
   assert.equal((await f.pedido(pendenteId)).versao, 1);
   assert.equal(await f.saldo(), 18);
   assert.equal((await f.caixa()).saldoEsperadoCentavos, 2000);
-  assert.equal((await listarPedidos(f.ctx)).pedidos.length, 0);
+  assert.equal((await listarPedidos(f.ctx)).pedidos.length, 2);
+  assert.equal(
+    (await listarPedidos(f.ctx, { visao: "AGENDADOS" })).ativosTotal,
+    2,
+  );
+  assert.equal(
+    (await listarPedidos(f.ctx, { visao: "EM_ANDAMENTO" })).ativosTotal,
+    0,
+  );
   assert.equal((await listarAgendamentos(f.ctx)).totalRegistros, 2);
   const antes = await db.pdvVenda.findUniqueOrThrow({
     where: { id: pendenteId },
@@ -305,7 +313,7 @@ test("agenda confirma estoque/financeiro uma vez, recebe sem liberar preparo e p
   assert.equal(iniciou.eventos.at(-1)!.usuarioId, null);
   assert.equal(iniciou.eventos.at(-1)!.operador, "Sistema");
   assert.equal(await processarAgendamentosVencidos(f.escopo, venceu), 0);
-  assert.equal((await listarPedidos(f.ctx)).pedidos.length, 1);
+  assert.equal((await listarPedidos(f.ctx)).pedidos.length, 2);
   assert.equal(await f.saldo(), 18);
   assert.equal(
     (await db.pdvCaixa.findUniqueOrThrow({ where: { id: f.caixaId } }))

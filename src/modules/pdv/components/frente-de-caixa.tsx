@@ -594,11 +594,9 @@ export function FrenteDeCaixa({
       tentativaVenda.current = null;
       setValorCongelado(null);
       router.push(
-        agendamento
-          ? "/pdv/agendamentos"
-          : resultado.vendaId
-            ? `/pdv?novaVenda=${encodeURIComponent(resultado.vendaId)}`
-            : "/pdv",
+        resultado.vendaId
+          ? `/pdv?novaVenda=${encodeURIComponent(resultado.vendaId)}`
+          : "/pdv",
       );
     } catch {
       setIncerta(true);
