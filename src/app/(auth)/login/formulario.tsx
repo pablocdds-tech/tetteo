@@ -36,10 +36,12 @@ export function FormularioLogin({
   googleDisponivel,
   erroGoogle,
   senhaRedefinida,
+  operacional = false,
 }: {
   googleDisponivel: boolean;
   erroGoogle: boolean;
   senhaRedefinida: boolean;
+  operacional?: boolean;
 }) {
   const [estado, acao, enviando] = useActionState<EstadoLogin, FormData>(
     entrar,
@@ -47,10 +49,14 @@ export function FormularioLogin({
   );
   return (
     <main className="w-full max-w-sm">
-      <MarcaAutenticacao />
-      <h1 className="text-xl font-semibold">Entrar</h1>
+      <MarcaAutenticacao operacional={operacional} />
+      <h1 className="text-xl font-semibold">
+        {operacional ? "Entrar no PDV" : "Entrar"}
+      </h1>
       <p className="text-ink-2 mt-1 text-sm">
-        Sistema operacional da Vitaliano Pizzaria.
+        {operacional
+          ? "Use sua conta do Tetteo para acessar a operação da loja."
+          : "Sistema operacional da Vitaliano Pizzaria."}
       </p>
       {senhaRedefinida && (
         <p

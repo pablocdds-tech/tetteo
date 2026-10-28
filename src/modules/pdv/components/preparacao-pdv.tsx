@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
 import { useState } from "react";
 
 import { Botao, estiloDeBotao } from "@/design-system/botao";

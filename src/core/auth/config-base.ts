@@ -1,4 +1,8 @@
 import type { NextAuthConfig } from "next-auth";
+import {
+  configurarDominios,
+  redirecionamentoAutenticacao,
+} from "@/lib/dominios-publicos";
 
 /**
  * Configuração LEVE — a que o middleware usa.
@@ -11,6 +15,7 @@ import type { NextAuthConfig } from "next-auth";
  * só roda no servidor completo.
  */
 export const authConfigBase = {
+  useSecureCookies: process.env.NODE_ENV === "production",
   session: {
     strategy: "jwt",
     maxAge: 60 * 60 * 12, // 12 horas — um turno
@@ -24,6 +29,17 @@ export const authConfigBase = {
   providers: [],
 
   callbacks: {
+    redirect({ url, baseUrl }) {
+      return redirecionamentoAutenticacao(
+        url,
+        baseUrl,
+        configurarDominios(
+          process.env.APP_URL,
+          process.env.APP_OPERACAO_URL,
+          process.env.APP_OPERACAO_ROTA,
+        ),
+      );
+    },
     authorized({ auth }) {
       return Boolean(auth?.user);
     },

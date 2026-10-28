@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { auth } from "@/core/auth";
 
 import { obterContexto, REDE_INTEIRA } from "@/core/sessao/contexto";
@@ -9,6 +9,9 @@ import { MenuUsuario } from "@/core/shell/menu-usuario";
 import { GavetaDeNavegacao, ProvedorDeNavegacao } from "@/core/shell/navegacao";
 import { SeletorUnidade } from "@/core/shell/seletor-unidade";
 import { Topo } from "@/core/shell/topo";
+import { superficiePublica } from "@/core/superficie";
+import { AmbienteAplicativo } from "@/core/shell/ambiente-aplicativo";
+import aparenciaPdv from "@/modules/pdv/components/pdv-aparencia.module.css";
 
 /**
  * A CASCA.
@@ -38,7 +41,9 @@ export default async function LayoutCasca({
   // organização. Nos dois casos, não há sistema para mostrar.
   if (!contexto) redirect((await auth())?.user ? "/conta" : "/login");
 
-  const apps = appsVisiveis(contexto);
+  const superficie = await superficiePublica();
+  if (!superficie.reconhecida) notFound();
+  const apps = appsVisiveis(contexto, superficie.operacional);
 
   // Montados uma vez e entregues às duas navegações. Só uma delas está visível
   // em cada largura, então não há dois seletores de unidade ao alcance do Tab.
@@ -53,6 +58,23 @@ export default async function LayoutCasca({
   const conta = (
     <MenuUsuario nome={contexto.usuario.nome} email={contexto.usuario.email} />
   );
+
+  if (superficie.operacional && superficie.config) {
+    const app = apps.find((a) => a.rota === superficie.config?.rotaAplicativo);
+    if (!app) notFound();
+    return (
+      <AmbienteAplicativo
+        app={app}
+        principal={superficie.config.principal}
+        organizacao={contexto.organizacao.nome}
+        seletorDeUnidade={seletorDeUnidade}
+        conta={conta}
+        className={app.chave === "pdv" ? aparenciaPdv.aparencia : undefined}
+      >
+        {children}
+      </AmbienteAplicativo>
+    );
+  }
 
   return (
     <ProvedorDeNavegacao>

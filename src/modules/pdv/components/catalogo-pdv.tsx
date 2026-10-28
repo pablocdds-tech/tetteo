@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 

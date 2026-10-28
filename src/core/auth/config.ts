@@ -10,6 +10,7 @@ import { authConfigBase } from "./config-base";
 import { googleConfigurado } from "./politicas";
 import { resolverUsuarioGoogle } from "./google";
 import { permitirTentativa } from "./limites";
+import { configurarDominios } from "@/lib/dominios-publicos";
 
 /**
  * Configuração COMPLETA — a que roda no servidor.
@@ -26,6 +27,11 @@ const credenciais = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
   senha: z.string().min(1).max(200),
 });
+const dominios = configurarDominios(
+  process.env.APP_URL,
+  process.env.APP_OPERACAO_URL,
+  process.env.APP_OPERACAO_ROTA,
+);
 
 export const authConfig = {
   ...authConfigBase,
@@ -36,6 +42,9 @@ export const authConfig = {
           Google({
             clientId: process.env.AUTH_GOOGLE_ID,
             clientSecret: process.env.AUTH_GOOGLE_SECRET,
+            redirectProxyUrl: dominios
+              ? `${dominios.principal}/api/auth`
+              : undefined,
             authorization: {
               params: {
                 scope: "openid email profile",

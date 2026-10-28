@@ -1,9 +1,24 @@
+import {
+  ambienteDaRequisicao,
+  configurarDominios,
+} from "@/lib/dominios-publicos";
+
 export function validCrmOrigin(request: Request) {
   const origin = request.headers.get("origin");
+  const dominios = configurarDominios(
+    process.env.APP_URL,
+    process.env.APP_OPERACAO_URL,
+    process.env.APP_OPERACAO_ROTA,
+  );
+  const ambiente = ambienteDaRequisicao(request.headers, dominios);
   const configured = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
-  const expected = configured
-    ? new URL(configured).origin
-    : new URL(request.url).origin;
+  const expected = dominios
+    ? ambiente
+      ? dominios[ambiente]
+      : null
+    : configured
+      ? new URL(configured).origin
+      : new URL(request.url).origin;
   return (
     origin === expected &&
     request.headers.get("sec-fetch-site") !== "cross-site"

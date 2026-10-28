@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
 import { useState, useTransition } from "react";
 
 import { Botao, estiloDeBotao } from "@/design-system/botao";

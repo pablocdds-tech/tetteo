@@ -64,3 +64,75 @@ test("CRM: roteamento distingue detalhes e ações e preserva status", async () 
     null,
   );
 });
+
+test("CRM: cada domínio exige sua própria origem mesmo atrás do proxy", () => {
+  const nomes = ["APP_URL", "APP_OPERACAO_URL", "APP_OPERACAO_ROTA"] as const;
+  const anteriores = nomes.map((nome) => process.env[nome]);
+  Object.assign(process.env, {
+    APP_URL: "https://app.example.com",
+    APP_OPERACAO_URL: "https://pdv.example.com",
+    APP_OPERACAO_ROTA: "/pdv",
+  });
+  try {
+    const requisicao = (
+      host: string,
+      origin: string,
+      encaminhado = host,
+      site = "same-origin",
+    ) =>
+      new Request("http://localhost:3000/api/crm/atendimento/clientes", {
+        headers: {
+          host,
+          origin,
+          "x-forwarded-host": encaminhado,
+          "sec-fetch-site": site,
+        },
+      });
+    assert.equal(
+      validCrmOrigin(requisicao("pdv.example.com", "https://pdv.example.com")),
+      true,
+    );
+    assert.equal(
+      validCrmOrigin(requisicao("app.example.com", "https://app.example.com")),
+      true,
+    );
+    assert.equal(
+      validCrmOrigin(requisicao("pdv.example.com", "https://app.example.com")),
+      false,
+    );
+    assert.equal(
+      validCrmOrigin(requisicao("app.example.com", "https://pdv.example.com")),
+      false,
+    );
+    assert.equal(
+      validCrmOrigin(requisicao("evil.example", "https://evil.example")),
+      false,
+    );
+    assert.equal(
+      validCrmOrigin(
+        requisicao(
+          "pdv.example.com",
+          "https://pdv.example.com",
+          "evil.example",
+        ),
+      ),
+      false,
+    );
+    assert.equal(
+      validCrmOrigin(
+        requisicao(
+          "pdv.example.com",
+          "https://pdv.example.com",
+          "pdv.example.com",
+          "cross-site",
+        ),
+      ),
+      false,
+    );
+  } finally {
+    nomes.forEach((nome, i) => {
+      if (anteriores[i] === undefined) delete process.env[nome];
+      else process.env[nome] = anteriores[i];
+    });
+  }
+});

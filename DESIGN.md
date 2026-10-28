@@ -1,5 +1,14 @@
 # Design do Tetteo
 
+## Ambiente próprio do PDV
+
+Quando o domínio operacional está configurado, o PDV recebe uma casca própria:
+menu fixo de 240 px no desktop, seções operacionais sem seletor de módulos,
+cabeçalho compacto e link para abrir o Tetteo. No celular, o menu usa o diálogo
+nativo com foco contido e fecha após a navegação. O seletor de unidade e a conta
+continuam visíveis no menu. A casca herda os mesmos tokens roxos claros e escuros
+do PDV; os demais módulos mantêm a identidade atual do Tetteo.
+
 ## PDV — referência operacional em 27/10/2026
 
 Por solicitação explícita do usuário, o PDV segue de perto a disposição visual do Cardápio Web: superfícies claras do sistema, bordas finas, cartões compactos, gestão de pedidos com detalhe à direita e novo pedido em janela ampla de três colunas. A marca continua Tetteo. A Gestão de pedidos reúne atendimentos imediatos, agendados e todas as modalidades. O padrão apresenta duas listas mistas; “Ajustar layout” distribui os seis estados entre as listas e permite optar pelo kanban. Agendado é uma etapa do mesmo pedido; retirada é uma modalidade identificada no cartão e no detalhe.

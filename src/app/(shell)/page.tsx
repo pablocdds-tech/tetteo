@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { superficiePublica } from "@/core/superficie";
 import { Suspense } from "react";
 import { PainelVendas } from "@/modules/analytics/components/painel-vendas";
 import { diaDeslocado, horarioBrasilia } from "@/connectors/saipos/tempo";
@@ -84,6 +86,9 @@ export default async function PainelDaOperacao({
 }: {
   searchParams: Promise<{ periodo?: string }>;
 }) {
+  const superficie = await superficiePublica();
+  if (superficie.operacional && superficie.config)
+    redirect(superficie.config.rotaAplicativo);
   const contexto = await obterContexto();
   if (!contexto) return null;
 

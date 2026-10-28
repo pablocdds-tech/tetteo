@@ -116,7 +116,10 @@ async function atender(
     if (request.method === "POST") {
       const origem = request.headers.get("origin");
       const permitida = new URL(
-        process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? request.url,
+        process.env.AUTH_URL ??
+          process.env.NEXTAUTH_URL ??
+          process.env.APP_URL ??
+          request.url,
       ).origin;
       if (
         origem !== permitida ||

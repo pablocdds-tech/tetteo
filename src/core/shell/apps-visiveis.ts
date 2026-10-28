@@ -2,6 +2,7 @@ import "server-only";
 
 import { pode, type ContextoSessao } from "@/core/sessao/contexto";
 import { APPS_REGISTRADOS } from "@/registro-de-apps";
+import { dominiosPublicos } from "@/core/superficie";
 
 import type { AppNaBarra } from "./apps";
 
@@ -16,7 +17,11 @@ import type { AppNaBarra } from "./apps";
  * `props` para a barra lateral, a gaveta, o topo e a busca. Filtrar de novo em
  * cada um desses lugares abriria a porta para os quatro discordarem.
  */
-export function appsVisiveis(contexto: ContextoSessao): AppNaBarra[] {
+export function appsVisiveis(
+  contexto: ContextoSessao,
+  operacional = false,
+): AppNaBarra[] {
+  const dominios = dominiosPublicos();
   return APPS_REGISTRADOS.filter((app) => {
     // Módulos em construção aparecem só para o Diretor: mostram o rumo do
     // sistema sem prometer à equipe o que ainda não existe.
@@ -28,10 +33,16 @@ export function appsVisiveis(contexto: ContextoSessao): AppNaBarra[] {
     subtitulo: app.subtitulo,
     icone: app.icone,
     cor: app.cor,
-    rota: app.rota,
+    rota:
+      !operacional && dominios?.rotaAplicativo === app.rota
+        ? `${dominios.operacional}${app.rota}`
+        : app.rota,
     emConstrucao: app.emConstrucao,
-    navegacao: app.navegacao
-      .filter((item) => !item.permissao || pode(contexto, item.permissao))
-      .map((item) => ({ rota: item.rota, nome: item.nome })),
+    navegacao:
+      !operacional && dominios?.rotaAplicativo === app.rota
+        ? []
+        : app.navegacao
+            .filter((item) => !item.permissao || pode(contexto, item.permissao))
+            .map((item) => ({ rota: item.rota, nome: item.nome })),
   }));
 }

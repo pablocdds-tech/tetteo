@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import styles from "@/modules/pdv/components/pdv-aparencia.module.css";
 
+export const metadata = { title: "PDV | Vitaliano" };
+
 export default async function LayoutPdv({
   children,
 }: {

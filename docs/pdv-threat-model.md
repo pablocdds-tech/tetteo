@@ -1,5 +1,85 @@
 # Modelo de ameaças do PDV
 
+## Domínio operacional separado — 27/10/2026
+
+Contexto confirmado na conversa: PDV online para a própria pizzaria, integrado
+ao Tetteo, com domínio dedicado. A separação muda a interface e a origem da
+sessão; mantém os usuários, permissões, unidades e banco existentes. Não há
+novo processador de pagamentos, sessão entre organizações ou identidade de
+cliente inferida. A configuração de DNS/HTTPS é condição de ativação; até sua
+confirmação, as variáveis operacionais ficam ausentes e as rotas atuais seguem
+ativas. O provedor Google continua condicionado às credenciais existentes e
+não foi validado com uma conta real nesta alteração.
+
+### Fronteiras e superfície
+
+```mermaid
+flowchart LR
+  A["Navegador do operador"] --> B["Traefik HTTPS"]
+  B --> C["Tetteo ou PDV"]
+  C --> D["Auth e permissões"]
+  D --> E["Serviços existentes"]
+  E --> F["Banco compartilhado"]
+  G["Publicação main"] --> C
+```
+
+- Internet → Traefik → Next.js: HTTPS e Host preservado pelo proxy; somente os
+  dois hosts exatos configurados são aceitos em páginas protegidas e no handler
+  de autenticação. Cabeçalho encaminhado divergente é recusado.
+  Evidência: `src/lib/dominios-publicos.ts`, `src/proxy.ts` e
+  `src/app/api/auth/[...nextauth]/route.ts`.
+- Navegador → login e ações: cookies Auth.js host-only, HttpOnly, SameSite=Lax
+  e Secure em produção; limite de tentativas e bcrypt permanecem em
+  `core/auth/config.ts`. Server Actions conservam a verificação nativa de
+  Origin; não foi configurado `allowedOrigins` nem desabilitado CSRF.
+- PDV → CRM: somente a API de atendimento é exposta nessa casca. Cada escrita
+  deve ter Origin igual à origem configurada para o Host atual, inclusive atrás
+  do proxy; pertencer ao mesmo domínio pai não autoriza envio entre os hosts.
+  Evidência: `modules/crm/services/request.ts` e handler CRM existente.
+- Sessão → serviços → banco: `core/sessao/contexto.ts` relê acessos por usuário,
+  organização e unidade; o layout exige `pdv.ver` e os serviços continuam
+  validando a permissão de cada operação. Domínio não constitui permissão.
+  Suspensão e troca de senha continuam invalidando tokens por `versaoSessao`.
+- Desenvolvedor → main → imagem: mesma implantação, sem banco ou worker
+  duplicado e sem migração. Novas variáveis são configuração privada de runtime;
+  nenhum segredo, cookie ou dado de cliente é incluído na alteração.
+
+### Abusos e prioridade residual
+
+| Caminho de abuso                                                                           | Probabilidade / impacto | Prioridade residual          | Controle e limite                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------ | ----------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Enviar Host ou X-Forwarded-Host falso para gerar callback e capturar sessão                | Baixa / alto            | Média                        | Hosts exatos e encaminhamento consistente; redirecionamentos Auth.js restritos às duas origens. Depende de Traefik confiável e de o serviço não ser exposto diretamente.                                   |
+| Um subdomínio comprometido receber cookie de autenticação do PDV                           | Baixa / alto            | Média                        | Cookies sem Domain no domínio pai. Cada host exige login próprio; não há token de SSO em URL nem compartilhamento de cookie. XSS no próprio host ainda compromete aquela sessão.                           |
+| Usar sessão do operador para gravar CRM ou Server Action a partir de outro site/subdomínio | Baixa / alto            | Média                        | Origin do host atual, Sec-Fetch-Site, proteção nativa de Server Actions e JSON limitado no CRM. Nenhuma permissão é inferida da origem.                                                                    |
+| Abrir outra unidade ou módulo pela nova origem para exceder o papel                        | Baixa / alto            | Média                        | Menu filtrado, layout com permissão, serviços e API repetem escopo; APIs administrativas fora do atendimento retornam 404 no PDV. Rotas de máquina mantêm seus segredos próprios e as exceções anteriores. |
+| Redirecionar um POST de venda em aba antiga e duplicar ou perder operação                  | Baixa / alto            | Média                        | Só GET/HEAD atravessam do Tetteo ao PDV; POST antigo fica na origem. Idempotência financeira e de estoque continua nos serviços existentes.                                                                |
+| Ativar domínio antes do DNS/TLS e bloquear a operação                                      | Baixa / médio           | Baixa após ativação validada | Código publicado desabilitado por padrão; ordem de ativação e reversão em `pdv-dominio-proprio.md`. Sem DNS/certificado confirmado, a ativação permanece pendente.                                         |
+
+Ativos protegidos: credenciais e sessão (confidencialidade), PII do CRM
+(confidencialidade), caixa/estoque/pedidos (integridade), continuidade da operação
+(disponibilidade). O atacante considerado pode enviar HTTP arbitrário e tentar
+abusar de uma conta comum; não controla o segredo Auth.js, o DNS, o Dokploy ou o
+banco. Controle administrativo dessas dependências altera esse modelo.
+
+Validação: testes de configuração, hosts e retornos seguros em
+`lib/dominios-publicos.test.ts`; origem por host em
+`modules/crm/services/request.test.ts`; matcher público existente preservado.
+Playwright com banco local e dados fictícios confirmou login nos dois hosts,
+cookies separados, menu desktop/celular, catálogo e cliente compartilhados,
+atalho e redirecionamento antigo, impressão e recusas de origem/unidade/host.
+O log local confirmou rejeição de Server Action cruzada antes da execução.
+Nenhuma venda fictícia foi criada em produção.
+
+Revisão concentrada: helpers de domínio, proxy, configurações Auth.js, handler
+Auth, proteção Origin do CRM, layout da casca e `core/shell/link-integrado.tsx`.
+Pontos abertos de operação: controle do DNS, emissão do certificado e login real
+após ativação. Detectar problemas por status de deploy, erros de login e respostas
+400/403, sem registrar cookies, senhas, tokens OAuth ou corpos com PII.
+
+Cobertura: entradas web/login/API e exceções de máquina consideradas; fronteiras
+de origem, sessão, escopo, banco e publicação identificadas; runtime separado
+de testes locais; contexto do usuário e pendências operacionais explícitos.
+
 ## Escopo e contexto confirmado
 
 Módulo interno de produtos, online, para uso próprio, sem fiscal ou processador de pagamentos. Aplicação Next.js existente publicada no Dokploy, usando a sessão Auth.js e o banco PostgreSQL existentes. Os valores de Pix/cartão são registros manuais, não provas de liquidação. Confirmação de escopo dada na conversa de 27/10/2026. Acesso externo ao Tetteo já existe; não são criados novos canais públicos.

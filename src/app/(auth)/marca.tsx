@@ -1,13 +1,19 @@
-export function MarcaAutenticacao() {
+export function MarcaAutenticacao({
+  operacional = false,
+}: {
+  operacional?: boolean;
+}) {
   return (
     <div className="mb-8 flex items-center gap-3">
       <span
         aria-hidden="true"
         className="bg-accent text-accent-ink grid size-9 place-items-center rounded-md text-lg font-bold"
       >
-        T
+        {operacional ? "P" : "T"}
       </span>
-      <span className="text-2xl font-semibold tracking-tight">Tetteo</span>
+      <span className="text-2xl font-semibold tracking-tight">
+        {operacional ? "PDV Vitaliano" : "Tetteo"}
+      </span>
     </div>
   );
 }

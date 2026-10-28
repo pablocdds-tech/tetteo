@@ -1,4 +1,15 @@
 import NextAuth from "next-auth";
+import {
+  NextResponse,
+  type NextRequest,
+  type NextFetchEvent,
+  type NextMiddleware,
+} from "next/server";
+import {
+  ambienteDaRequisicao,
+  configurarDominios,
+  destinoEntreAmbientes,
+} from "@/lib/dominios-publicos";
 
 import { authConfigBase } from "@/core/auth/config-base";
 
@@ -12,8 +23,37 @@ import { authConfigBase } from "@/core/auth/config-base";
  * `proxy.ts` — mesma função, nome novo.)
  */
 const { auth } = NextAuth(authConfigBase);
+const continuar: NextMiddleware = () => NextResponse.next();
+const verificarSessao = auth(continuar);
 
-export default auth;
+export default async function proxy(
+  request: NextRequest,
+  event: NextFetchEvent,
+) {
+  const config = configurarDominios(
+    process.env.APP_URL,
+    process.env.APP_OPERACAO_URL,
+    process.env.APP_OPERACAO_ROTA,
+  );
+  const ambiente = ambienteDaRequisicao(request.headers, config);
+  if (!ambiente)
+    return new NextResponse("Domínio de acesso não reconhecido.", {
+      status: 400,
+    });
+  const destino = destinoEntreAmbientes(
+    config,
+    ambiente,
+    request.nextUrl.pathname,
+    request.nextUrl.search,
+    request.method,
+  );
+  if (destino?.url) return NextResponse.redirect(destino.url);
+  if (destino?.status)
+    return new NextResponse("Endereço indisponível neste ambiente.", {
+      status: destino.status,
+    });
+  return verificarSessao(request, event);
+}
 
 /**
  * As exceções, e o motivo de cada uma.
