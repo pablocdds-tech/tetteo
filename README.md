@@ -85,5 +85,10 @@ Tudo roda em VPS própria. Sem dependência de serviço pago externo.
 
 ## Estado atual
 
-**Fase 0 · Componente 1** — repositório, estrutura, tokens de design e travas
-arquiteturais. Sem banco, sem login e sem telas ainda.
+O Tetteo está em desenvolvimento ativo e já possui banco PostgreSQL com Prisma,
+autenticação, módulos operacionais e administrativos, integrações externas e
+publicação em produção por Docker no Dokploy.
+
+A branch `main` é a referência de produção. Cada alteração deve passar por
+`npm run check` e `npm run build`; o GitHub Actions executa essas verificações
+automaticamente em pushes e pull requests.
