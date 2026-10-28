@@ -37,6 +37,7 @@ export type ManifestoDoApp = {
 
   /** O que aparece na tela. Pode ser renomeado sem quebrar nada por baixo. */
   nome: string;
+  marca?: string;
 
   /**
    * Elimina a dúvida de "onde eu clico para fazer X". Descreve TAREFA, não
@@ -78,6 +79,9 @@ export type ManifestoDoApp = {
     nome: string;
     permissao?: string;
     icone?: NomeDeIcone;
+    grupo?: string;
+    somenteAcao?: boolean;
+    titulo?: string;
   }[];
 
   /**

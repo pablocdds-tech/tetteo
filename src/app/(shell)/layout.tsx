@@ -12,6 +12,7 @@ import { Topo } from "@/core/shell/topo";
 import { superficiePublica } from "@/core/superficie";
 import { AmbienteAplicativo } from "@/core/shell/ambiente-aplicativo";
 import aparenciaPdv from "@/modules/pdv/components/pdv-aparencia.module.css";
+import { fontePdv } from "@/modules/pdv/fonte";
 
 /**
  * A CASCA.
@@ -69,7 +70,27 @@ export default async function LayoutCasca({
         organizacao={contexto.organizacao.nome}
         seletorDeUnidade={seletorDeUnidade}
         conta={conta}
-        className={app.chave === "pdv" ? aparenciaPdv.aparencia : undefined}
+        ajuda={
+          app.chave === "pdv" ? (
+            <>
+              <strong>Gestão de pedidos</strong>
+              <p>
+                Selecione um pedido para consultar o resumo. A próxima ação fica
+                no rodapé.
+              </p>
+              <p>
+                Use o botão de filtros para escolher modalidade e data. Em
+                Ajustar layout, organize as listas ou abra o kanban.
+              </p>
+              <p>Atalhos: / para buscar e Esc para fechar.</p>
+            </>
+          ) : undefined
+        }
+        className={
+          app.chave === "pdv"
+            ? `${aparenciaPdv.aparencia} ${fontePdv.variable}`
+            : undefined
+        }
       >
         {children}
       </AmbienteAplicativo>

@@ -94,8 +94,7 @@ const modalidade = (p: PedidoPdv) =>
     : p.venda.modalidade === "BALCAO"
       ? "Balcão"
       : "Retirada";
-const identificacao = (p: PedidoPdv) =>
-  `#${p.numero.toString().padStart(4, "0")}`;
+const identificacao = (p: PedidoPdv) => `#${p.origem?.numero ?? p.numero}`;
 const VISOES: { valor: VisaoPedidos; nome: string }[] = [
   { valor: "TODOS", nome: "Todos" },
   { valor: "EM_ANDAMENTO", nome: "Em andamento" },
@@ -105,6 +104,8 @@ const VISOES: { valor: VisaoPedidos; nome: string }[] = [
   { valor: "BALCAO", nome: "Balcão" },
 ];
 function etapaPedido(p: PedidoPdv) {
+  if (p.status === "ENTREGUE" && p.venda.status === "CONCLUIDA")
+    return "Concluído";
   if (p.status === "AGUARDANDO_COLETA")
     return p.venda.modalidade === "ENTREGA"
       ? "Aguardando motoboy"
@@ -172,6 +173,7 @@ export function GestaoPedidos({
   const ambienteProprio = useAmbienteProprio();
   const buscaRef = useRef<HTMLInputElement>(null);
   const layoutRef = useRef<HTMLDetailsElement>(null);
+  const filtrosRef = useRef<HTMLDetailsElement>(null);
   const [quadro, setQuadro] = useState(inicial);
   const [busca, setBusca] = useState("");
   const [layout, setLayout] = useLayoutPedidos(preferenciasId);
@@ -188,17 +190,22 @@ export function GestaoPedidos({
   const [mutando, setMutando] = useState(false);
   useEffect(() => {
     function fecharLayout(evento: PointerEvent) {
-      if (
-        layoutRef.current?.open &&
-        evento.target instanceof Node &&
-        !layoutRef.current.contains(evento.target)
-      )
-        layoutRef.current.open = false;
+      for (const ref of [layoutRef, filtrosRef]) {
+        if (
+          ref.current?.open &&
+          evento.target instanceof Node &&
+          !ref.current.contains(evento.target)
+        )
+          ref.current.open = false;
+      }
     }
     function atalhos(evento: KeyboardEvent) {
-      if (evento.key === "Escape" && layoutRef.current?.open) {
-        layoutRef.current.open = false;
-        layoutRef.current.querySelector("summary")?.focus();
+      const aberto = [layoutRef, filtrosRef].find(
+        (ref) => ref.current?.open,
+      )?.current;
+      if (evento.key === "Escape" && aberto) {
+        aberto.open = false;
+        aberto.querySelector("summary")?.focus();
         evento.preventDefault();
         return;
       }
@@ -497,154 +504,199 @@ export function GestaoPedidos({
           <kbd aria-hidden="true">/</kbd>
         </div>
         {podeVender && (
-          <Link href="/pdv/novo-pedido" className={estiloDeBotao("primario")}>
+          <Link
+            href="/pdv/novo-pedido"
+            className={`${estiloDeBotao("primario")} ${styles.novoPedido}`}
+          >
             <Icone nome="mais" tamanho={17} /> Novo pedido
           </Link>
         )}
-        <div className={styles.dia}>
-          <label htmlFor="dia-pedidos" className="sr-only">
-            Entregues/cancelados em
-          </label>
-          <input
-            id="dia-pedidos"
-            type="date"
-            value={dia}
-            title="Data dos pedidos entregues e cancelados. Pedidos em andamento continuam visíveis."
-            disabled={mutando}
-            onChange={(e) => {
-              if (e.target.value) {
-                const params = new URLSearchParams(window.location.search);
-                params.set("dia", e.target.value);
-                params.set("visao", quadro.visao);
-                router.replace(`/pdv?${params}`);
-              }
-            }}
-          />
-        </div>
-        <Botao
-          peso="secundario"
-          className={styles.botaoAtualizar}
-          aria-label="Atualizar pedidos"
-          title="Atualizar pedidos"
-          carregando={atualizando}
-          disabled={mutando}
-          onClick={() => void atualizar(true)}
-        >
-          <Icone nome="atualizar" tamanho={17} />
-        </Botao>
-        <details className={styles.layout} ref={layoutRef}>
-          <summary title="Ajustar layout" aria-label="Ajustar layout">
-            <Icone nome="colunas" tamanho={17} />
-            <span>Ajustar layout</span>
-          </summary>
-          <fieldset className={styles.opcoes}>
-            <legend className="sr-only">Organização dos pedidos</legend>
-            <label>
-              <input
-                type="radio"
-                name="modo-gestao"
-                checked={modoLayout === "LISTAS"}
-                onChange={() => setModoLayout("LISTAS")}
-              />
-              Listas compactas
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="modo-gestao"
-                checked={modoLayout === "KANBAN"}
-                onChange={() => setModoLayout("KANBAN")}
-              />
-              Kanban
-            </label>
-            <div className={styles.configEstados}>
-              {COLUNAS.map((c) =>
-                modoLayout === "LISTAS" ? (
-                  <label key={c.status}>
-                    <span>{c.nome}</span>
-                    <select
-                      aria-label={`Posição de ${c.nome}`}
-                      value={distribuicao[c.status]}
-                      onChange={(e) =>
-                        setLayout((l) => ({
-                          ...l,
-                          distribuicao: {
-                            ...l.distribuicao,
-                            [c.status]: e.target.value as "1" | "2" | "OCULTO",
-                          },
-                        }))
-                      }
-                    >
-                      <option value="1">Lista 1</option>
-                      <option value="2">Lista 2</option>
-                      {(ESTADOS_OCULTAVEIS as readonly string[]).includes(
-                        c.status,
-                      ) && <option value="OCULTO">Ocultar</option>}
-                    </select>
-                  </label>
-                ) : (
-                  <label key={c.status}>
-                    <input
-                      type="checkbox"
-                      checked={visiveis.includes(c.status)}
-                      disabled={
-                        !(ESTADOS_OCULTAVEIS as readonly string[]).includes(
-                          c.status,
-                        )
-                      }
-                      onChange={(e) =>
-                        setLayout((l) => ({
-                          ...l,
-                          visiveis: e.target.checked
-                            ? [...l.visiveis, c.status]
-                            : l.visiveis.filter((s) => s !== c.status),
-                        }))
-                      }
-                    />
-                    {c.nome}
-                  </label>
-                ),
+        <div className={styles.acoesToolbar}>
+          <details className={styles.filtros} ref={filtrosRef}>
+            <summary aria-label="Filtrar pedidos" title="Filtrar pedidos">
+              <Icone nome="filtro" tamanho={18} />
+              {quadro.visao !== "TODOS" && (
+                <span
+                  className={styles.filtroAtivo}
+                  aria-label="Filtro ativo"
+                />
               )}
+            </summary>
+            <div className={styles.painelFiltros}>
+              <h2>Filtrar pedidos</h2>
+              <nav className={styles.filtrosVisao} aria-label="Filtrar pedidos">
+                {VISOES.map((v) => (
+                  <button
+                    type="button"
+                    key={v.valor}
+                    aria-pressed={quadro.visao === v.valor}
+                    disabled={mutando}
+                    onClick={() => {
+                      const params = new URLSearchParams(
+                        window.location.search,
+                      );
+                      params.set("visao", v.valor);
+                      params.set("dia", dia);
+                      router.replace(`/pdv?${params}`);
+                    }}
+                  >
+                    {v.nome}
+                    <span>{quadro.totaisVisao[v.valor]}</span>
+                  </button>
+                ))}
+              </nav>
+              <div className={styles.linhaAtualizacao}>
+                <p title="Pedidos em andamento e entregues com pagamento pendente continuam visíveis, mesmo quando iniciados em outro dia.">
+                  <Icone nome="relogio" tamanho={14} /> Em andamento +
+                  finalizados do dia
+                </p>
+                <p>
+                  {ultima
+                    ? `Atualizado às ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(ultima))}`
+                    : "Atualização automática a cada 15 segundos"}
+                </p>
+              </div>
+              <div className={styles.dataAtualizacao}>
+                <span>Finalizados em</span>{" "}
+                <div className={styles.dia}>
+                  <label htmlFor="dia-pedidos" className="sr-only">
+                    Entregues/cancelados em
+                  </label>
+                  <input
+                    id="dia-pedidos"
+                    type="date"
+                    value={dia}
+                    title="Data dos pedidos entregues e cancelados. Pedidos em andamento continuam visíveis."
+                    disabled={mutando}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const params = new URLSearchParams(
+                          window.location.search,
+                        );
+                        params.set("dia", e.target.value);
+                        params.set("visao", quadro.visao);
+                        router.replace(`/pdv?${params}`);
+                      }
+                    }}
+                  />
+                </div>
+                <Botao
+                  peso="secundario"
+                  className={styles.botaoAtualizar}
+                  aria-label="Atualizar pedidos"
+                  title="Atualizar pedidos"
+                  carregando={atualizando}
+                  disabled={mutando}
+                  onClick={() => void atualizar(true)}
+                >
+                  <Icone nome="atualizar" tamanho={17} />
+                </Botao>
+              </div>
             </div>
-            <button
-              type="button"
-              className={styles.restaurarLayout}
-              onClick={() => setLayout(() => LAYOUT_PEDIDOS_PADRAO)}
-            >
-              Restaurar padrão
-            </button>
-          </fieldset>
-        </details>
-      </div>
-      <nav className={styles.filtrosVisao} aria-label="Filtrar pedidos">
-        {VISOES.map((v) => (
-          <button
-            type="button"
-            key={v.valor}
-            aria-pressed={quadro.visao === v.valor}
-            disabled={mutando}
-            onClick={() => {
-              const params = new URLSearchParams(window.location.search);
-              params.set("visao", v.valor);
-              params.set("dia", dia);
-              router.replace(`/pdv?${params}`);
-            }}
+          </details>
+          <Link
+            href={`/pdv?dia=${dia}&visao=ENTREGA`}
+            className={styles.gestaoEntregas}
           >
-            {v.nome}
-            <span>{quadro.totaisVisao[v.valor]}</span>
-          </button>
-        ))}
-      </nav>
-      <div className={styles.linhaAtualizacao}>
-        <p title="Pedidos em andamento e entregues com pagamento pendente continuam visíveis, mesmo quando iniciados em outro dia.">
-          <Icone nome="relogio" tamanho={14} /> Em andamento + finalizados do
-          dia
-        </p>
-        <p>
-          {ultima
-            ? `Atualizado às ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(ultima))}`
-            : "Atualização automática a cada 15 segundos"}
-        </p>
+            <Icone nome="entrega" tamanho={18} />
+            Gestão de entregas
+          </Link>
+          <details className={styles.layout} ref={layoutRef}>
+            <summary title="Ajustar layout" aria-label="Ajustar layout">
+              <Icone nome="colunas" tamanho={17} />
+              <span>Ajustar layout</span>
+            </summary>
+            <fieldset className={styles.opcoes}>
+              <legend className="sr-only">Organização dos pedidos</legend>
+              <label>
+                <input
+                  type="radio"
+                  name="modo-gestao"
+                  checked={modoLayout === "LISTAS"}
+                  onChange={() => setModoLayout("LISTAS")}
+                />
+                Listas compactas
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="modo-gestao"
+                  checked={modoLayout === "KANBAN"}
+                  onChange={() => setModoLayout("KANBAN")}
+                />
+                Kanban
+              </label>
+              <div className={styles.configEstados}>
+                {COLUNAS.map((c) =>
+                  modoLayout === "LISTAS" ? (
+                    <div key={c.status} className={styles.posicaoEstado}>
+                      <span>{c.nome}</span>
+                      <div role="group" aria-label={`Posição de ${c.nome}`}>
+                        {(["1", "2", "OCULTO"] as const).map((posicao) => (
+                          <button
+                            key={posicao}
+                            type="button"
+                            aria-label={`${posicao === "OCULTO" ? "Ocultar" : `Lista ${posicao}:`} ${c.nome}`}
+                            aria-pressed={distribuicao[c.status] === posicao}
+                            disabled={
+                              posicao === "OCULTO" &&
+                              !(
+                                ESTADOS_OCULTAVEIS as readonly string[]
+                              ).includes(c.status)
+                            }
+                            onClick={() =>
+                              setLayout((l) => ({
+                                ...l,
+                                distribuicao: {
+                                  ...l.distribuicao,
+                                  [c.status]: posicao,
+                                },
+                              }))
+                            }
+                          >
+                            {posicao === "OCULTO" ? (
+                              <Icone nome="olho" tamanho={15} />
+                            ) : (
+                              posicao
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <label key={c.status}>
+                      <input
+                        type="checkbox"
+                        checked={visiveis.includes(c.status)}
+                        disabled={
+                          !(ESTADOS_OCULTAVEIS as readonly string[]).includes(
+                            c.status,
+                          )
+                        }
+                        onChange={(e) =>
+                          setLayout((l) => ({
+                            ...l,
+                            visiveis: e.target.checked
+                              ? [...l.visiveis, c.status]
+                              : l.visiveis.filter((s) => s !== c.status),
+                          }))
+                        }
+                      />
+                      {c.nome}
+                    </label>
+                  ),
+                )}
+              </div>
+              <button
+                type="button"
+                className={styles.restaurarLayout}
+                onClick={() => setLayout(() => LAYOUT_PEDIDOS_PADRAO)}
+              >
+                Restaurar padrão
+              </button>
+            </fieldset>
+          </details>
+        </div>
       </div>
       {erroAtualizacao && (
         <p role="alert" className={`${styles.aviso} ${styles.erro}`}>
@@ -694,7 +746,7 @@ export function GestaoPedidos({
                   className={styles.listaMista}
                   aria-label={`Lista ${lista}`}
                 >
-                  <header className={styles.topoLista}>
+                  <header className="sr-only">
                     <h2>Lista {lista}</h2>
                     <span>
                       {filtro ? `${pedidos.length}/` : ""}
@@ -706,7 +758,7 @@ export function GestaoPedidos({
                       <p className={styles.vazio}>
                         {filtro
                           ? "Nenhum pedido encontrado."
-                          : "Nenhum pedido nos estados desta lista."}
+                          : "Seus pedidos aparecerão aqui"}
                       </p>
                     )}
                     {pedidos.map((p) => (
@@ -751,7 +803,7 @@ export function GestaoPedidos({
                             <strong className={styles.valorLinha}>
                               {moeda(p.venda.totalCentavos)}
                             </strong>
-                            <span>{modalidade(p)}</span>
+                            <span className="sr-only">{modalidade(p)}</span>
                           </span>
                         </span>
                         <span className={styles.situacaoLinha}>
@@ -963,9 +1015,9 @@ export function GestaoPedidos({
             />
           ) : (
             <div className={styles.semSelecao}>
-              <Icone nome="caixa" tamanho={65} />
+              <Icone nome="caixa-aberta" tamanho={96} />
               <h2>Nenhum pedido selecionado</h2>
-              <p className="text-xs">
+              <p className="sr-only">
                 Selecione um cartão para acompanhar o pedido.
               </p>
             </div>
@@ -976,7 +1028,11 @@ export function GestaoPedidos({
         aberto={compacto && !!selecionado && !cancelando && !recebendoId}
         aoFechar={() => setSelecionadoId(null)}
         podeFechar={() => !mutando}
-        titulo={selecionado ? `Pedido ${identificacao(selecionado)}` : "Pedido"}
+        titulo={
+          selecionado
+            ? `Pedido Nº ${selecionado.origem?.numero ?? selecionado.numero}`
+            : "Pedido"
+        }
       >
         {selecionado && (
           <DetalhesPedido
@@ -1106,7 +1162,7 @@ function DetalhesPedido({
           </span>
         )}
         <div className={styles.tituloDetalhe}>
-          {!emPainel && <h2>Pedido {identificacao(p)}</h2>}
+          {!emPainel && <h2>Pedido Nº {p.origem?.numero ?? p.numero}</h2>}
           <p>
             {data(p.criadoEm)} · {modalidade(p)}
           </p>

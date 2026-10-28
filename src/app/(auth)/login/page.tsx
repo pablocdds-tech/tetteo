@@ -2,6 +2,7 @@ import { googleConfigurado } from "@/core/auth/politicas";
 import { FormularioLogin } from "./formulario";
 import { superficiePublica } from "@/core/superficie";
 import aparenciaPdv from "@/modules/pdv/components/pdv-aparencia.module.css";
+import { fontePdv } from "@/modules/pdv/fonte";
 
 export async function generateMetadata() {
   return {
@@ -22,7 +23,7 @@ export default async function PaginaLogin({
     <div
       className={
         superficie.operacional
-          ? `${aparenciaPdv.aparencia} w-full max-w-sm`
+          ? `${aparenciaPdv.aparencia} ${fontePdv.variable} w-full max-w-sm`
           : "contents"
       }
     >

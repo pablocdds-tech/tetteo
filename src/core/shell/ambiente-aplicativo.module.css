@@ -1,0 +1,362 @@
+.ambiente {
+  --altura-area-aplicativo: calc(100dvh - 96px);
+  display: flex;
+  min-width: 0;
+  min-height: 100dvh;
+  flex: 1;
+  background: var(--paper);
+}
+.lateral {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  width: 250px;
+  height: 100dvh;
+  flex: none;
+  border-right: 1px solid var(--line);
+  background: var(--surface);
+}
+.navegacao {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.marca {
+  display: flex;
+  height: 56px;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.marca strong {
+  font-size: 25px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: var(--pdv-acento-texto, var(--accent));
+}
+.marca > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+.unidade {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 16px;
+  min-height: 80px;
+}
+.unidadeIcone {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.unidade > div {
+  min-width: 0;
+  flex: 1;
+}
+.unidade p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 20px;
+}
+.unidade select {
+  height: 28px;
+  min-height: 28px;
+  padding-left: 0;
+  padding-right: 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.unidade select:hover {
+  background: transparent;
+}
+.unidade :global(.pointer-events-none):first-child {
+  display: none;
+}
+.secoes {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px;
+  scrollbar-width: thin;
+}
+.item,
+.grupo > summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 40px;
+  padding: 9px 12px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  text-align: left;
+  border-radius: 0;
+}
+.item > svg,
+.grupo > summary > svg {
+  flex: none;
+}
+.item:hover,
+.grupo > summary:hover {
+  background: var(--surface-2);
+}
+.item[aria-current="page"] {
+  color: var(--pdv-acento-texto, var(--accent));
+  font-weight: 700;
+}
+.grupo > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.grupo > summary::-webkit-details-marker {
+  display: none;
+}
+.grupo > summary > span {
+  flex: 1;
+}
+.grupo[open] > summary > svg:last-child {
+  transform: rotate(180deg);
+}
+.grupo > div {
+  padding-left: 26px;
+}
+.grupo > div .item {
+  min-height: 36px;
+  font-size: 13px;
+  gap: 10px;
+}
+.grupo > div .item svg {
+  display: none;
+}
+.rodape {
+  position: relative;
+  flex: none;
+  margin: 0 12px;
+  border-top: 1px solid var(--line);
+  padding: 8px 24px 8px 0;
+}
+.rodape .item {
+  padding-left: 8px;
+}
+.recolher {
+  position: absolute;
+  right: 0;
+  top: 16px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--ink-3);
+  background: var(--surface);
+}
+.area {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.topo {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+  height: 56px;
+  padding: 0 32px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  z-index: 40;
+}
+.titulo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 32px;
+}
+.menuMovel {
+  display: none;
+}
+.acoesTopo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-left: auto;
+}
+.acoesTopo > a,
+.conta > summary {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 36px;
+  color: var(--ink-2);
+  list-style: none;
+  cursor: pointer;
+}
+.conta {
+  position: relative;
+}
+.conta > summary::-webkit-details-marker,
+.ajuda > summary::-webkit-details-marker {
+  display: none;
+}
+.conta > div {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 310px;
+  padding: 16px;
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: var(--shadow-flutuante);
+}
+.ajuda {
+  position: relative;
+}
+.ajuda > summary {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 32px;
+  cursor: pointer;
+  list-style: none;
+}
+.ajuda summary > span {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  color: var(--ink-3);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ajuda > div {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  width: 300px;
+  padding: 16px;
+  background: var(--surface);
+  border-radius: 4px;
+  box-shadow: var(--shadow-flutuante);
+  font-size: 13px;
+}
+.ajuda p {
+  margin-top: 10px;
+  line-height: 1.5;
+}
+.conteudo {
+  flex: 1;
+  min-width: 0;
+  padding: 20px 28px;
+}
+.ambiente[data-recolhido="true"] .lateral {
+  width: 64px;
+}
+.ambiente[data-recolhido="true"] .lateral .marca {
+  padding: 0 10px;
+  justify-content: center;
+}
+.ambiente[data-recolhido="true"] .lateral .marca strong {
+  width: 22px;
+  overflow: hidden;
+}
+.ambiente[data-recolhido="true"] .lateral .marca > span,
+.ambiente[data-recolhido="true"] .lateral .unidade,
+.ambiente[data-recolhido="true"] .lateral .item > span,
+.ambiente[data-recolhido="true"] .lateral .grupo summary > span,
+.ambiente[data-recolhido="true"] .lateral .grupo summary > svg:last-child {
+  display: none;
+}
+.ambiente[data-recolhido="true"] .lateral .secoes {
+  padding: 12px 0;
+}
+.ambiente[data-recolhido="true"] .lateral :is(.item, .grupo > summary) {
+  justify-content: center;
+  padding: 10px;
+}
+.ambiente[data-recolhido="true"] .lateral .grupo > div {
+  display: none;
+}
+.ambiente[data-recolhido="true"] .lateral .rodape {
+  margin: 0;
+  padding: 0 0 40px;
+}
+.ambiente[data-recolhido="true"] .lateral .recolher {
+  top: auto;
+  bottom: 12px;
+  right: 20px;
+}
+.ambiente :is(a, button, summary):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+@media (max-width: 1023px) {
+  .ambiente {
+    --altura-area-aplicativo: calc(100dvh - 80px);
+  }
+  .lateral {
+    display: none;
+  }
+  .topo {
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .titulo {
+    font-size: 20px;
+  }
+  .menuMovel {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 44px;
+    flex: none;
+  }
+  .acoesTopo {
+    gap: 4px;
+  }
+  .acoesTopo > a,
+  .conta > summary {
+    width: 36px;
+    height: 44px;
+  }
+  .conteudo {
+    padding: 12px;
+  }
+  .ajuda {
+    display: none;
+  }
+  .rodape {
+    padding-right: 0;
+  }
+  .recolher {
+    display: none;
+  }
+}

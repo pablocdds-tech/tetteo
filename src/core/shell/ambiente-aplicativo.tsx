@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icone } from "@/design-system/icones";
 import { PainelLateral } from "@/design-system/painel-lateral";
-import { destinoAtual, type AppNaBarra } from "./apps";
+import { destinoAtual, type AppNaBarra, type DestinoDoApp } from "./apps";
 import { AvisoDeConexao } from "./aviso-de-conexao";
 import { ProvedorDeAmbientes } from "./link-integrado";
+import styles from "./ambiente-aplicativo.module.css";
 
 export function AmbienteAplicativo({
   app,
@@ -15,6 +16,7 @@ export function AmbienteAplicativo({
   organizacao,
   seletorDeUnidade,
   conta,
+  ajuda,
   children,
   className,
 }: {
@@ -23,76 +25,144 @@ export function AmbienteAplicativo({
   organizacao: string;
   seletorDeUnidade: ReactNode;
   conta: ReactNode;
+  ajuda?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   const caminho = usePathname();
   const [menuAberto, setMenuAberto] = useState(false);
+  const [recolhido, setRecolhido] = useState(false);
+  const contaRef = useRef<HTMLDetailsElement>(null);
+  const ajudaRef = useRef<HTMLDetailsElement>(null);
   const atual = destinoAtual(app, caminho);
-  const navegacao = (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="px-4 pt-5 pb-4">
-        <Link
-          href={app.rota}
-          className="focus-visible:outline-accent flex min-h-11 items-center gap-3 rounded-md focus-visible:outline-2 focus-visible:outline-offset-3"
-        >
-          <span
-            className="bg-accent text-accent-ink grid size-10 shrink-0 place-items-center rounded-xl"
-            aria-hidden="true"
-          >
-            <Icone nome={app.icone} tamanho={22} />
-          </span>
-          <span>
-            <span className="block text-xl font-bold tracking-tight">
-              {app.nome}
-            </span>
-            <span className="text-ink-3 block text-xs">{organizacao}</span>
-          </span>
-        </Link>
-        <div className="mt-5">{seletorDeUnidade}</div>
-      </div>
-      <nav
-        aria-label={`Seções do ${app.nome}`}
-        className="min-h-0 flex-1 overflow-y-auto px-3 pb-4"
+  const destinos = app.navegacao.filter((d) => !d.somenteAcao);
+  const grupos = [
+    ...new Set(destinos.flatMap((d) => (d.grupo ? [d.grupo] : []))),
+  ];
+  useEffect(() => {
+    const menus = [contaRef, ajudaRef];
+    function fora(e: PointerEvent) {
+      for (const ref of menus)
+        if (
+          ref.current?.open &&
+          e.target instanceof Node &&
+          !ref.current.contains(e.target)
+        )
+          ref.current.open = false;
+    }
+    function escapar(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      const aberto = menus.find((ref) => ref.current?.open)?.current;
+      if (aberto) {
+        aberto.open = false;
+        aberto.querySelector("summary")?.focus();
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+    document.addEventListener("pointerdown", fora);
+    document.addEventListener("keydown", escapar, true);
+    return () => {
+      document.removeEventListener("pointerdown", fora);
+      document.removeEventListener("keydown", escapar, true);
+    };
+  }, []);
+  function item(destino: DestinoDoApp) {
+    return (
+      <Link
+        key={destino.rota}
+        href={destino.rota}
+        aria-label={destino.nome}
+        title={destino.nome}
+        aria-current={atual?.rota === destino.rota ? "page" : undefined}
+        onClick={() => setMenuAberto(false)}
+        className={styles.item}
       >
-        <ul className="flex flex-col gap-1">
-          {app.navegacao.map((destino) => (
-            <li key={destino.rota}>
-              <Link
-                href={destino.rota}
-                onClick={() => setMenuAberto(false)}
-                aria-current={atual?.rota === destino.rota ? "page" : undefined}
-                className={`focus-visible:outline-accent flex min-h-11 items-center gap-3 rounded-md px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 lg:min-h-10 ${atual?.rota === destino.rota ? "bg-accent-sub text-accent font-semibold" : "text-ink-2 hover:bg-surface-2 hover:text-ink"}`}
+        {destino.icone && <Icone nome={destino.icone} tamanho={20} />}
+        <span>{destino.nome}</span>
+      </Link>
+    );
+  }
+  const navegacao = (
+    <div className={styles.navegacao}>
+      <Link
+        href={app.rota}
+        className={styles.marca}
+        aria-label={`${app.marca ?? app.nome} ${app.nome}`}
+      >
+        <strong>{app.marca ?? app.nome}</strong>
+        <span>{app.nome}</span>
+      </Link>
+      <div className={styles.unidade}>
+        <span className={styles.unidadeIcone} aria-hidden="true">
+          {organizacao.trim().charAt(0)}
+        </span>
+        <div>
+          <p title={organizacao}>{organizacao}</p>
+          {seletorDeUnidade}
+        </div>
+      </div>
+      <nav aria-label={`Seções do ${app.nome}`} className={styles.secoes}>
+        {destinos.filter((d) => !d.grupo).map(item)}
+        {grupos.map((grupo) => {
+          const itens = destinos.filter((d) => d.grupo === grupo);
+          return (
+            <details
+              key={grupo}
+              className={styles.grupo}
+              open={itens.some((d) => d.rota === atual?.rota)}
+            >
+              <summary
+                title={grupo}
+                aria-label={grupo}
+                onClick={(e) => {
+                  if (recolhido) {
+                    e.preventDefault();
+                    setRecolhido(false);
+                  }
+                }}
               >
-                {destino.icone && <Icone nome={destino.icone} tamanho={18} />}
-                {destino.nome}
-              </Link>
-            </li>
-          ))}
-        </ul>
+                <Icone nome={itens[0].icone ?? app.icone} tamanho={20} />
+                <span>{grupo}</span>
+                <Icone nome="seta-baixo" tamanho={13} />
+              </summary>
+              <div>{itens.map(item)}</div>
+            </details>
+          );
+        })}
       </nav>
-      <div className="border-line border-t p-4">
+      <footer className={styles.rodape}>
         <a
           href={principal}
-          className="text-ink-2 hover:text-accent focus-visible:outline-accent mb-4 flex min-h-11 items-center gap-2 rounded-md text-sm focus-visible:outline-2 focus-visible:outline-offset-2"
+          className={styles.item}
+          aria-label="Abrir Tetteo"
+          title="Abrir Tetteo"
         >
-          <Icone nome="grade" tamanho={17} />
-          Abrir Tetteo
-          <Icone nome="seta-direita" tamanho={15} />
+          <Icone nome="grade" tamanho={20} />
+          <span>Abrir Tetteo</span>
         </a>
-        {conta}
-      </div>
+        <button
+          type="button"
+          className={styles.recolher}
+          onClick={() => setRecolhido((v) => !v)}
+          aria-label={recolhido ? "Expandir menu" : "Recolher menu"}
+          aria-expanded={!recolhido}
+        >
+          <Icone
+            nome={recolhido ? "seta-direita" : "seta-esquerda"}
+            tamanho={16}
+          />
+        </button>
+      </footer>
     </div>
   );
   return (
     <ProvedorDeAmbientes principal={principal} rotaAplicativo={app.rota}>
       <div
-        className={`bg-paper flex min-h-dvh min-w-0 flex-1 ${className ?? ""}`}
+        className={`${styles.ambiente} ${className ?? ""}`}
+        data-recolhido={recolhido}
       >
-        <aside
-          aria-label={`Menu do ${app.nome}`}
-          className="border-line bg-surface sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r lg:flex"
-        >
+        <aside aria-label={`Menu do ${app.nome}`} className={styles.lateral}>
           {navegacao}
         </aside>
         <PainelLateral
@@ -102,26 +172,46 @@ export function AmbienteAplicativo({
         >
           {menuAberto ? navegacao : null}
         </PainelLateral>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="border-line bg-surface sticky top-0 z-20 flex min-h-16 items-center gap-3 border-b px-4 lg:px-6">
+        <div className={styles.area}>
+          <header className={styles.topo}>
             <button
               type="button"
               onClick={() => setMenuAberto(true)}
               aria-label={`Abrir menu do ${app.nome}`}
               aria-expanded={menuAberto}
-              className="hover:bg-surface-2 focus-visible:outline-accent grid size-11 shrink-0 place-items-center rounded-md focus-visible:outline-2 lg:hidden"
+              className={styles.menuMovel}
             >
-              <Icone nome="menu" tamanho={21} />
+              <Icone nome="menu" tamanho={22} />
             </button>
-            <span className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight">
-              {atual?.nome ?? app.nome}
+            <span className={styles.titulo}>
+              {atual?.titulo ?? atual?.nome ?? app.nome}
             </span>
-            <span className="text-ink-3 hidden text-xs sm:block">
-              Integrado ao Tetteo
-            </span>
+            {ajuda && (
+              <details className={styles.ajuda} ref={ajudaRef}>
+                <summary aria-label="Guia rápido" title="Guia rápido">
+                  <span aria-hidden="true">?</span>
+                </summary>
+                <div>{ajuda}</div>
+              </details>
+            )}
+            <div className={styles.acoesTopo}>
+              <a
+                href={principal}
+                aria-label="Abrir Tetteo"
+                title="Abrir Tetteo"
+              >
+                <Icone nome="grade" tamanho={19} />
+              </a>
+              <details className={styles.conta} ref={contaRef}>
+                <summary aria-label="Minha conta" title="Minha conta">
+                  <Icone nome="pessoa" tamanho={20} />
+                </summary>
+                <div>{conta}</div>
+              </details>
+            </div>
           </header>
           <AvisoDeConexao />
-          <main className="min-w-0 flex-1 p-4 lg:p-6">{children}</main>
+          <main className={styles.conteudo}>{children}</main>
         </div>
       </div>
     </ProvedorDeAmbientes>

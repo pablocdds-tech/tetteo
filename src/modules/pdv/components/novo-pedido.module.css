@@ -1,6 +1,6 @@
 .checkout {
   position: fixed;
-  inset: 24px;
+  inset: 32px;
   width: auto;
   height: auto;
   max-width: none;
@@ -9,7 +9,7 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 16px;
   background: var(--surface);
   color: var(--ink);
   box-shadow: var(--shadow-flutuante);
@@ -32,58 +32,80 @@
 .topo {
   display: flex;
   flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 64px;
   min-height: 64px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 20px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--line);
 }
-
-.topo > div:first-child {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
+.topo h1 {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
 }
-
-.topo a:not(.voltar) {
-  height: 32px;
-  padding-inline: 10px;
-  font-size: 12px;
-  font-weight: 500;
+.voltar,
+.menuAtendimento > summary {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+  color: var(--ink-3);
+  cursor: pointer;
+  border-radius: 4px;
 }
-
-.voltar {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 12px;
-  padding-left: 12px;
-  color: var(--ink-2);
-  font-size: 13px;
+.voltar:hover,
+.menuAtendimento > summary:hover {
+  background: var(--surface-2);
 }
-
-.voltar:hover {
-  color: var(--accent);
+.menuAtendimento {
+  position: relative;
 }
-
-.atendimentos {
-  flex: none;
-  padding: 8px 20px;
-  border-bottom: 1px solid var(--line);
+.menuAtendimento > summary {
+  list-style: none;
 }
-
-.atendimentos:empty {
+.menuAtendimento > summary::-webkit-details-marker {
   display: none;
 }
-
-.atendimentos > div > button {
-  height: 30px;
-  padding-inline: 10px;
-  font-size: 12px;
-  font-weight: 500;
+.opcoesAtendimento {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--shadow-flutuante);
+  background: var(--surface);
 }
-
+.opcoesAtendimento > p {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.opcoesAtendimento > a {
+  display: block;
+  padding: 10px 0;
+  font-size: 13px;
+}
+.opcoesAtendimento > a:hover {
+  color: var(--pdv-acento-texto, var(--accent));
+}
+.atendimentos {
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.atendimentos > div {
+  flex-direction: column;
+  align-items: stretch;
+}
+.atendimentos > div > button {
+  justify-content: flex-start;
+  min-height: 36px;
+  font-size: 13px;
+}
 .checkout > :is(p, [role="alert"], [role="status"]) {
   flex: none;
   margin: 0;
@@ -96,7 +118,7 @@
   display: grid;
   min-height: 0;
   flex: 1;
-  grid-template-columns: 220px minmax(0, 1fr) 380px;
+  grid-template-columns: 240px minmax(0, 1fr) 384px;
   overflow: hidden;
   background: var(--paper);
 }
@@ -180,7 +202,7 @@
   border-radius: 4px;
   background: transparent;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .campoBusca::placeholder {
@@ -238,14 +260,14 @@
 
 .produtoNome {
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .produtoTexto > span:last-child {
   color: var(--ink-3);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .pedido {
@@ -262,7 +284,7 @@
   flex: none;
   flex-direction: column;
   gap: 12px;
-  padding: 16px 12px 8px;
+  padding: 12px 12px 8px;
 }
 
 .seletor,
@@ -403,21 +425,18 @@
   padding: 0 16px;
   font-size: 15px;
   font-weight: 600;
+  text-transform: uppercase;
 }
 
 @media (width >= 1700px) {
   .workspace {
-    grid-template-columns: 280px minmax(0, 1fr) 380px;
+    grid-template-columns: 288px minmax(0, 1fr) 384px;
   }
 }
 
 @media (width < 1180px) {
   .workspace {
     grid-template-columns: 170px minmax(0, 1fr) 340px;
-  }
-
-  .topo > div:first-child {
-    display: block;
   }
 }
 
@@ -464,10 +483,6 @@
     padding-inline: 12px;
   }
 
-  .topo a:not(.voltar) {
-    display: none;
-  }
-
   .atendimentos {
     padding-inline: 12px;
   }
@@ -478,6 +493,7 @@
     inset: 0;
     border: 0;
     border-radius: 0;
+    padding-top: 60px;
   }
 
   .workspace {
@@ -486,15 +502,20 @@
   }
 
   .topo {
+    position: fixed;
+    z-index: 10;
+    top: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface);
     min-height: 60px;
+    height: 60px;
   }
 
-  .topo > div:first-child p {
-    display: none;
-  }
-
-  .voltar {
-    font-size: 12px;
+  .voltar,
+  .menuAtendimento > summary {
+    width: 44px;
+    height: 44px;
   }
 
   .catalogo {

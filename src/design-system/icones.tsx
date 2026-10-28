@@ -55,6 +55,11 @@ const ICONES: Record<string, ReactNode> = {
       <path d="M3.5 7.5 12 12l8.5-4.5M12 12v9" />
     </>
   ),
+  "caixa-aberta": (
+    <>
+      <path d="m12 8 8-4-8-3-8 3 8 4Zm0 0-4 4-7-4 3-4m8 4 4 4 7-4-3-4M4 11v8l8 4 8-4v-8M12 13v10" />
+    </>
+  ),
 
   moeda: (
     <>
@@ -247,6 +252,13 @@ const ICONES: Record<string, ReactNode> = {
     </>
   ),
 
+  "mais-horizontal": (
+    <>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </>
+  ),
   mais: <path d="M12 5.2v13.6M5.2 12h13.6" />,
 };
 

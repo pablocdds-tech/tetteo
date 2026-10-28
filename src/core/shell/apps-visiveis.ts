@@ -30,6 +30,7 @@ export function appsVisiveis(
   }).map((app) => ({
     chave: app.chave,
     nome: app.nome,
+    marca: app.marca,
     subtitulo: app.subtitulo,
     icone: app.icone,
     cor: app.cor,
@@ -47,6 +48,9 @@ export function appsVisiveis(
               rota: item.rota,
               nome: item.nome,
               icone: item.icone,
+              grupo: item.grupo,
+              somenteAcao: item.somenteAcao,
+              titulo: item.titulo,
             })),
   }));
 }

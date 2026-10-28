@@ -3,7 +3,7 @@
 import { LinkIntegrado as Link } from "@/core/shell/link-integrado";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { Botao, estiloDeBotao } from "@/design-system/botao";
+import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 import { Icone } from "@/design-system/icones";
 import { PainelLateral } from "@/design-system/painel-lateral";
@@ -98,6 +98,7 @@ export function FrenteDeCaixa({
   const router = useRouter();
   const buscaRef = useRef<HTMLInputElement>(null);
   const checkoutRef = useRef<HTMLDialogElement>(null);
+  const menuAtendimentoRef = useRef<HTMLDetailsElement>(null);
   const trava = useRef(false);
   const chaveVenda = useRef<string | null>(null);
   const tentativaVenda = useRef<FinalizarEntrada | null>(null);
@@ -132,6 +133,7 @@ export function FrenteDeCaixa({
   const [pagamentos, setPagamentos] = useState<PagamentoPdv[]>([]);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  const [anuncioCarrinho, setAnuncioCarrinho] = useState("");
   const [ocupado, setOcupado] = useState(false);
   // Uma falha de rede pode ocorrer após o servidor gravar. A retentativa usa o mesmo payload/chave.
   const [incerta, setIncerta] = useState(false);
@@ -240,7 +242,19 @@ export function FrenteDeCaixa({
     buscaRef.current?.focus();
     const anterior = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    function fecharOpcoes(evento: PointerEvent) {
+      if (document.querySelectorAll("dialog[open]").length > 1) return;
+      const menu = menuAtendimentoRef.current;
+      if (
+        menu?.open &&
+        evento.target instanceof Node &&
+        !menu.contains(evento.target)
+      )
+        menu.open = false;
+    }
+    document.addEventListener("pointerdown", fecharOpcoes);
     return () => {
+      document.removeEventListener("pointerdown", fecharOpcoes);
       document.body.style.overflow = anterior;
       if (dialogo.open) dialogo.close();
     };
@@ -489,7 +503,7 @@ export function FrenteDeCaixa({
     setItemEmEdicao(null);
     setPagamentos([]);
     setValor("");
-    setAviso(
+    setAnuncioCarrinho(
       itemEmEdicao
         ? "Item atualizado no carrinho."
         : `${p.nome} adicionado ao carrinho.`,
@@ -633,6 +647,11 @@ export function FrenteDeCaixa({
       onCancel={(evento) => {
         if (evento.target !== evento.currentTarget) return;
         evento.preventDefault();
+        if (menuAtendimentoRef.current?.open) {
+          menuAtendimentoRef.current.open = false;
+          menuAtendimentoRef.current.querySelector("summary")?.focus();
+          return;
+        }
         if (ocupado || incerta) return;
         if (
           (!itens.length && !entrega && !agendamento) ||
@@ -643,76 +662,6 @@ export function FrenteDeCaixa({
           router.push("/pdv");
       }}
     >
-      <header className={styles.topo}>
-        <div>
-          <h1
-            id="novo-pedido-titulo"
-            className="text-lg font-semibold tracking-tight"
-          >
-            Novo pedido
-          </h1>
-          <p className="text-ink-3 text-xs">
-            {unidade} ·{" "}
-            {dados.caixa
-              ? `Caixa aberto por ${dados.caixa.operador}`
-              : "Caixa fechado"}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {podeConfigurar && (
-            <Link href="/pdv/preparacao" className={estiloDeBotao("fantasma")}>
-              Preparar operação
-            </Link>
-          )}
-          <Link href="/pdv/caixa" className={estiloDeBotao("secundario")}>
-            Gerenciar caixa
-          </Link>
-          <Link href="/pdv" className={styles.voltar}>
-            <span>Voltar à gestão</span>
-            <Icone nome="fechar" tamanho={18} />
-          </Link>
-        </div>
-      </header>
-      <div className={styles.atendimentos}>
-        <CarrinhosSalvos
-          carrinhos={carrinhos}
-          conteudo={{
-            clienteId: cliente || undefined,
-            modalidade,
-            ...(modalidade === "ENTREGA" && entrega
-              ? {
-                  entrega: {
-                    destinatario: entrega.destinatario,
-                    telefone: entrega.telefone,
-                    endereco: entrega.endereco,
-                    ...(entrega.areaId ? { areaId: entrega.areaId } : {}),
-                  },
-                }
-              : {}),
-            observacao,
-            ...(agendamento ? { agendamento } : {}),
-            itens: itens.map(
-              ({ produtoId, quantidade, opcoes, observacao }) => ({
-                produtoId,
-                quantidade,
-                opcoes,
-                observacao,
-              }),
-            ),
-          }}
-          atual={rascunho}
-          bloqueado={ocupado || incerta}
-          podeVender={podeVender}
-          temPagamentos={pagamentos.length > 0}
-          online={online}
-          aoSalvar={() => {
-            limparAtendimento();
-            setAviso("Atendimento salvo. Você já pode iniciar outra venda.");
-          }}
-          aoRetomar={retomarAtendimento}
-          aoBloquear={setOcupado}
-        />
-      </div>
       {rascunho && (
         <p className="text-ink-2 text-sm">
           Atendimento em edição: <strong>{rascunho.nome}</strong>. Salve
@@ -761,6 +710,9 @@ export function FrenteDeCaixa({
           {erro}
         </p>
       )}
+      <span className="sr-only" aria-live="polite">
+        {anuncioCarrinho}
+      </span>
       <div className={styles.workspace}>
         <nav aria-label="Categorias de produtos" className={styles.categorias}>
           <h2 className={styles.tituloCategorias}>Categorias</h2>
@@ -857,6 +809,85 @@ export function FrenteDeCaixa({
           )}
         </section>
         <aside className={styles.pedido}>
+          <header className={styles.topo}>
+            <h1 id="novo-pedido-titulo">Novo pedido</h1>
+            <details
+              className={styles.menuAtendimento}
+              ref={menuAtendimentoRef}
+            >
+              <summary
+                aria-label="Opções do atendimento"
+                title="Salvar ou retomar atendimento"
+              >
+                <Icone nome="mais-horizontal" tamanho={20} />
+              </summary>
+              <div className={styles.opcoesAtendimento}>
+                <p>
+                  {unidade} ·{" "}
+                  {dados.caixa
+                    ? `Caixa aberto por ${dados.caixa.operador}`
+                    : "Caixa fechado"}
+                </p>
+                <div className={styles.atendimentos}>
+                  <CarrinhosSalvos
+                    carrinhos={carrinhos}
+                    conteudo={{
+                      clienteId: cliente || undefined,
+                      modalidade,
+                      ...(modalidade === "ENTREGA" && entrega
+                        ? {
+                            entrega: {
+                              destinatario: entrega.destinatario,
+                              telefone: entrega.telefone,
+                              endereco: entrega.endereco,
+                              ...(entrega.areaId
+                                ? { areaId: entrega.areaId }
+                                : {}),
+                            },
+                          }
+                        : {}),
+                      observacao,
+                      ...(agendamento ? { agendamento } : {}),
+                      itens: itens.map(
+                        ({ produtoId, quantidade, opcoes, observacao }) => ({
+                          produtoId,
+                          quantidade,
+                          opcoes,
+                          observacao,
+                        }),
+                      ),
+                    }}
+                    atual={rascunho}
+                    bloqueado={ocupado || incerta}
+                    podeVender={podeVender}
+                    temPagamentos={pagamentos.length > 0}
+                    online={online}
+                    aoSalvar={() => {
+                      limparAtendimento();
+                      setAviso(
+                        "Atendimento salvo. Você já pode iniciar outra venda.",
+                      );
+                    }}
+                    aoRetomar={retomarAtendimento}
+                    aoBloquear={setOcupado}
+                  />
+                </div>
+                {podeConfigurar && (
+                  <Link href="/pdv/preparacao">Preparar operação</Link>
+                )}
+                <Link href="/pdv/caixa">Gerenciar caixa</Link>
+              </div>
+            </details>
+            <Link
+              href="/pdv"
+              className={styles.voltar}
+              aria-label="Voltar à gestão"
+              title="Voltar à gestão"
+            >
+              <Icone nome="fechar" tamanho={20} />
+            </Link>
+          </header>
+
           <div
             className={`${styles.dadosPedido} ${modalidade === "ENTREGA" ? "min-[900px]:max-h-[35dvh] min-[900px]:overflow-y-auto" : ""}`}
           >
@@ -988,7 +1019,7 @@ export function FrenteDeCaixa({
           <div className={styles.itens}>
             {!itens.length && (
               <div className={styles.carrinhoVazio}>
-                <Icone nome="caixa" tamanho={72} />
+                <Icone nome="caixa-aberta" tamanho={96} />
                 <p>Carrinho vazio</p>
               </div>
             )}

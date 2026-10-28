@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
 import { Icone } from "@/design-system/icones";
 import { PainelLateral } from "@/design-system/painel-lateral";
 import { apiClientes, ErroClienteAtendimento } from "../cliente-api";
 import type { ConsultaClienteAtendimento } from "../cliente-types";
+import styles from "./cliente-atendimento.module.css";
 
 import type {
   ClienteAtendimentoPdv as ClienteAtendimentoDTO,
@@ -42,6 +43,7 @@ export function ClienteAtendimento({
     endereco: EnderecoAtendimentoDTO,
   ) => void;
 }) {
+  const buscaId = useId();
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
   const [resultadoBruto, setResultado] = useState<{
@@ -318,18 +320,40 @@ export function ClienteAtendimento({
         </>
       ) : (
         <>
-          <Campo
-            rotulo="Buscar cliente"
-            inputMode="search"
-            value={busca}
-            placeholder="Nome ou telefone"
-            disabled={bloqueado}
-            onChange={(evento) => {
-              setBusca(evento.target.value);
-              setErro("");
-              setPagina(1);
-            }}
-          />
+          <div className={styles.busca}>
+            <label className="sr-only" htmlFor={buscaId}>
+              Buscar cliente
+            </label>
+            <Icone nome="pessoa" tamanho={18} />
+            <input
+              id={buscaId}
+              inputMode="search"
+              value={busca}
+              placeholder="Pesquisar cliente por nome ou telefone"
+              disabled={bloqueado}
+              onChange={(evento) => {
+                setBusca(evento.target.value);
+                setErro("");
+                setPagina(1);
+              }}
+            />
+            {podeEditar && (
+              <button
+                type="button"
+                aria-label="Novo cliente"
+                title="Cadastrar novo cliente"
+                disabled={bloqueado}
+                onClick={() => {
+                  setNome(busca.trim());
+                  setTelefone("");
+                  setErroCadastro("");
+                  setCriando(true);
+                }}
+              >
+                <Icone nome="mais" tamanho={18} />
+              </button>
+            )}
+          </div>
           {buscando && (
             <p role="status" className="text-ink-3 text-xs">
               Buscando clientes…
@@ -379,21 +403,6 @@ export function ClienteAtendimento({
                 </div>
               )}
             </>
-          )}
-          {podeEditar && (
-            <button
-              type="button"
-              className="text-accent min-h-10 text-xs font-semibold underline"
-              disabled={bloqueado}
-              onClick={() => {
-                setNome(busca.trim());
-                setTelefone("");
-                setErroCadastro("");
-                setCriando(true);
-              }}
-            >
-              + Novo cliente
-            </button>
           )}
         </>
       )}
