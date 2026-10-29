@@ -1,16 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import {
+  cloneElement,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type FormEvent,
+  type ReactElement,
 } from "react";
 
 import { Botao, estiloDeBotao } from "@/design-system/botao";
 import { apiJson } from "@/lib/api";
+import { Icone } from "@/design-system/icones";
+import { ArquivoConferencia } from "./arquivo-conferencia";
+import { DemonstracaoConferencia } from "./demonstracao-conferencia";
+import { CoberturaFontes, PendenciasConferencia } from "./resumo-conferencia";
+import aparencia from "./conferencia-aparencia.module.css";
 
 import {
   estados,
@@ -33,6 +40,10 @@ type Previa = {
   id: string;
   arquivoHash: string;
   nomeArquivo: string;
+  fonte: string;
+  contaRef: string;
+  de: string;
+  ate: string;
   lidas: number;
   aceitas: number;
   rejeitadas: number;
@@ -103,31 +114,47 @@ function Rotulo({
   children,
 }: {
   texto: string;
-  children: React.ReactNode;
+  children: ReactElement<{ id?: string }>;
 }) {
+  const id = useId();
   return (
-    <label className="grid gap-1.5 text-sm font-medium">
-      <span>{texto}</span>
-      {children}
-    </label>
+    <div className="grid gap-1.5 text-sm font-medium">
+      <label htmlFor={id}>{texto}</label>
+      {cloneElement(children, { id })}
+    </div>
   );
 }
 function Numero({
   titulo,
   valor,
   descricao,
+  destaque = false,
+  semExecucao = false,
 }: {
   titulo: string;
   valor: number | null;
   descricao: string;
+  destaque?: boolean;
+  semExecucao?: boolean;
 }) {
   return (
-    <div className="border-line bg-surface min-w-0 rounded-xl border p-4">
-      <p className="text-ink-2 text-sm font-medium">{titulo}</p>
-      <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums lg:text-2xl">
-        {moeda(valor)}
+    <div
+      className={`min-w-0 rounded-2xl border p-5 ${destaque ? aparencia.destaque : "border-line bg-surface"}`}
+    >
+      <p
+        className={`flex items-center gap-2 text-xs font-semibold tracking-wide uppercase ${destaque ? aparencia.apoio : "text-ink-3"}`}
+      >
+        <Icone nome={destaque ? "lista-conferida" : "moeda"} tamanho={17} />
+        {titulo}
       </p>
-      <p className="text-ink-3 mt-2 text-xs leading-relaxed">{descricao}</p>
+      <p className="mt-4 text-2xl font-extrabold tracking-tight tabular-nums lg:text-[1.75rem]">
+        {semExecucao ? "—" : moeda(valor)}
+      </p>
+      <p
+        className={`mt-2 text-xs leading-relaxed ${destaque ? aparencia.apoio : "text-ink-3"}`}
+      >
+        {semExecucao ? "Execute a conferência para apurar." : descricao}
+      </p>
     </div>
   );
 }
@@ -155,12 +182,15 @@ export function PainelConferencia({
   const [aba, setAba] = useState<"conferencia" | "importacoes" | "contratos">(
     "conferencia",
   );
-  const [painel, setPainel] = useState<Painel | null>(null);
+  const [dadosPainel, setPainel] = useState<Painel | null>(null);
+  const [consultaRespondida, setConsultaRespondida] = useState("");
   const [atualizacao, setAtualizacao] = useState(0);
-  const [carregando, setCarregando] = useState(true);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(
+    null,
+  );
   const [previa, setPrevia] = useState<Previa | null>(null);
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
   const [arquivoDetalhe, setArquivoDetalhe] = useState<Importacao | null>(null);
@@ -178,6 +208,9 @@ export function PainelConferencia({
     ...(filtro.execucaoId ? { execucaoId: filtro.execucaoId } : {}),
     pagina: String(filtro.pagina),
   }).toString();
+  const consultaAtual = `${query}:${atualizacao}`;
+  const carregando = consultaRespondida !== consultaAtual;
+  const painel = carregando ? null : dadosPainel;
   const carregar = useCallback(async () => {
     setAtualizacao((v) => v + 1);
   }, []);
@@ -189,17 +222,20 @@ export function PainelConferencia({
       controller.signal,
     )
       .then((retorno) => {
+        if (controller.signal.aborted) return;
         setPainel(retorno);
-        setCarregando(false);
+        setConsultaRespondida(consultaAtual);
+        setErro("");
       })
       .catch((e) => {
         if (!controller.signal.aborted) {
           setErro(mensagemErro(e));
-          setCarregando(false);
+          setConsultaRespondida(consultaAtual);
+          setPainel(null);
         }
       });
     return () => controller.abort();
-  }, [query, atualizacao]);
+  }, [query, consultaAtual]);
   useEffect(() => {
     if (detalhe && !dialogo.current?.open) dialogo.current?.showModal();
   }, [detalhe]);
@@ -243,7 +279,7 @@ export function PainelConferencia({
     evento.preventDefault();
     const form = new FormData(evento.currentTarget);
     await operar(async () => {
-      const arquivo = form.get("arquivo");
+      const arquivo = arquivoSelecionado;
       if (!(arquivo instanceof File)) throw new Error("Escolha um arquivo.");
       const config = {
         fonte: form.get("fonte"),
@@ -286,7 +322,10 @@ export function PainelConferencia({
             ? "Arquivo confirmado. Execute uma nova conferência para usar estas linhas."
             : "Arquivo preservado em revisão."),
       );
-      if (resultado.estado === "CONFIRMADA") setPrevia(null);
+      if (resultado.estado === "CONFIRMADA") {
+        setPrevia(null);
+        setArquivoSelecionado(null);
+      }
       await carregar();
     });
   }
@@ -315,41 +354,69 @@ export function PainelConferencia({
         debitadoCentavos: number;
       }
     | undefined;
-  const cobertura = painel?.execucao?.cobertura as Cobertura | undefined;
+  const cobertura = painel?.coberturaAtual as Cobertura | undefined;
   const resultados = painel?.resultados ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div
+      className={`${aparencia.painel} mx-auto w-full max-w-7xl space-y-6 pb-8`}
+    >
       <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight lg:text-[1.75rem]">
-            Conferência de recebimentos
-          </h1>
-          <p className="text-ink-3 mt-1 text-sm">
-            {unidade} · Vendas, adquirente e banco no mesmo lugar.
-          </p>
-        </div>
-        {podeImportar && (
-          <Botao
-            onClick={() => {
-              setAba("importacoes");
-              setArquivoDetalhe(null);
-            }}
+        <div className="flex items-center gap-3 sm:gap-4">
+          <span
+            className={`${aparencia.destaque} flex size-12 shrink-0 items-center justify-center rounded-2xl`}
           >
-            Importar arquivo
+            <Icone nome="lista-conferida" tamanho={25} />
+          </span>
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight sm:text-[1.85rem]">
+              Auditoria financeira
+            </h1>
+            <p className="text-ink-3 mt-1 text-sm">
+              {unidade} · Venda → adquirente → banco
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Botao
+            peso="fantasma"
+            className={`${aparencia.acao} text-sm`}
+            onClick={() => setDemonstracao((v) => !v)}
+            aria-expanded={demonstracao}
+          >
+            Exemplo guiado
           </Botao>
-        )}
+          {podeImportar && (
+            <Botao
+              peso="secundario"
+              className={`${aparencia.acao} text-sm`}
+              onClick={() => {
+                setAba("importacoes");
+                setArquivoDetalhe(null);
+              }}
+            >
+              <Icone nome="entrada" tamanho={17} />
+              Importar arquivo
+            </Botao>
+          )}
+        </div>
       </header>
-      <p className="border-line bg-info-sub text-info rounded-xl border px-4 py-3 text-sm">
-        Modo de observação. A conferência aponta diferenças e guarda decisões;
-        não dá baixa em contas nem movimenta dinheiro.
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="bg-surface-2 text-ink-2 rounded-full px-3 py-1.5 text-xs font-semibold">
+          {periodo.de.split("-").reverse().join("/")} a{" "}
+          {periodo.ate.split("-").reverse().join("/")}
+        </span>
+        <span className="text-ink-3 flex items-center gap-1.5 text-xs">
+          <Icone nome="olho" tamanho={16} />
+          Modo de observação · sem baixas ou pagamentos
+        </span>
+      </div>
+      {demonstracao && <DemonstracaoConferencia />}
       <form
-        className="flex flex-wrap items-end gap-3"
+        className="border-line bg-surface flex flex-wrap items-end gap-3 rounded-2xl border p-4"
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
-          setCarregando(true);
           setPainel(null);
           setPeriodo({ de: String(f.get("de")), ate: String(f.get("ate")) });
           setFiltro({ estado: "", categoria: "", pagina: 1, execucaoId: "" });
@@ -378,9 +445,10 @@ export function PainelConferencia({
           Ver período
         </Botao>
         <div className="ml-auto flex flex-wrap gap-2">
-          {podeImportar && (
+          {podeImportar && aba === "conferencia" && (
             <Botao
-              peso="secundario"
+              peso="primario"
+              className={`${aparencia.acao} ${aparencia.primaria} text-sm`}
               type="button"
               onClick={executar}
               carregando={ocupado}
@@ -388,7 +456,7 @@ export function PainelConferencia({
                 !painel?.importacoes.some((i) => i.estado === "CONFIRMADA")
               }
             >
-              Conferir período
+              <Icone nome="atualizar" tamanho={17} /> Conferir período
             </Botao>
           )}
           {painel?.execucao && (
@@ -396,7 +464,7 @@ export function PainelConferencia({
               className={estiloDeBotao("fantasma")}
               href={`${raiz}/reconciliation/export?${query}`}
             >
-              Exportar CSV
+              <Icone nome="baixar" tamanho={17} /> Exportar CSV
             </a>
           )}
         </div>
@@ -429,7 +497,7 @@ export function PainelConferencia({
       >
         {(
           [
-            ["conferencia", "Conferência"],
+            ["conferencia", "Visão da conferência"],
             ["importacoes", "Arquivos e cobertura"],
             ["contratos", "Contratos de taxa"],
           ] as const
@@ -445,19 +513,29 @@ export function PainelConferencia({
         ))}
       </nav>
       {carregando && (
-        <p className="text-ink-3" role="status">
+        <div
+          className="bg-surface-2 text-ink-3 flex items-center gap-3 rounded-xl p-4 text-sm"
+          role="status"
+        >
+          <Icone
+            nome="atualizar"
+            className="motion-safe:animate-spin"
+            tamanho={18}
+          />
           Carregando os arquivos e o histórico…
-        </p>
+        </div>
       )}
       {aba === "conferencia" && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Numero
+              semExecucao={!painel?.execucao}
               titulo="Vendido bruto"
               valor={totais?.vendidoCentavos ?? null}
               descricao="Vendas não canceladas nos arquivos do PDV."
             />
             <Numero
+              semExecucao={!painel?.execucao}
               titulo="Líquido previsto"
               valor={totais?.previstoCentavos ?? null}
               descricao={
@@ -467,11 +545,14 @@ export function PainelConferencia({
               }
             />
             <Numero
-              titulo="Liquidado pela adquirente"
+              semExecucao={!painel?.execucao}
+              titulo="Liquidado"
               valor={totais?.liquidadoCentavos ?? null}
               descricao="Recebíveis marcados como liquidados. Ainda exige banco."
             />
             <Numero
+              semExecucao={!painel?.execucao}
+              destaque
               titulo="Creditado no banco"
               valor={totais?.creditadoCentavos ?? null}
               descricao="Créditos no período efetivo do extrato, contados uma única vez."
@@ -479,30 +560,25 @@ export function PainelConferencia({
           </div>
           <p className="text-ink-3 text-xs">
             São quatro etapas do mesmo dinheiro. Somá-las duplicaria a receita.
-            Débitos bancários no período: {moeda(totais?.debitadoCentavos)}.
+            {totais && (
+              <>
+                Débitos bancários no período: {moeda(totais.debitadoCentavos)}.
+              </>
+            )}
           </p>
+          <CoberturaFontes
+            cobertura={cobertura}
+            importacoes={painel?.importacoes ?? []}
+            onImportar={() => setAba("importacoes")}
+          />
           {painel?.execucao && (
-            <section
-              className="border-line bg-surface grid gap-3 rounded-xl border p-4 lg:grid-cols-3"
-              aria-label="Cobertura das fontes"
-            >
-              {fontes.map((f) => (
-                <div key={f}>
-                  <p className="font-semibold">{rotuloFonte[f]}</p>
-                  <p
-                    className={`mt-1 text-sm ${cobertura?.[f].completa ? "text-ok" : "text-warn"}`}
-                  >
-                    {cobertura?.[f].completa
-                      ? "Cobertura declarada completa"
-                      : "Cobertura parcial"}
-                  </p>
-                  <p className="text-ink-3 mt-1 text-xs">
-                    {cobertura?.[f].de} a {cobertura?.[f].ate} ·{" "}
-                    {cobertura?.[f].importacoes.length ?? 0} arquivo(s)
-                  </p>
-                </div>
-              ))}
-            </section>
+            <PendenciasConferencia
+              resumo={painel.resumo}
+              selecionado={filtro.estado}
+              onSelect={(estado) =>
+                setFiltro((f) => ({ ...f, estado, categoria: "", pagina: 1 }))
+              }
+            />
           )}
           {painel && "desatualizada" in painel && painel.desatualizada && (
             <p className="bg-warn-sub text-warn rounded-xl p-4 text-sm">
@@ -512,7 +588,9 @@ export function PainelConferencia({
           )}
           <div className="flex flex-wrap items-end gap-3">
             <div className="mr-auto">
-              <h2 className="text-lg font-semibold">Fila de conferência</h2>
+              <h2 className="text-lg font-semibold">
+                Ocorrências e evidências
+              </h2>
               <p className="text-ink-3 text-sm">
                 {painel?.total ?? 0} ocorrência(s). Ausência de registro não
                 comprova perda.
@@ -523,7 +601,6 @@ export function PainelConferencia({
                 className={campo}
                 value={filtro.categoria}
                 onChange={(e) => {
-                  setCarregando(true);
                   setFiltro((f) => ({
                     ...f,
                     categoria: e.target.value,
@@ -551,7 +628,6 @@ export function PainelConferencia({
                 className={campo}
                 value={filtro.estado}
                 onChange={(e) => {
-                  setCarregando(true);
                   setFiltro((f) => ({
                     ...f,
                     estado: e.target.value,
@@ -568,7 +644,7 @@ export function PainelConferencia({
               </select>
             </Rotulo>
           </div>
-          {!painel?.execucao && !carregando ? (
+          {!painel?.execucao && !carregando && !erro ? (
             <div className="border-line bg-surface rounded-xl border p-8">
               <h3 className="text-lg font-semibold">
                 Comece pelos três arquivos
@@ -582,45 +658,82 @@ export function PainelConferencia({
                 As vendas Saipos do Analytics não incluem NSU, taxas e lotes
                 bancários. Este fluxo começa pelos arquivos originais.
               </p>
-              <button
-                className="text-accent mt-4 min-h-11 font-semibold"
-                onClick={() => setDemonstracao((v) => !v)}
-              >
-                Ver exemplo fictício de R$ 1.250,00
-              </button>
-              {demonstracao && <Exemplo />}
+              {podeImportar && (
+                <Botao
+                  peso="secundario"
+                  className="mt-5 rounded-full text-sm"
+                  onClick={() => setAba("importacoes")}
+                >
+                  Importar primeiro arquivo
+                </Botao>
+              )}
+              {!podeImportar && (
+                <p className="text-ink-3 mt-4 text-sm">
+                  Seu perfil permite consultar. Peça ao responsável financeiro
+                  para importar os arquivos.
+                </p>
+              )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div
+              className="border-line bg-surface overflow-hidden rounded-2xl border"
+              aria-busy={carregando}
+            >
+              <div
+                className="border-line bg-surface-2 text-ink-3 hidden grid-cols-[1.3fr_1.2fr_1fr_1fr_110px] gap-4 border-b px-5 py-3 text-xs font-semibold lg:grid"
+                aria-hidden="true"
+              >
+                <span>Origem / referência</span>
+                <span>Situação</span>
+                <span>Bruto da venda</span>
+                <span>Diferença de taxa</span>
+                <span>Evidências</span>
+              </div>
               {resultados.map((r) => (
                 <button
                   key={r.id}
+                  disabled={ocupado}
                   onClick={() => abrir(r.id)}
-                  className="border-line bg-surface hover:bg-surface-2 grid w-full gap-3 rounded-xl border p-4 text-left lg:grid-cols-[1fr_180px_180px_100px]"
+                  className="border-line hover:bg-surface-2 grid w-full gap-4 border-b p-5 text-left last:border-b-0 disabled:opacity-50 lg:grid-cols-[1.3fr_1.2fr_1fr_1fr_110px] lg:items-center"
                 >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold break-all">
+                      {r.referencia?.identificador ?? "Sem identificador"}
+                    </p>
+                    <p className="text-ink-3 mt-1 text-xs">
+                      {r.referencia?.provedor} ·{" "}
+                      {r.referencia?.dia.split("-").reverse().join("/")}
+                    </p>
+                  </div>
                   <div>
                     <Estado estado={r.estado} />
-                    <p className="text-ink-3 mt-2 text-xs">
+                    <p className="text-ink-3 mt-1.5 text-xs">
                       {r.categoria === "EXATA"
                         ? "Referência forte"
                         : r.categoria === "PROVAVEL"
                           ? "Sugestão; exige revisão"
                           : r.categoria === "AMBIGUA"
-                            ? "Há mais de uma candidata"
+                            ? "Mais de uma candidata"
                             : "Vínculo ausente"}
                     </p>
                   </div>
-                  <div className="text-sm">
-                    <span className="text-ink-3 block text-xs">
+                  <div className="text-sm tabular-nums">
+                    <span className="text-ink-3 mb-1 block text-xs lg:hidden">
                       Bruto da venda
                     </span>
-                    <strong>{moeda(r.brutoCentavos)}</strong>
+                    <strong>
+                      {r.vendaId ? moeda(r.brutoCentavos) : "Não vinculado"}
+                    </strong>
                   </div>
-                  <div className="text-sm">
-                    <span className="text-ink-3 block text-xs">
+                  <div className="text-sm tabular-nums">
+                    <span className="text-ink-3 mb-1 block text-xs lg:hidden">
                       Diferença de taxa
                     </span>
-                    <strong>{moeda(r.diferencaTaxaCentavos)}</strong>
+                    <strong
+                      className={r.diferencaTaxaCentavos ? "text-warn" : ""}
+                    >
+                      {moeda(r.diferencaTaxaCentavos)}
+                    </strong>
                     {r.decisao && (
                       <p className="text-ink-3 mt-1 text-xs">
                         {r.revisaoAdicional
@@ -630,16 +743,38 @@ export function PainelConferencia({
                       </p>
                     )}
                   </div>
-                  <span className="text-accent self-center text-sm font-semibold">
-                    Ver detalhe
+                  <span className="text-accent text-sm font-semibold">
+                    Ver evidências →
                   </span>
                 </button>
               ))}
               {painel?.execucao && resultados.length === 0 && (
-                <p className="border-line rounded-xl border p-6 text-sm">
-                  Nenhuma ocorrência neste filtro. Confira as fontes e
-                  experimente outra etapa.
-                </p>
+                <div className="flex flex-col items-center px-6 py-12 text-center">
+                  <Icone
+                    nome="lista-conferida"
+                    tamanho={32}
+                    className="text-ok mb-3"
+                  />
+                  <p className="font-semibold">
+                    Nenhuma ocorrência neste filtro
+                  </p>
+                  <p className="text-ink-3 mt-2 text-sm">
+                    Confira a cobertura das fontes ou escolha outra etapa.
+                  </p>
+                  <button
+                    className="text-accent mt-4 min-h-11 text-sm font-semibold"
+                    onClick={() =>
+                      setFiltro((f) => ({
+                        ...f,
+                        estado: "",
+                        categoria: "",
+                        pagina: 1,
+                      }))
+                    }
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -695,20 +830,49 @@ export function PainelConferencia({
       )}
       {aba === "importacoes" && (
         <>
+          <CoberturaFontes
+            cobertura={cobertura}
+            importacoes={painel?.importacoes ?? []}
+            onImportar={() =>
+              document
+                .getElementById("arquivos-periodo")
+                ?.scrollIntoView({ behavior: "smooth" })
+            }
+          />
           {podeImportar && (
             <section className="border-line bg-surface rounded-xl border p-4 sm:p-6">
               <h2 className="text-lg font-semibold">
-                Importar e conferir a leitura
+                Importar arquivos financeiros
               </h2>
               <p className="text-ink-3 mt-1 text-sm">
                 CSV/JSON em UTF-8, até 2 MB e 5.000 linhas. BRL; campos
                 terminados em Cents são centavos inteiros. O original será
                 preservado em privado.
               </p>
+              <ol
+                className="text-ink-3 my-5 flex flex-wrap gap-4 text-xs font-semibold"
+                aria-label="Etapas da importação"
+              >
+                <li className={!previa ? "text-accent" : ""}>
+                  01 · Escolher arquivo
+                </li>
+                <li className={previa ? "text-accent" : ""}>
+                  02 · Conferir leitura
+                </li>
+                <li>03 · Confirmar importação</li>
+              </ol>
               <form
                 onSubmit={importar}
                 className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
               >
+                <ArquivoConferencia
+                  arquivo={arquivoSelecionado}
+                  disabled={ocupado}
+                  onChange={(arquivo) => {
+                    setArquivoSelecionado(arquivo);
+                    setPrevia(null);
+                  }}
+                />
                 <Rotulo texto="Origem">
                   <select name="fonte" className={campo}>
                     {fontes.map((f) => (
@@ -725,15 +889,6 @@ export function PainelConferencia({
                     placeholder="Ex.: conta-matriz"
                     required
                     maxLength={120}
-                  />
-                </Rotulo>
-                <Rotulo texto="Arquivo original">
-                  <input
-                    className={campo}
-                    type="file"
-                    name="arquivo"
-                    accept=".csv,.json"
-                    required
                   />
                 </Rotulo>
                 <Rotulo texto="Cobertura do arquivo: de">
@@ -770,7 +925,13 @@ export function PainelConferencia({
                   </Rotulo>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-3">
-                  <Botao type="submit" peso="secundario" carregando={ocupado}>
+                  <Botao
+                    type="submit"
+                    peso="primario"
+                    className={`${aparencia.acao} ${aparencia.primaria} text-sm`}
+                    disabled={!arquivoSelecionado}
+                    carregando={ocupado}
+                  >
                     Analisar arquivo
                   </Botao>
                   {fontes.map((f) => (
@@ -791,6 +952,11 @@ export function PainelConferencia({
               <h2 className="text-lg font-semibold">
                 Prévia: {previa.nomeArquivo}
               </h2>
+              <p className="text-ink-3 mt-2 text-sm">
+                {rotuloFonte[previa.fonte as Fonte]} · Conta {previa.contaRef} ·{" "}
+                {previa.de.split("-").reverse().join("/")} a{" "}
+                {previa.ate.split("-").reverse().join("/")} · BRL
+              </p>
               <p className="mt-2 text-sm">
                 {previa.lidas} lidas · {previa.aceitas} aceitas ·{" "}
                 {previa.rejeitadas} rejeitadas · {previa.ignoradas} ignoradas
@@ -870,7 +1036,9 @@ export function PainelConferencia({
             </section>
           )}
           <section>
-            <h2 className="text-lg font-semibold">Arquivos do período</h2>
+            <h2 id="arquivos-periodo" className="text-lg font-semibold">
+              Arquivos do período
+            </h2>
             <p className="text-ink-3 mt-1 text-sm">
               A cobertura é declarada por quem importa e validada no período. Um
               arquivo em revisão mantém a cobertura parcial.
@@ -1294,17 +1462,25 @@ export function PainelConferencia({
                   id="titulo-detalhe-conferencia"
                   className="text-xl font-semibold"
                 >
-                  De onde veio a diferença
+                  {unidade} · evidências da ocorrência
                 </h2>
                 <p className="text-ink-3 mt-1 text-xs">
                   Execução {dataHora(detalhe.execucao.criadoEm)} ·{" "}
                   {detalhe.execucao.regrasVersao}
                 </p>
               </div>
-              <Botao peso="fantasma" onClick={() => dialogo.current?.close()}>
-                Fechar
+              <Botao
+                peso="fantasma"
+                aria-label="Fechar evidências"
+                onClick={() => dialogo.current?.close()}
+              >
+                <Icone nome="fechar" tamanho={20} />
               </Botao>
             </div>
+            <p className="text-ink-3 mt-3 text-sm">
+              Fatos da fonte separados de hipóteses. Diferença não comprova
+              prejuízo ou devedor.
+            </p>
             <div className="mt-4">
               <Estado estado={detalhe.resultado.estado} />
             </div>
@@ -1324,6 +1500,11 @@ export function PainelConferencia({
                       const n = l.normalizado as unknown as Linha;
                       return (
                         <div className="mt-3 text-sm" key={l.id}>
+                          {detalhe.resultado.candidatos.includes(l.id) && (
+                            <p className="bg-warn-sub text-warn mb-2 rounded-lg p-2 text-xs font-semibold">
+                              Candidata · vínculo não confirmado
+                            </p>
+                          )}
                           <strong>
                             {moeda(
                               f === "BANCO" ? n.amountCents : n.grossCents,
@@ -1380,7 +1561,7 @@ export function PainelConferencia({
                     })}
                   {!detalhe.linhas.some((l) => l.fonte === f) && (
                     <p className="text-ink-3 mt-3 text-sm">
-                      Sem vínculo nesta fonte.
+                      Sem vínculo comprovado nesta fonte.
                     </p>
                   )}
                 </section>
@@ -1621,51 +1802,6 @@ export function PainelConferencia({
           </>
         )}
       </dialog>
-    </div>
-  );
-}
-
-function Exemplo() {
-  return (
-    <div className="border-line mt-4 border-t pt-4">
-      <p className="text-info text-sm font-semibold">
-        Exemplo fictício, sem gravação no banco
-      </p>
-      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-ink-3">Venda no cartão</dt>
-          <dd className="font-semibold">R$ 1.250,00</dd>
-        </div>
-        <div>
-          <dt className="text-ink-3">Contrato de 3% (300 bps)</dt>
-          <dd className="font-semibold">
-            R$ 37,50 de taxa · R$ 1.212,50 previstos
-          </dd>
-        </div>
-        <div>
-          <dt className="text-ink-3">Adquirente</dt>
-          <dd className="font-semibold">
-            R$ 43,75 de taxa · R$ 1.206,25 líquidos
-          </dd>
-        </div>
-        <div>
-          <dt className="text-ink-3">Crédito com lote único no banco</dt>
-          <dd className="font-semibold">R$ 1.206,25</dd>
-        </div>
-      </dl>
-      <p className="text-bad mt-4 text-sm font-semibold">
-        Taxa divergente: R$ 6,25 para conferir.
-      </p>
-      <p className="text-ink-3 mt-1 text-sm">
-        O banco confirma o líquido recebido. A diferença entre a taxa cobrada e
-        a contratada continua aberta.
-      </p>
-      <Link
-        href="/financeiro/conferencia"
-        className="text-accent mt-2 inline-block text-sm"
-      >
-        Voltar à conferência da loja
-      </Link>
     </div>
   );
 }

@@ -1,0 +1,38 @@
+.painel {
+  --conferencia-destaque: #151b2c;
+  --conferencia-frente: #f8fafc;
+  --conferencia-apoio: #c9d0df;
+}
+
+.destaque {
+  border-color: var(--conferencia-destaque);
+  background: var(--conferencia-destaque);
+  color: var(--conferencia-frente);
+}
+
+.apoio {
+  color: var(--conferencia-apoio);
+}
+
+.acao {
+  border-radius: 999px;
+}
+
+.primaria {
+  background: var(--conferencia-destaque);
+  color: var(--conferencia-frente);
+}
+
+.painel input[type="date"] {
+  color-scheme: light;
+}
+
+:global(:root[data-theme="dark"]) .painel input[type="date"] {
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .painel input[type="date"] {
+    color-scheme: dark;
+  }
+}

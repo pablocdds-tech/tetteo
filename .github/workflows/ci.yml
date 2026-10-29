@@ -20,7 +20,22 @@ jobs:
     timeout-minutes: 20
 
     env:
-      DATABASE_URL: postgresql://compilacao:compilacao@localhost:5432/compilacao
+      DATABASE_URL: postgresql://compilacao:compilacao@localhost:5432/tetteo_test
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: compilacao
+          POSTGRES_PASSWORD: compilacao
+          POSTGRES_DB: tetteo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U compilacao -d tetteo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
 
     steps:
       - name: Baixar código
@@ -40,6 +55,12 @@ jobs:
 
       - name: Verificar projeto
         run: npm run check
+
+      - name: Reproduzir histórico de migrations em banco vazio
+        run: npx prisma migrate deploy
+
+      - name: Conferir importações, decisões, isolamento e exportação
+        run: npx tsx scripts/conferencia-ensaio.ts
 
       - name: Compilar para produção
         run: npm run build

@@ -1,5 +1,23 @@
 # Design do Tetteo
 
+## Auditoria financeira — 29/10/2026
+
+O financeiro usa as telas Nina fornecidas como referência para hierarquia e
+operação: título forte com ícone, quatro totais separados, pendências por etapa,
+lista de evidências e importação com área de arraste. A marca, o seletor de unidade,
+as permissões e a navegação continuam sendo os do Tetteo. Não são copiados nomes,
+valores ou apurações reais das capturas.
+
+O destaque azul-escuro fica restrito a `conferencia-aparencia.module.css`;
+os demais elementos usam os tokens Aurora. Texto principal e legenda sobre esse
+destaque têm contraste AA verificado em `contraste.test.ts`. As barras representam
+quantidade de ocorrências e sempre têm rótulos; não representam perda financeira.
+A cobertura é mostrada por fonte antes da execução. Totais sem apuração usam traço,
+e taxa sem contrato permanece desconhecida. Ao mudar os filtros, a tabela anterior
+é retirada até a consulta terminar. Candidatas no detalhe são marcadas como vínculo
+não confirmado. O diálogo nativo contém o foco e fecha com Esc; tabelas viram linhas
+empilhadas no celular, sem rolagem horizontal da página.
+
 ## Caixa do PDV — 28/10/2026
 
 Referência inspecionada na tela Caixa do Cardápio Web, incluindo sangria,

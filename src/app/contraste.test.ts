@@ -172,3 +172,21 @@ test("o tema claro é igual no padrão e na escolha explícita", () => {
     );
   }
 });
+
+test("o destaque financeiro preserva contraste AA para valor e legenda", () => {
+  const css = readFileSync(
+    "src/modules/financeiro/components/conferencia-aparencia.module.css",
+    "utf8",
+  );
+  const tokens = Object.fromEntries(
+    [...css.matchAll(/(--conferencia-[\w-]+):\s*(#[0-9a-f]{6})/g)].map((m) => [
+      m[1],
+      m[2],
+    ]),
+  );
+  for (const frente of ["--conferencia-frente", "--conferencia-apoio"]) {
+    assert.ok(
+      contraste(tokens[frente], tokens["--conferencia-destaque"]) >= 4.5,
+    );
+  }
+});

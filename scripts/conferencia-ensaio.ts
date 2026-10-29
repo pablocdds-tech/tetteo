@@ -183,6 +183,11 @@ async function main() {
       toleranciaCentavos: 0,
     });
     const requestKey = randomUUID();
+    const antesDaExecucao = await consultarConferencia(ctx, periodo);
+    assert.equal(antesDaExecucao.execucao, null);
+    assert.ok(
+      Object.values(antesDaExecucao.coberturaAtual).every((c) => c.completa),
+    );
     const primeira = await executarConferencia(ctx, { ...periodo, requestKey });
     assert.equal(
       (await executarConferencia(ctx, { ...periodo, requestKey })).id,
@@ -191,6 +196,14 @@ async function main() {
     let painel = await consultarConferencia(ctx, periodo);
     assert.equal(painel.resultados[0].estado, "FEE_DIFFERENCE");
     assert.equal(painel.resultados[0].diferencaTaxaCentavos, 625);
+    assert.equal(
+      painel.resultados[0].referencia?.identificador,
+      venda.externalId,
+    );
+    assert.equal(painel.resultados[0].referencia?.dia, "2026-10-19");
+    assert.deepEqual(painel.resumo, [
+      { estado: "FEE_DIFFERENCE", categoria: "EXATA", _count: 1 },
+    ]);
     const r = painel.resultados[0];
     const concorrentes = await Promise.allSettled(
       ["Decisão financeira primeira", "Decisão financeira concorrente"].map(

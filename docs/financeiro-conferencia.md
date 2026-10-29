@@ -2,8 +2,39 @@
 
 Implementação do material Kairu Pass 1.0.1 (20/10/2026), adaptada ao Tetteo da
 VPS: Next.js 16.3, Auth.js, Prisma 7 e PostgreSQL. O código antigo da pasta
-Desktop não é a base publicada. A entrada fica em **Financeiro → Conferência
-de recebimentos**, `/financeiro/conferencia`.
+Desktop não é a base publicada. A entrada fica em **Financeiro → Auditoria
+financeira**, `/financeiro/conferencia`.
+
+## Reformulação com as referências Nina — 29/10/2026
+
+O prompt e os arquivos fornecidos foram tratados como especificação do módulo;
+os prints orientam o visual, sem copiar seus dados reais. A estrutura existente
+já continha o schema e o motor. A reformulação preserva essa base, sem criar um
+segundo financeiro nem alterar as contas a pagar/receber.
+
+| Incremento                         | Implementação e verificação                                                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Schema e originais privados     | Modelos `Conferencia*`, bytes privados, hashes e FKs compostas preservados. Histórico de 36 migrations reproduzido em PostgreSQL 17 vazio com `migrate deploy`.           |
+| 2. Adapters e cobertura            | CSV/JSON existentes; área de arraste, validação do formato/tamanho, prévia vinculada à fonte/conta/período e cobertura antes da primeira execução.                        |
+| 3. Conciliação exata e ambiguidade | Motor conservador preservado; testes do kit fornecido e do projeto executados. A lista identifica origem/data; sugestões recebem aviso explícito no detalhe.              |
+| 4. Lotes e contratos               | Alocações e contratos versionados preservados. Exemplo interativo usa o motor real: depósito de R$ 1.691,25 distribui R$ 1.206,25 e R$ 485,00, sem reutilização integral. |
+| 5. Fila e decisões                 | Novo resumo visual, pendências filtráveis, quatro totais, detalhe das três fontes e histórico. Ensaio verifica concorrência e preservação da decisão ao reprocessar.      |
+| 6. Exportação e observação         | Exportação autenticada existente mantida. CI passa a recriar banco descartável, aplicar todo o histórico e executar `conferencia-ensaio.ts`. Nenhuma baixa automática.    |
+
+O botão **Exemplo guiado** é acessível mesmo com importações existentes. Seus cinco
+cenários são locais e fictícios, sem escrita: taxa divergente, fonte parcial,
+ausência de crédito, NSU repetido e crédito agregado. A taxa de R$ 6,25 continua
+visível quando a fonte está parcial; isso não autoriza fechar o período.
+
+A cobertura atual reflete os arquivos disponíveis e as contas citadas; os totais
+continuam sendo o snapshot da execução selecionada. Novos arquivos ou contratos
+pedem nova conferência. A cobertura declarada não certifica completude do fornecedor.
+
+Verificação visual e funcional em 1366×768 e 390×844: importação, rejeição de formato,
+prévia, confirmação, execução, exportação, filtros, cenários, diálogo e teclado.
+O layout preserva os temas do sistema. Integrações automáticas com Takeat,
+adquirentes ou bancos continuam dependendo de documentação e autorização próprias;
+os formatos iniciais são CSV/JSON, não Excel/OFX.
 
 ## O que a pessoa faz
 

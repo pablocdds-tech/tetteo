@@ -859,9 +859,40 @@ export async function consultarConferencia(
       take: 20,
     }),
   ]);
+  const coberturaAtual = Object.fromEntries(
+    fontes.map((fonte) => [
+      fonte,
+      cobrir(
+        importacoes,
+        fonte,
+        fonte === "BANCO" ? (efetivo?.banco.de ?? dados.de) : dados.de,
+        fonte === "BANCO" ? (efetivo?.banco.ate ?? dados.ate) : dados.ate,
+      ),
+    ]),
+  ) as Cobertura;
+  // Uma conta com arquivos completos não cobre vendas destinadas a outra conta.
+  const contasOperacionais = new Set(
+    importacoes
+      .filter((i) => i.fonte !== "BANCO" && i.estado === "CONFIRMADA")
+      .map((i) => i.contaRef),
+  );
+  for (const fonte of fontes)
+    if (
+      [...contasOperacionais].some(
+        (conta) =>
+          !cobrir(
+            importacoes.filter((i) => i.contaRef === conta),
+            fonte,
+            coberturaAtual[fonte].de,
+            coberturaAtual[fonte].ate,
+          ).completa,
+      )
+    )
+      coberturaAtual[fonte].completa = false;
   if (!execucao)
     return {
       execucao: null,
+      coberturaAtual,
       importacoes,
       contratos,
       historico,
@@ -908,25 +939,68 @@ export async function consultarConferencia(
   const fontesUsadas = (
     execucao.fontesVersao as { importacoes: { id: string }[] }
   ).importacoes.map((i) => i.id);
+  const resultados = correspondencias.map((r) => ({
+    registro: r,
+    resultado: r.dados as unknown as Resultado,
+  }));
+  const referencias = await db.conferenciaLinha.findMany({
+    where: {
+      ...e,
+      id: {
+        in: resultados.flatMap(({ resultado: r }) =>
+          r.vendaId
+            ? [r.vendaId]
+            : [...r.adquirenteIds, ...r.bancoIds].slice(0, 1),
+        ),
+      },
+    },
+    select: { id: true, normalizado: true, fonte: true },
+  });
+  const porId = new Map(referencias.map((r) => [r.id, r]));
   return {
     execucao,
+    coberturaAtual,
     importacoes,
     contratos,
     historico,
     total,
     pagina: dados.pagina ?? 1,
-    resumo,
+    resumo: resumo.map(({ estado, categoria, _count }) => ({
+      estado,
+      categoria,
+      _count: Number(_count),
+    })),
     desatualizada:
       fontesAtuais.some((id) => !fontesUsadas.includes(id)) ||
       contratos.some((c) => c.criadoEm > execucao.criadoEm) ||
       importacoes.some(
         (i) => i.estado === "REVISAO" && i.criadoEm > execucao.criadoEm,
       ),
-    resultados: correspondencias.map((r) => ({
+    resultados: resultados.map(({ registro: r, resultado }) => ({
       id: r.id,
       casoId: r.casoId,
       versao: r.caso.versao,
-      ...(r.dados as unknown as Resultado),
+      ...resultado,
+      referencia: (() => {
+        const linha = porId.get(
+          resultado.vendaId ??
+            resultado.adquirenteIds[0] ??
+            resultado.bancoIds[0],
+        );
+        const n = linha?.normalizado as unknown as Linha | undefined;
+        return n
+          ? {
+              identificador:
+                n.saleExternalId ??
+                n.externalId ??
+                n.nsu ??
+                "Sem identificador",
+              dia: n.businessDay,
+              provedor: n.provider,
+              fonte: linha!.fonte,
+            }
+          : null;
+      })(),
       decisao: r.caso.decisoes[0] ?? null,
       revisaoAdicional:
         !!r.caso.decisoes[0] &&
