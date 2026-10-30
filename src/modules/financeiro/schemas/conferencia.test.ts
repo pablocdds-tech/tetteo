@@ -5,6 +5,8 @@ import {
   calcularTaxa,
   conciliar,
   csvSeguro,
+  periodoBancoSchema,
+  periodoSchema,
   type Cobertura,
   type Contrato,
   type LinhaMotor,
@@ -86,6 +88,16 @@ function fixture() {
     cobertura: structuredClone(cobertura),
   };
 }
+test("somente a janela bancária expandida admite até 730 dias", () => {
+  const de = "2024-01-01";
+  const dia = (dias: number) =>
+    new Date(Date.parse(de) + dias * 86400000).toISOString().slice(0, 10);
+  assert.ok(periodoSchema.safeParse({ de, ate: dia(366) }).success);
+  assert.equal(periodoSchema.safeParse({ de, ate: dia(367) }).success, false);
+  assert.ok(periodoBancoSchema.safeParse({ de, ate: dia(730) }).success);
+  for (const ate of [dia(731), "2023-12-31", "2024-02-30"])
+    assert.equal(periodoBancoSchema.safeParse({ de, ate }).success, false);
+});
 test("R$ 1.250: taxa prevista 37,50, cobrada 43,75 e diferença 6,25 apesar do banco", () => {
   const r = conciliar(fixture());
   assert.equal(r.resultados[0].estado, "FEE_DIFFERENCE");
@@ -107,6 +119,38 @@ test("execução determinística não altera fontes", () => {
   const copia = structuredClone(f);
   assert.deepEqual(conciliar(f), conciliar(f));
   assert.deepEqual(f, copia);
+});
+test("crédito de lote sem venda permanece rastreável sem alocar receita", () => {
+  const f = fixture();
+  f.linhas = f.linhas.filter((l) => l.fonte !== "VENDA");
+  const r = conciliar(f);
+  assert.equal(r.lotes[0].bancoId, "b1");
+  assert.equal(r.totais.creditadoCentavos, 120625);
+  assert.equal(r.totais.vendidoCentavos, 0);
+  assert.ok(r.resultados.some((v) => v.bancoIds.includes("b1")));
+  assert.ok(r.resultados.every((v) => v.estado === "UNMATCHED"));
+  assert.equal(
+    r.resultados.reduce((s, v) => s + v.creditoAlocadoCentavos, 0),
+    0,
+  );
+});
+test("crédito nunca desaparece quando a venda sai antes da etapa bancária", () => {
+  for (const mudanca of [
+    { status: "CANCELLED" as const },
+    { grossCents: 124999 },
+    { terminalRef: "contraditorio" },
+  ]) {
+    const f = fixture();
+    f.linhas[1].terminalRef = "terminal-original";
+    Object.assign(f.linhas[0], mudanca);
+    const r = conciliar(f);
+    assert.ok(r.resultados.some((v) => v.bancoIds.includes("b1")));
+    assert.equal(r.totais.creditadoCentavos, 120625);
+    assert.equal(
+      r.resultados.reduce((s, v) => s + v.creditoAlocadoCentavos, 0),
+      0,
+    );
+  }
 });
 test("NSU em outra organização ou loja não entra no motor", () => {
   for (const campo of ["unidadeId", "organizacaoId"] as const) {
@@ -204,6 +248,7 @@ test("lote de duas vendas usa crédito integral uma vez e distribui componentes"
   assert.equal(r.lotes[0].liquidoCentavos, 241250);
   assert.equal(r.lotes[0].bancoId, "b1");
   assert.equal(r.totais.creditadoCentavos, 241250);
+  assert.equal(r.resultados.filter((v) => !v.vendaId).length, 0);
   assert.equal(
     r.resultados
       .filter((v) => v.vendaId)

@@ -70,6 +70,7 @@ export async function salvarReferencia(
         mensagem: "Entre novamente para registrar a referência.",
       };
     const salvo = await registrarReferencia(contexto, {
+      unidadeId: formData.get("unidadeId"),
       de: formData.get("de"),
       ate: formData.get("ate"),
       total: formData.get("total"),

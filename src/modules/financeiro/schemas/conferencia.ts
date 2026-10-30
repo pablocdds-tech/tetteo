@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const PARSER_VERSAO = "csv-json-1.0.0";
-export const REGRAS_VERSAO = "conservadora-lotes-1.0.0";
+export const REGRAS_VERSAO = "conservadora-lotes-1.0.1";
 export const LIMITE_ARQUIVO = 2 * 1024 * 1024;
 export const LIMITE_LINHAS = 5000;
 export const fontes = ["VENDA", "ADQUIRENTE", "BANCO"] as const;
@@ -28,6 +28,13 @@ export const periodoSchema = z
     (p) =>
       p.de <= p.ate && Date.parse(p.ate) - Date.parse(p.de) <= 366 * 86400000,
     "Escolha um período em ordem, de até 366 dias.",
+  );
+export const periodoBancoSchema = z
+  .object({ de: diaSchema, ate: diaSchema })
+  .refine(
+    (p) =>
+      p.de <= p.ate && Date.parse(p.ate) - Date.parse(p.de) <= 730 * 86400000,
+    "As liquidações ultrapassam dois anos. Revise o arquivo.",
   );
 const texto = z.string().trim().min(1).max(120);
 const centavos = z.number().int().min(0).max(2_000_000_000);
@@ -517,9 +524,7 @@ export function conciliar(entrada: {
       candidatos: [],
       notas: ["Recebível sem venda vinculada; não comprova receita ausente."],
     });
-  const creditosVinculados = new Set(
-    lotes.flatMap((l) => (l.bancoId ? [l.bancoId] : [])),
-  );
+  const creditosVinculados = new Set(resultados.flatMap((r) => r.bancoIds));
   for (const b of banco.filter((b) => !creditosVinculados.has(b.id)))
     resultados.push({
       chave: JSON.stringify(["BANCO", b.id]),
@@ -543,7 +548,7 @@ export function conciliar(entrada: {
       notas: [
         b.direction === "DEBIT"
           ? "Débito bancário preservado. Não é receita."
-          : "Crédito sem lote vinculado; não é receita adicional.",
+          : "Crédito sem correspondência vinculada; não é receita adicional.",
       ],
     });
   const validas = resultados.filter(

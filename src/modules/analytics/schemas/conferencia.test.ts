@@ -22,6 +22,7 @@ test("referência em reais é convertida exatamente e recusa formato ambíguo", 
     assert.equal(centavosInformados(v), null);
   assert.equal(
     referenciaSchema.safeParse({
+      unidadeId: "matriz-a",
       de: "2026-02-30",
       ate: "2026-03-01",
       total: "10,00",
