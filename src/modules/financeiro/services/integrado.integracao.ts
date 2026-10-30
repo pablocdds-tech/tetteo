@@ -359,3 +359,23 @@ test("lançamento fora da DRE permanece no fluxo, plano pode excluí-lo e o pain
   assert.equal(linhas.length, 1);
   assert.equal(linhas[0].valor, 400);
 });
+
+test("sandbox e produção da mesma empresa mantêm integrações distintas", async () => {
+  const f = await fixture();
+  const producao = await salvarIntegracaoInter(f.ctx, {
+    empresaId: f.empresa.id,
+    contaId: f.conta.id,
+    envKey: `P${randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
+    ambiente: "producao",
+  });
+  assert.notEqual(producao.id, f.integracao.id);
+  assert.equal((await consultarFinanceiro(f.ctx)).integracoes.length, 2);
+  await assert.rejects(
+    salvarIntegracaoInter(f.ctx, {
+      empresaId: f.empresa.id,
+      contaId: f.conta.id,
+      envKey: `P${randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
+      ambiente: "producao",
+    }),
+  );
+});

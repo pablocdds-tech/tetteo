@@ -72,8 +72,9 @@ Tetteo. Nenhum resultado foi publicado na Kairu.
 5. Em **Integrações bancárias**, escolha empresa, conta, identificador e
    ambiente. Comece com **sandbox** e seu próprio par de credenciais de teste.
    Ambiente e vínculos são imutáveis depois do cadastro, para preservar a
-   identidade das transações. Produção exige um cadastro com as credenciais
-   correspondentes.
+   identidade das transações. Há um cadastro por empresa e ambiente. Produção exige outro cadastro, com
+   um identificador de credenciais próprio (por exemplo, `CENTRO_PROD`); sandbox
+   e produção mantêm seus históricos separados.
 6. Use **Testar conexão**, que consulta o saldo. Depois, **Sincronizar agora**.
    Sincronizar pode dar baixa nos lançamentos compatíveis já cadastrados, mas
    não efetua pagamentos no banco.

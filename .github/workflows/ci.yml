@@ -62,5 +62,10 @@ jobs:
       - name: Conferir importações, decisões, isolamento e exportação
         run: npx tsx scripts/conferencia-ensaio.ts
 
+      - name: Conferir baixas, conciliação Inter e isolamento financeiro
+        env:
+          DATABASE_URL_TESTE: ${{ env.DATABASE_URL }}
+        run: npx tsx --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 src/modules/financeiro/services/bancos.integracao.ts src/modules/financeiro/services/integrado.integracao.ts
+
       - name: Compilar para produção
         run: npm run build

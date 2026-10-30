@@ -360,7 +360,7 @@ model IntegracaoInter {
   ultimaSincronizacao DateTime?
   ultimoErro String?
   pendencias PendenciaInter[]
-  @@unique([unidadeId, empresaId])
+  @@unique([unidadeId, empresaId, ambiente])
   @@map("integracao_inter")
 }
 
