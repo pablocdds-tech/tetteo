@@ -154,7 +154,9 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
   fimDoPeriodo.setHours(23, 59, 59, 999);
 
   const [caixa, contas, pendencias, assistente] = await Promise.all([
-    podeFinanceiro ? visaoDoCaixa(contexto, periodo) : null,
+    podeFinanceiro && contexto.ehDiretor
+      ? visaoDoCaixa(contexto, periodo)
+      : null,
     podeFinanceiro ? listarLancamentos(contexto, { ate: fimDoPeriodo }) : [],
     podeChecklists ? listarPendencias(contexto) : [],
     podeVerAssistente ? cartaoDoAssistente(contexto) : null,

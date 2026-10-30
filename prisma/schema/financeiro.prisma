@@ -69,6 +69,10 @@ model ContaFinanceira {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
+  baixasV2 BaixaFinanceira[]
+  integracoesInter IntegracaoInter[]
+  transferenciasV2Origem TransferenciaInterna[] @relation("TransferenciaInternaOrigem")
+  transferenciasV2Destino TransferenciaInterna[] @relation("TransferenciaInternaDestino")
   lancamentos             Lancamento[]
   transferenciasEnviadas  TransferenciaFinanceira[] @relation("TransferenciaOrigem")
   transferenciasRecebidas TransferenciaFinanceira[] @relation("TransferenciaDestino")
@@ -94,6 +98,8 @@ model EmpresaFinanceira {
   ativa          Boolean                   @default(true)
   criadoEm       DateTime                  @default(now())
   contas         ContaFinanceira[]
+  integracoesInter IntegracaoInter[]
+  lancamentos Lancamento[]
   transferencias TransferenciaFinanceira[]
 
   @@unique([unidadeId, id])
@@ -168,6 +174,11 @@ model CategoriaFinanceira {
   id            String @id @default(cuid())
   organizacaoId String
   entraDre Boolean @default(true)
+  codigo String?
+  paiId String?
+  pai CategoriaFinanceira? @relation("PlanoHierarquia", fields: [paiId], references: [id])
+  filhos CategoriaFinanceira[] @relation("PlanoHierarquia")
+  pessoas PessoaFinanceira[]
 
   nome String
   tipo TipoDeCategoria
@@ -215,6 +226,25 @@ enum StatusLancamento {
 model Lancamento {
   id        String @id @default(cuid())
   unidadeId String
+
+  empresaId String?
+  empresa EmpresaFinanceira? @relation(fields: [unidadeId, empresaId], references: [unidadeId, id])
+  pessoaId String?
+  pessoa PessoaFinanceira? @relation(fields: [unidadeId, pessoaId], references: [unidadeId, id])
+  centroCustoId String?
+  centroCusto CentroCustoFinanceiro? @relation(fields: [unidadeId, centroCustoId], references: [unidadeId, id])
+  competencia DateTime? @db.Date
+  desconto Decimal @default(0) @db.Decimal(14, 2)
+  multa Decimal @default(0) @db.Decimal(14, 2)
+  juros Decimal @default(0) @db.Decimal(14, 2)
+  composeDre Boolean @default(true)
+  restritoMaster Boolean @default(false)
+  tipoPagamento String?
+  historico String?
+  numeroPedido String?
+  numeroNotaFiscal String?
+  versao Int @default(0)
+  baixas BaixaFinanceira[]
 
   direcao DirecaoDoLancamento
   status  StatusLancamento    @default(ABERTO)
@@ -269,5 +299,135 @@ model Lancamento {
   @@index([unidadeId, status, vencimento])
   @@index([unidadeId, direcao, vencimento])
   @@index([grupoParcelas])
+  @@unique([unidadeId, id])
   @@map("lancamento")
+}
+
+
+/// Cadastro financeiro único para clientes e fornecedores, por unidade.
+model PessoaFinanceira {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  nome String
+  tipoDocumento String @default("cnpj")
+  documento String?
+  telefone String?
+  email String?
+  categoria String?
+  contato String?
+  endereco String?
+  cidade String?
+  categoriaId String?
+  plano CategoriaFinanceira? @relation(fields: [categoriaId], references: [id])
+  operacaoPadrao DirecaoDoLancamento @default(PAGAR)
+  prazoDias Int @default(0)
+  chavePix String?
+  observacoes String?
+  ehFuncionario Boolean @default(false)
+  ativa Boolean @default(true)
+  criadoEm DateTime @default(now())
+  lancamentos Lancamento[]
+  @@unique([organizacaoId, unidadeId, documento])
+  @@index([organizacaoId, unidadeId, ativa])
+  @@unique([unidadeId, id])
+  @@map("pessoa_financeira")
+}
+
+model CentroCustoFinanceiro {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  nome String
+  ativo Boolean @default(true)
+  lancamentos Lancamento[]
+  @@unique([unidadeId, nome])
+  @@unique([unidadeId, id])
+  @@map("centro_custo_financeiro")
+}
+
+model IntegracaoInter {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  empresaId String
+  empresa EmpresaFinanceira @relation(fields: [unidadeId, empresaId], references: [unidadeId, id])
+  contaId String
+  conta ContaFinanceira @relation(fields: [unidadeId, empresaId, contaId], references: [unidadeId, empresaId, id])
+  envKey String @unique
+  ambiente String @default("sandbox")
+  ativa Boolean @default(true)
+  ultimaSincronizacao DateTime?
+  ultimoErro String?
+  pendencias PendenciaInter[]
+  @@unique([unidadeId, empresaId])
+  @@map("integracao_inter")
+}
+
+model BaixaFinanceira {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  lancamentoId String
+  lancamento Lancamento @relation(fields: [unidadeId, lancamentoId], references: [unidadeId, id])
+  contaId String
+  conta ContaFinanceira @relation(fields: [unidadeId, contaId], references: [unidadeId, id])
+  dataPagamento DateTime @db.Date
+  valor Decimal @db.Decimal(14, 2)
+  tipoPagamento String
+  complemento String?
+  origem String @default("manual")
+  interTransacaoId String? @unique
+  chave String @unique
+  criadoPorId String
+  criadoEm DateTime @default(now())
+  estornadoEm DateTime?
+  estornadoPorId String?
+  @@index([unidadeId, lancamentoId])
+  @@map("baixa_financeira")
+}
+
+model PendenciaInter {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  integracaoId String
+  integracao IntegracaoInter @relation(fields: [integracaoId], references: [id])
+  interTransacaoId String @unique
+  tipo String
+  data DateTime @db.Date
+  direcao DirecaoDoLancamento
+  valor Decimal @db.Decimal(14, 2)
+  tipoTransacao String
+  titulo String
+  descricao String
+  contraparteNome String?
+  contraparteDocumento String?
+  candidatosIds Json
+  status String @default("pendente")
+  resolvidaEm DateTime?
+  resolvidaPorId String?
+  baixaId String?
+  @@index([unidadeId, status, data])
+  @@map("pendencia_inter")
+}
+
+/// Transferências entre CNPJs da mesma unidade, separadas de receitas/despesas.
+model TransferenciaInterna {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  origemId String
+  origem ContaFinanceira @relation("TransferenciaInternaOrigem", fields: [unidadeId, origemId], references: [unidadeId, id])
+  destinoId String
+  destino ContaFinanceira @relation("TransferenciaInternaDestino", fields: [unidadeId, destinoId], references: [unidadeId, id])
+  data DateTime @db.Date
+  valor Decimal @db.Decimal(14, 2)
+  descricao String
+  chave String @unique
+  criadoPorId String
+  criadoEm DateTime @default(now())
+  estornadoEm DateTime?
+  @@index([unidadeId, data])
+  @@map("transferencia_interna")
 }

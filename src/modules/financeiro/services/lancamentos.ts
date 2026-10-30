@@ -1,7 +1,8 @@
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
-import { listarSaldosBancarios } from "./bancos";
+import { consultarFinanceiro, transacaoFinanceira } from "./integrado";
+import { valorLiquido } from "../schemas/conciliacao-inter";
 import { centavos, reais } from "../schemas/bancos";
 
 import {
@@ -63,9 +64,11 @@ export async function listarLancamentos(
   }
   const unidade = exigirUnidade(contexto);
 
+  await transacaoFinanceira(contexto, "financeiro.ver", async () => null);
   const linhas = await db.lancamento.findMany({
     where: {
       unidadeId: unidade.id,
+      ...(!contexto.ehDiretor ? { restritoMaster: false } : {}),
       canceladoEm: null,
       ...(filtro.direcao ? { direcao: filtro.direcao } : {}),
       ...(filtro.status ? { status: filtro.status } : {}),
@@ -94,7 +97,12 @@ export async function listarLancamentos(
     direcao: l.direcao,
     status: l.status,
     descricao: l.descricao,
-    valor: Number(l.valor),
+    valor: Number(
+      reais(
+        valorLiquido(l) -
+          (l.status === "ABERTO" ? centavos(l.valorQuitado ?? 0) : 0n),
+      ),
+    ),
     vencimento: l.vencimento,
     quitadoEm: l.quitadoEm,
     valorQuitado: l.valorQuitado === null ? null : Number(l.valorQuitado),
@@ -285,6 +293,7 @@ export async function cancelarLancamento(
     await db.lancamento.updateMany({
       where: {
         unidadeId: unidade.id,
+        ...(!contexto.ehDiretor ? { restritoMaster: false } : {}),
         grupoParcelas: lancamento.grupoParcelas,
         parcela: { gte: lancamento.parcela },
         status: "ABERTO",
@@ -306,76 +315,46 @@ export async function cancelarLancamento(
 // ---------------------------------------------------------------------------
 
 export async function visaoDoCaixa(contexto: ContextoSessao, dias = 30) {
+  if (!contexto.ehDiretor)
+    throw new SemPermissao("ver o saldo reservado ao diretor");
   if (!pode(contexto, "financeiro.ver")) {
     throw new SemPermissao("ver o financeiro");
   }
   const unidade = exigirUnidade(contexto);
 
-  const [abertos, contas, quitadosSemConta] = await Promise.all([
-    db.lancamento.findMany({
-      where: { unidadeId: unidade.id, status: "ABERTO", canceladoEm: null },
-      select: {
-        id: true,
-        direcao: true,
-        status: true,
-        valor: true,
-        vencimento: true,
-        quitadoEm: true,
-        valorQuitado: true,
-      },
-    }),
-    listarSaldosBancarios(contexto),
-    // O saldo real é o inicial mais tudo que já foi quitado. Projetar a partir
-    // de zero mostraria um caixa negativo desde o primeiro dia de uso.
-    db.lancamento.groupBy({
-      by: ["direcao"],
-      where: {
-        unidadeId: unidade.id,
-        status: "QUITADO",
-        contaId: null,
-        canceladoEm: null,
-        quitadoEm: { lte: new Date() },
-      },
-      _sum: { valorQuitado: true },
-    }),
-  ]);
-
-  const saldoSemContaCentavos = quitadosSemConta.reduce(
-    (s, q) =>
-      s +
-      centavos(q._sum.valorQuitado ?? 0) * (q.direcao === "RECEBER" ? 1n : -1n),
-    0n,
-  );
-  const saldoAtual = Number(
-    reais(
-      contas.reduce((s, c) => s + centavos(c.saldo), saldoSemContaCentavos),
-    ),
-  );
-  const saldoSemConta = Number(reais(saldoSemContaCentavos));
-
+  const dados = await consultarFinanceiro(contexto);
+  const abertos = await db.lancamento.findMany({
+    where: {
+      unidadeId: unidade.id,
+      status: "ABERTO",
+      ...(!contexto.ehDiretor ? { restritoMaster: false } : {}),
+    },
+  });
   const paraFluxo: LancamentoParaFluxo[] = abertos.map((l) => ({
     id: l.id,
     direcao: l.direcao,
     status: l.status,
-    valor: Number(l.valor),
+    valor: Number(reais(valorLiquido(l) - centavos(l.valorQuitado ?? 0))),
     vencimento: l.vencimento,
-    quitadoEm: l.quitadoEm,
-    valorQuitado: l.valorQuitado === null ? null : Number(l.valorQuitado),
+    quitadoEm: null,
+    valorQuitado: null,
   }));
-
-  const hoje = new Date();
-
+  const saldoSemConta = Number(dados.saldoSemConta ?? 0);
+  const saldoAtual = dados.contas.reduce(
+    (s, c) => s + Number(c.saldo ?? 0),
+    saldoSemConta,
+  );
   return {
     saldoAtual,
     saldoSemConta,
-    contas: contas.map((c) => ({
+    contas: dados.contas.map((c) => ({
       id: c.id,
       nome: c.nome,
       tipo: c.tipo,
       saldoInicial: Number(c.saldoInicial),
     })),
-    resumo: resumirFluxo(paraFluxo, hoje),
-    projecao: projetarSaldo(saldoAtual, paraFluxo, hoje, dias),
+    resumo: resumirFluxo(paraFluxo, new Date()),
+    projecao: projetarSaldo(saldoAtual, paraFluxo, new Date(), dias),
   };
 }
 
@@ -392,6 +371,7 @@ export async function resultadoDoPeriodo(
   const quitados = await db.lancamento.findMany({
     where: {
       unidadeId: unidade.id,
+      ...(!contexto.ehDiretor ? { restritoMaster: false } : {}),
       status: "QUITADO",
       quitadoEm: { gte: de, lte: ate },
       OR: [{ categoria: null }, { categoria: { entraDre: true } }],
@@ -468,6 +448,7 @@ export async function movimentosParaDre(
   const linhas = await db.lancamento.findMany({
     where: {
       unidadeId: unidade.id,
+      ...(!contexto.ehDiretor ? { restritoMaster: false } : {}),
       canceladoEm: null,
       OR: [{ categoria: null }, { categoria: { entraDre: true } }],
       ...(base === "caixa"

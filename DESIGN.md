@@ -1,5 +1,15 @@
 # Design do Tetteo
 
+## Financeiro integrado — 30/10/2026
+
+A nova navegação substitui o financeiro anterior por lançamentos unificados,
+cadastros e conciliação Inter. A disposição operacional descrita no material
+Kairu foi adaptada aos tokens Aurora, sem trocar a marca, fonte ou tema global.
+Tabelas possuem rolagem própria; no desktop, o detalhe e a baixa permanecem ao
+lado da lista. No celular, o detalhe fica abaixo. Os estados têm texto além da
+cor, formulários mantêm rótulos e ações destrutivas exigem confirmação. A
+implementação e os limites estão em [Financeiro Inter](docs/financeiro-inter.md).
+
 ## Auditoria financeira — 29/10/2026
 
 O financeiro usa as telas Nina fornecidas como referência para hierarquia e

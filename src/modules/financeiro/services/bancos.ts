@@ -38,6 +38,8 @@ async function escopo(ctx: ContextoSessao, editar = false, tx: Cliente = db) {
     select: { id: true, fusoHorario: true },
   });
   if (!unidade) throw new SemPermissao("acessar esta unidade");
+  if (tx !== db)
+    await tx.$queryRaw`SELECT set_config('tetteo.financeiro_organizacao', ${ctx.organizacao.id}, true), set_config('tetteo.financeiro_unidade', ${unidade.id}, true)`;
   return unidade;
 }
 
@@ -281,6 +283,11 @@ export async function salvarContaBancaria(
       );
     const movimentos =
       (await tx.lancamento.count({ where: { contaId: id } })) +
+      (await tx.baixaFinanceira.count({ where: { contaId: id } })) +
+      (await tx.integracaoInter.count({ where: { contaId: id } })) +
+      (await tx.transferenciaInterna.count({
+        where: { OR: [{ origemId: id }, { destinoId: id }] },
+      })) +
       (await tx.transferenciaFinanceira.count({
         where: { OR: [{ origemId: id }, { destinoId: id }] },
       }));

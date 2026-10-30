@@ -564,7 +564,12 @@ test("bancos integrados: centavos, corte, baixas, escopo, concorrência, estorno
         )!;
         assert.equal(saldo.saldo, "490.00");
         assert.equal(saldo.corteAplicado, false);
-        const caixa = await visaoDoCaixa(ctx);
+        await assert.rejects(() => visaoDoCaixa(ctx), /diretor/);
+        const caixa = await visaoDoCaixa({
+          ...ctx,
+          ehDiretor: true,
+          permissoes: new Set(["*"]),
+        });
         assert.equal(caixa.saldoAtual, 2820);
       },
     );
