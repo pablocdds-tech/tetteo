@@ -469,25 +469,93 @@ export async function validateVirtualClaims(
   }
   return true;
 }
+function virtualOutboxIsStale(
+  out: {
+    version: number;
+    author: string;
+    runId: string | null;
+    claims: Prisma.JsonValue;
+  },
+  conversation: {
+    version: number;
+    status: string;
+    agentEnabled: boolean;
+    optedOut: boolean;
+    account: { active: boolean };
+  },
+) {
+  const escalationReply =
+    conversation.status === "ESCALATED" &&
+    Boolean(out.runId) &&
+    (out.claims as unknown as VirtualClaim[]).some(
+      (c) => c.action === "escalar_para_humano",
+    );
+  return (
+    !conversation.account.active ||
+    out.version !== conversation.version ||
+    (out.author === "AGENT" &&
+      ((!conversation.agentEnabled && !escalationReply) ||
+        conversation.optedOut ||
+        ["PAUSED", "RESOLVED"].includes(conversation.status)))
+  );
+}
+
 export async function deliverVirtualOutbox(
   limit = 20,
   channelFor: typeof demoChannel = demoChannel,
 ) {
+  const now = new Date();
   const entries = await db.avMessageOutbox.findMany({
-    where: { state: { in: ["PENDING", "UNCERTAIN"] }, attempts: { lt: 4 } },
+    where: {
+      OR: [
+        {
+          state: "PENDING",
+          attempts: { lt: 4 },
+          conversation: {
+            outbox: { none: { state: { in: ["SENDING", "UNCERTAIN"] } } },
+          },
+        },
+        {
+          state: "UNCERTAIN",
+          attempts: { lt: 4 },
+          OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
+        },
+        {
+          state: "SENDING",
+          OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
+        },
+      ],
+    },
     orderBy: { createdAt: "asc" },
     take: limit,
   });
   let accepted = 0;
   for (const entry of entries) {
-    await db.$transaction(async (tx) => {
+    const token = randomUUID();
+    const claim = await db.$transaction(async (tx) => {
       await lockVirtualConversation(tx, entry.conversationId);
-      const out = await tx.avMessageOutbox.findUniqueOrThrow({
+      let out = await tx.avMessageOutbox.findUniqueOrThrow({
         where: { id: entry.id },
       });
-      if (!["PENDING", "UNCERTAIN"].includes(out.state)) return;
+      if (!["PENDING", "SENDING", "UNCERTAIN"].includes(out.state)) return null;
+      if (out.leaseOwner && out.leaseUntil && out.leaseUntil > new Date())
+        return null;
+      if (out.state === "SENDING") {
+        // A process may have died after HTTP acceptance and before persisting
+        // its response. An expired sending claim can only be reconciled.
+        out = await tx.avMessageOutbox.update({
+          where: { id: out.id },
+          data: {
+            state: "UNCERTAIN",
+            leaseOwner: null,
+            leaseUntil: null,
+            error:
+              "O envio foi interrompido; consulte a mesma correlação antes de decidir qualquer reenvio.",
+          },
+        });
+      }
       const conversation = await tx.avConversation.findUniqueOrThrow({
-        where: { id: entry.conversationId },
+        where: { id: out.conversationId },
         include: { account: true },
       });
       if (
@@ -498,155 +566,242 @@ export async function deliverVirtualOutbox(
           "REAL_RECIPIENT_DENIED",
           "Canal real não habilitado.",
         );
-      const escalationReply =
-        conversation.status === "ESCALATED" &&
-        Boolean(out.runId) &&
-        (out.claims as unknown as VirtualClaim[]).some(
-          (c) => c.action === "escalar_para_humano",
-        );
-      const stale =
-        !conversation.account.active ||
-        out.version !== conversation.version ||
-        (out.author === "AGENT" &&
-          ((!conversation.agentEnabled && !escalationReply) ||
-            conversation.optedOut ||
-            conversation.status === "PAUSED" ||
-            conversation.status === "RESOLVED"));
-      if (stale && out.state === "PENDING") {
-        await tx.avMessageOutbox.update({
-          where: { id: out.id },
-          data: {
-            state: "DISCARDED",
-            error: "Resposta obsoleta descartada antes do envio.",
-          },
-        });
-        return;
-      }
-      if (
-        !(await validateVirtualClaims(
-          tx,
-          {
-            organizationId: out.organizationId,
-            storeId: out.storeId,
-            accountId: out.accountId,
-            conversationId: out.conversationId,
-          },
-          out.claims as unknown as VirtualClaim[],
-        ))
-      ) {
-        await tx.avMessageOutbox.update({
-          where: { id: out.id },
-          data: {
-            state: "BLOCKED",
-            error: "A resposta alegou uma ação sem resultado correspondente.",
-          },
-        });
-        return;
-      }
-      const adapter = channelFor(out.accountId);
-      const result = await (async () => {
-        try {
-          return out.state === "UNCERTAIN"
-            ? await adapter.consultStatus(out.id)
-            : await adapter.sendText({
-                recipient: conversation.externalCustomerId,
-                text: out.text,
-                correlationId: out.id,
-              });
-        } catch {
-          return {
-            state: "UNCERTAIN" as const,
-            error:
-              "O resultado do envio é desconhecido. A consulta de status será feita antes de qualquer nova tentativa.",
-          };
+      if (out.state === "PENDING") {
+        if (virtualOutboxIsStale(out, conversation)) {
+          await tx.avMessageOutbox.update({
+            where: { id: out.id },
+            data: {
+              state: "DISCARDED",
+              leaseOwner: null,
+              leaseUntil: null,
+              error: "Resposta obsoleta descartada antes do envio.",
+            },
+          });
+          return null;
         }
-      })();
-      await tx.avMessageOutbox.update({
+        // A manual answer waits for an already dispatched answer to settle.
+        // Reconciliation never blocks the takeover transaction itself.
+        if (
+          await tx.avMessageOutbox.findFirst({
+            where: {
+              conversationId: out.conversationId,
+              id: { not: out.id },
+              state: { in: ["SENDING", "UNCERTAIN"] },
+            },
+            select: { id: true },
+          })
+        )
+          return null;
+        if (
+          !(await validateVirtualClaims(
+            tx,
+            out,
+            out.claims as unknown as VirtualClaim[],
+          ))
+        ) {
+          await tx.avMessageOutbox.update({
+            where: { id: out.id },
+            data: {
+              state: "BLOCKED",
+              error: "A resposta alegou uma ação sem resultado correspondente.",
+            },
+          });
+          return null;
+        }
+      }
+      if (out.attempts >= 4) {
+        await createVirtualEscalation(tx, out, {
+          key: `outbox:${out.id}`,
+          reason:
+            "O resultado do envio ainda precisa ser conciliado pela equipe.",
+          excerpt:
+            "A tentativa permanece incerta. O sistema não repetiu o envio.",
+        });
+        return null;
+      }
+      const reconcile = out.state === "UNCERTAIN";
+      const claimed = await tx.avMessageOutbox.update({
         where: { id: out.id },
         data: {
-          state: result.state,
+          state: reconcile ? "UNCERTAIN" : "SENDING",
           attempts: { increment: 1 },
-          ...(result.state === "ACCEPTED"
-            ? {
-                providerId: result.providerId,
-                acceptedAt: new Date(),
-                error: null,
-              }
-            : { error: result.error }),
+          leaseOwner: token,
+          leaseUntil: new Date(Date.now() + LEASE_MS),
         },
       });
-      if (result.state === "UNCERTAIN" && out.attempts >= 3)
-        await createVirtualEscalation(
-          tx,
-          {
-            organizationId: out.organizationId,
-            storeId: out.storeId,
-            accountId: out.accountId,
-            conversationId: out.conversationId,
+      return {
+        out: claimed,
+        recipient: conversation.externalCustomerId,
+        reconcile,
+      };
+    });
+    if (!claim) continue;
+
+    if (!claim.reconcile) {
+      // This is the dispatch authorization boundary. A takeover committed
+      // before it cancels an unsent reply. Requests already authorized here
+      // may be in flight; their receipt must remain visible after takeover.
+      const authorized = await db.$transaction(async (tx) => {
+        await lockVirtualConversation(tx, claim.out.conversationId);
+        const out = await tx.avMessageOutbox.findUniqueOrThrow({
+          where: { id: claim.out.id },
+        });
+        if (
+          out.state !== "SENDING" ||
+          out.leaseOwner !== token ||
+          !out.leaseUntil ||
+          out.leaseUntil <= new Date()
+        )
+          return false;
+        const conversation = await tx.avConversation.findUniqueOrThrow({
+          where: { id: out.conversationId },
+          include: { account: true },
+        });
+        if (virtualOutboxIsStale(out, conversation)) {
+          await tx.avMessageOutbox.update({
+            where: { id: out.id },
+            data: {
+              state: "DISCARDED",
+              leaseOwner: null,
+              leaseUntil: null,
+              error: "A conversa mudou antes de autorizar o envio ao canal.",
+            },
+          });
+          return false;
+        }
+        return true;
+      });
+      if (!authorized) continue;
+    }
+
+    // No database transaction or conversation lock crosses provider I/O.
+    const result = await (async () => {
+      try {
+        const adapter = channelFor(claim.out.accountId);
+        return claim.reconcile
+          ? await adapter.consultStatus(claim.out.id)
+          : await adapter.sendText({
+              recipient: claim.recipient,
+              text: claim.out.text,
+              correlationId: claim.out.id,
+            });
+      } catch {
+        return {
+          state: "UNCERTAIN" as const,
+          error:
+            "O resultado do canal é desconhecido. Consulte a correlação original; não repita o envio.",
+        };
+      }
+    })();
+
+    const saved = await db.$transaction(async (tx) => {
+      await lockVirtualConversation(tx, claim.out.conversationId);
+      const out = await tx.avMessageOutbox.findUniqueOrThrow({
+        where: { id: claim.out.id },
+      });
+      // A later worker may already have reconciled this attempt. A stale
+      // sender cannot replace its receipt or regress a terminal status.
+      if (out.leaseOwner !== token) {
+        if (
+          result.state !== "ACCEPTED" ||
+          out.providerId ||
+          ["FAILED", "DISCARDED", "BLOCKED"].includes(out.state)
+        )
+          return false;
+        // Acceptance is durable evidence of this same correlation, even if
+        // its lease expired while the provider was still responding.
+      }
+      if (result.state !== "ACCEPTED") {
+        if (out.leaseOwner !== token) return false;
+        if (
+          out.providerId ||
+          out.acceptedAt ||
+          ["DELIVERED", "READ"].includes(out.state)
+        )
+          return false;
+        await tx.avMessageOutbox.update({
+          where: { id: out.id },
+          data: {
+            state: result.state,
+            leaseOwner: null,
+            leaseUntil: null,
+            error: maskVirtualSecrets(result.error).slice(0, 500),
           },
-          {
+        });
+        if (result.state === "UNCERTAIN" && out.attempts >= 4)
+          await createVirtualEscalation(tx, out, {
             key: `outbox:${out.id}`,
             reason:
               "Resultado do envio continua desconhecido após as consultas de status.",
             excerpt:
-              "Confira o histórico do canal e reconcilie pelo ID da saída. O sistema não reenviou a mensagem.",
-          },
-        );
-      if (result.state === "ACCEPTED") {
-        // O callback pode chegar antes da resposta do envio. A evidência
-        // persistida é reconciliada por conta + identificador do provedor.
-        const callbacks = await tx.avInboundEvent.findMany({
-          where: {
-            accountId: out.accountId,
-            type: "DELIVERY",
-            payload: { path: ["providerId"], equals: result.providerId },
-          },
-          select: { payload: true },
-          take: 50,
-        });
-        const states = callbacks.map(
-          (c) => (c.payload as { deliveryState?: string }).deliveryState,
-        );
-        if (states.includes("DELIVERED"))
-          await tx.avMessageOutbox.update({
-            where: { id: out.id },
-            data: { state: "DELIVERED", deliveredAt: new Date(), error: null },
+              "Confira o histórico do canal e concilie pelo ID da saída. O sistema não reenviou a mensagem.",
           });
-        else if (states.includes("FAILED"))
-          await tx.avMessageOutbox.update({
-            where: { id: out.id },
-            data: {
-              state: "FAILED",
-              error: "O canal de demonstração informou falha na entrega.",
-            },
-          });
-        await tx.avMessage.upsert({
-          where: {
-            accountId_externalId: {
-              accountId: out.accountId,
-              externalId: result.providerId,
-            },
-          },
-          create: {
-            organizationId: out.organizationId,
-            storeId: out.storeId,
-            accountId: out.accountId,
-            conversationId: out.conversationId,
-            externalId: result.providerId,
-            direction: "OUTBOUND",
-            author: out.author,
-            actorId: out.actorId,
-            text: out.text,
-            processedAt: new Date(),
-          },
-          update: {},
-        });
-        accepted++;
+        return false;
       }
+      if (out.providerId && out.providerId !== result.providerId) return false;
+      const callbacks = await tx.avInboundEvent.findMany({
+        where: {
+          accountId: out.accountId,
+          type: "DELIVERY",
+          payload: { path: ["providerId"], equals: result.providerId },
+        },
+        select: { payload: true },
+        take: 50,
+      });
+      const states = callbacks.map(
+        (c) => (c.payload as { deliveryState?: string }).deliveryState,
+      );
+      const state =
+        out.state === "READ"
+          ? "READ"
+          : out.state === "DELIVERED" || states.includes("DELIVERED")
+            ? "DELIVERED"
+            : out.state === "FAILED" || states.includes("FAILED")
+              ? "FAILED"
+              : "ACCEPTED";
+      await tx.avMessageOutbox.update({
+        where: { id: out.id },
+        data: {
+          state,
+          providerId: result.providerId,
+          acceptedAt: out.acceptedAt ?? new Date(),
+          ...(state === "DELIVERED"
+            ? { deliveredAt: out.deliveredAt ?? new Date() }
+            : {}),
+          leaseOwner: null,
+          leaseUntil: null,
+          error:
+            state === "FAILED" ? "O canal informou falha na entrega." : null,
+        },
+      });
+      await tx.avMessage.upsert({
+        where: {
+          accountId_externalId: {
+            accountId: out.accountId,
+            externalId: result.providerId,
+          },
+        },
+        create: {
+          organizationId: out.organizationId,
+          storeId: out.storeId,
+          accountId: out.accountId,
+          conversationId: out.conversationId,
+          externalId: result.providerId,
+          direction: "OUTBOUND",
+          author: out.author,
+          actorId: out.actorId,
+          text: out.text,
+          processedAt: new Date(),
+        },
+        update: {},
+      });
+      return !out.acceptedAt;
     });
+    if (saved) accepted++;
   }
   return accepted;
 }
+
 export async function processVirtualQueue(
   execute: (input: VirtualTurnInput) => Promise<VirtualTurnResult>,
   limit = 5,

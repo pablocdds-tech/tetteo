@@ -173,6 +173,7 @@ model AvMessageOutbox {
   @@unique([conversationId, requestId])
   @@unique([accountId, providerId])
   @@index([state, createdAt])
+  @@index([state, leaseUntil])
 }
 
 model AvAgentPause {

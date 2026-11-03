@@ -19,6 +19,7 @@ import {
   virtualAudit,
 } from "./virtual-runtime";
 import { ensureVirtualDemoKnowledge } from "./virtual-knowledge";
+import { safeVirtualModelStatus } from "./virtual-model";
 
 const listSchema = z
   .object({
@@ -344,6 +345,7 @@ export async function getVirtualHealth(
     escalations,
     failedAlerts,
     cost,
+    probeCost,
     last,
   ] = await Promise.all([
     db.avConversation.count({
@@ -367,6 +369,10 @@ export async function getVirtualHealth(
       where: { ...base, createdAt: { gte: new Date(Date.now() - 86_400_000) } },
       _sum: { tokens: true, costMicros: true },
     }),
+    db.avModelProbe.aggregate({
+      where: { ...base, createdAt: { gte: new Date(Date.now() - 86_400_000) } },
+      _sum: { tokens: true, costMicros: true },
+    }),
     db.avAgentRun.findFirst({
       where: { ...base, error: { not: null } },
       orderBy: { createdAt: "desc" },
@@ -375,6 +381,10 @@ export async function getVirtualHealth(
   ]);
   return {
     demo: true,
+    engine: await safeVirtualModelStatus({
+      organizationId: scope.organizationId,
+      storeId,
+    }),
     accountName: account?.name ?? "Canal de demonstração não iniciado",
     active: account?.active ?? false,
     lastWebhookAt: account?.lastWebhookAt?.toISOString() ?? null,
@@ -387,8 +397,8 @@ export async function getVirtualHealth(
     loopsBlocked: loops,
     pendingEscalations: escalations,
     failedAlerts,
-    tokens: cost._sum.tokens ?? 0,
-    costMicros: cost._sum.costMicros ?? 0,
+    tokens: (cost._sum.tokens ?? 0) + (probeCost._sum.tokens ?? 0),
+    costMicros: (cost._sum.costMicros ?? 0) + (probeCost._sum.costMicros ?? 0),
     dailyBudgetMicros: account?.dailyBudgetMicros ?? 0,
     circuitUntil: account?.circuitUntil?.toISOString() ?? null,
     lastError: last?.error ?? null,

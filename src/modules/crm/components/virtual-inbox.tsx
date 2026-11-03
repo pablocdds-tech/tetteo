@@ -679,8 +679,10 @@ export default function VirtualInbox({
                           </small>
                         </div>
                       </form>
-                      <details className={styles.simulator}>
-                        <summary>Simular mensagem deste cliente</summary>
+                      <details open className={styles.simulator}>
+                        <summary>
+                          Testar como cliente · mensagem fictícia
+                        </summary>
                         <p>
                           A mensagem entra na mesma fila durável. Use apenas
                           conteúdo fictício.

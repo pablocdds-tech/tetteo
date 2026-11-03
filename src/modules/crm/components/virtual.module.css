@@ -464,6 +464,26 @@
   color: var(--accent);
   text-decoration: underline;
 }
+.textLink {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.checklist {
+  padding-left: 20px;
+  margin-top: 12px;
+  list-style: disc;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+.checkboxLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
 .fields {
   display: grid;
   gap: 16px;

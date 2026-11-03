@@ -15,6 +15,10 @@ import {
 } from "@/modules/crm/services/virtual-knowledge";
 import { CrmError } from "@/modules/crm/services/campaign-domain";
 import {
+  getVirtualModelStatus,
+  changeVirtualModel,
+} from "@/modules/crm/services/virtual-model";
+import {
   virtualSettings,
   changeVirtualSettings,
 } from "@/modules/crm/services/virtual-settings";
@@ -72,6 +76,12 @@ async function handle(
     if (requested !== undefined && requested !== storeId)
       return json({ error: "A unidade mudou. Atualize a tela." }, 403);
     const { path = [] } = await params;
+    if (path.length === 1 && path[0] === "model")
+      return json(
+        writing
+          ? await changeVirtualModel(context, body)
+          : await getVirtualModelStatus(context, storeId),
+      );
     if (!path.length && !writing)
       return json(await listVirtualInbox(context, { ...query, storeId }));
     if (path.length === 1 && path[0] === "health" && !writing)

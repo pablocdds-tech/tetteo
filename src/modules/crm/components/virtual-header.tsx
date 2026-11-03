@@ -5,7 +5,7 @@ export function VirtualHeader({
   section,
   children,
 }: {
-  section: "inbox" | "escalacoes" | "saude" | "base";
+  section: "inbox" | "escalacoes" | "saude" | "base" | "conexoes";
   children?: React.ReactNode;
 }) {
   const titles = {
@@ -13,6 +13,7 @@ export function VirtualHeader({
     escalacoes: "Escalações da equipe",
     saude: "Saúde do atendimento",
     base: "Informações da unidade",
+    conexoes: "Conexões do atendimento",
   };
   return (
     <>
@@ -33,6 +34,7 @@ export function VirtualHeader({
             ["escalacoes", "/crm/atendimento/escalacoes", "Escalações"],
             ["saude", "/crm/atendimento/saude", "Saúde da operação"],
             ["base", "/crm/atendimento/base", "Informações da unidade"],
+            ["conexoes", "/crm/atendimento/conexoes", "Conexões"],
           ].map(([key, href, label]) => (
             <Link
               key={key}
@@ -45,7 +47,7 @@ export function VirtualHeader({
         </nav>
       </div>
       <div className={styles.demo} style={{ marginTop: 16 }}>
-        <strong>Modo demonstração</strong>
+        <strong>Canal de demonstração</strong>
         <span>
           Canal local com mensagens fictícias. Nenhum número real recebe envios.
         </span>

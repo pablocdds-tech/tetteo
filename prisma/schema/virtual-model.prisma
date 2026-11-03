@@ -1,0 +1,47 @@
+model AvModelConfiguration {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  store Unidade @relation(fields: [organizationId,storeId],references:[organizacaoId,id],onDelete:Restrict)
+  provider String @default("GEMINI")
+  model String @default("")
+  encryptedKey String
+  revision Int @default(1)
+  enabled Boolean @default(false)
+  inputMicrosPerMillion Int @default(0)
+  outputMicrosPerMillion Int @default(0)
+  ratesConfirmed Boolean @default(false)
+  testState String @default("PENDING")
+  testedRevision Int?
+  testedAt DateTime?
+  testError String?
+  testTokens Int @default(0)
+  testCostMicros Int @default(0)
+  updatedById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  probes AvModelProbe[]
+  @@unique([organizationId,storeId])
+  @@unique([organizationId,storeId,id])
+  @@map("av_model_configuration")
+}
+
+model AvModelProbe {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  configurationId String
+  configuration AvModelConfiguration @relation(fields:[organizationId,storeId,configurationId],references:[organizationId,storeId,id],onDelete:Restrict)
+  revision Int
+  actorId String
+  requestId String
+  state String @default("RUNNING")
+  tokens Int @default(0)
+  costMicros Int
+  errorCode String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  @@unique([organizationId,storeId,requestId])
+  @@index([organizationId,storeId,createdAt])
+  @@map("av_model_probe")
+}

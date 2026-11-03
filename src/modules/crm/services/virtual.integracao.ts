@@ -1332,6 +1332,8 @@ test("saída maliciosa do modelo é recusada na fronteira real do extrator sem e
   ).conversationId!;
   const keys = [
     "AV_MODEL_ENABLED",
+    "AV_MODEL_ORGANIZATION_ID",
+    "AV_MODEL_STORE_ID",
     "AV_GEMINI_API_KEY",
     "AV_GEMINI_MODEL",
     "AV_GEMINI_INPUT_MICROS_PER_MILLION",
@@ -1342,6 +1344,8 @@ test("saída maliciosa do modelo é recusada na fronteira real do extrator sem e
   );
   Object.assign(process.env, {
     AV_MODEL_ENABLED: "true",
+    AV_MODEL_ORGANIZATION_ID: f.organization.id,
+    AV_MODEL_STORE_ID: f.unit.id,
     AV_GEMINI_API_KEY: "chave-ficticia-sem-acesso",
     AV_GEMINI_MODEL: "modelo-ficticio",
     AV_GEMINI_INPUT_MICROS_PER_MILLION: "1000000",
@@ -1406,3 +1410,259 @@ test("saída maliciosa do modelo é recusada na fronteira real do extrator sem e
     }
   }
 });
+
+test(
+  "duas réplicas disputam outbox e somente uma faz a chamada externa fora da transação",
+  { timeout: 15000 },
+  async () => {
+    const f = await fixture();
+    const id = (await f.inbound()).conversationId!;
+    const current = await db.avConversation.findUniqueOrThrow({
+      where: { id },
+    });
+    const out = await db.avMessageOutbox.create({
+      data: {
+        organizationId: f.organization.id,
+        storeId: f.unit.id,
+        accountId: f.account.id,
+        conversationId: id,
+        requestId: randomUUID(),
+        version: current.version,
+        text: "Ensaio de envio concorrente",
+        author: "AGENT",
+      },
+    });
+    let sends = 0;
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const adapter: AtendimentoChannelAdapter = {
+      ...demoChannel(f.account.id),
+      async sendText(input) {
+        sends++;
+        assert.equal(input.correlationId, out.id);
+        entered();
+        await pending;
+        return { state: "ACCEPTED", providerId: `demo:${out.id}` };
+      },
+    };
+    const first = deliverVirtualOutbox(20, () => adapter);
+    await started;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        deliverVirtualOutbox(20, () => adapter),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error("Outra réplica ficou presa na transação de rede."),
+              ),
+            5000,
+          );
+        }),
+      ]);
+      const sending = await db.avMessageOutbox.findUniqueOrThrow({
+        where: { id: out.id },
+      });
+      assert.equal(sending.state, "SENDING");
+      assert.ok(sending.leaseOwner);
+      assert.ok(sending.leaseUntil);
+      assert.equal(sends, 1);
+    } finally {
+      if (timer) clearTimeout(timer);
+      release();
+      await first;
+    }
+    assert.equal(
+      (await db.avMessageOutbox.findUniqueOrThrow({ where: { id: out.id } }))
+        .state,
+      "ACCEPTED",
+    );
+    assert.equal(sends, 1);
+  },
+);
+
+test(
+  "takeover conclui enquanto transporte está pendente e não reenvia a mensagem já em trânsito",
+  { timeout: 15000 },
+  async () => {
+    const f = await fixture();
+    const id = (await f.inbound()).conversationId!;
+    const current = await db.avConversation.findUniqueOrThrow({
+      where: { id },
+    });
+    const out = await db.avMessageOutbox.create({
+      data: {
+        organizationId: f.organization.id,
+        storeId: f.unit.id,
+        accountId: f.account.id,
+        conversationId: id,
+        requestId: randomUUID(),
+        version: current.version,
+        text: "Mensagem já em trânsito no provedor fictício",
+        author: "AGENT",
+      },
+    });
+    let sends = 0;
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const adapter: AtendimentoChannelAdapter = {
+      ...demoChannel(f.account.id),
+      async sendText() {
+        sends++;
+        entered();
+        await pending;
+        return { state: "ACCEPTED", providerId: `demo:${out.id}` };
+      },
+    };
+    const worker = deliverVirtualOutbox(20, () => adapter);
+    await started;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        actOnVirtualConversation(f.context, id, {
+          storeId: f.unit.id,
+          action: "takeover",
+          version: current.version,
+          requestId: randomUUID(),
+        }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "Takeover aguardou a chamada externa segurando lock de banco.",
+                ),
+              ),
+            5000,
+          );
+        }),
+      ]);
+      const paused = await db.avConversation.findUniqueOrThrow({
+        where: { id },
+      });
+      assert.equal(paused.agentEnabled, false);
+      assert.equal(paused.status, "PAUSED");
+    } finally {
+      if (timer) clearTimeout(timer);
+      release();
+      await worker;
+    }
+    await deliverVirtualOutbox(20, () => adapter);
+    const accepted = await db.avMessageOutbox.findUniqueOrThrow({
+      where: { id: out.id },
+    });
+    assert.equal(
+      accepted.state,
+      "ACCEPTED",
+      "a aceitação já em trânsito é reconciliada, sem prometer retração",
+    );
+    assert.equal(sends, 1);
+    assert.equal(
+      (await db.avConversation.findUniqueOrThrow({ where: { id } }))
+        .agentEnabled,
+      false,
+    );
+  },
+);
+
+test(
+  "aceitação seguida de perda do worker concilia SENDING expirado e ignora finalização antiga",
+  { timeout: 15000 },
+  async () => {
+    const f = await fixture();
+    const id = (await f.inbound()).conversationId!;
+    const current = await db.avConversation.findUniqueOrThrow({
+      where: { id },
+    });
+    const out = await db.avMessageOutbox.create({
+      data: {
+        organizationId: f.organization.id,
+        storeId: f.unit.id,
+        accountId: f.account.id,
+        conversationId: id,
+        requestId: randomUUID(),
+        version: current.version,
+        text: "Provedor aceitou; processo perdeu o retorno",
+        author: "AGENT",
+      },
+    });
+    let sends = 0,
+      checks = 0;
+    let acceptedByProvider = false;
+    let entered!: () => void;
+    let release!: () => void;
+    const providerAccepted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const lostResponse = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const providerId = `demo:proof:${out.id}`;
+    const adapter: AtendimentoChannelAdapter = {
+      ...demoChannel(f.account.id),
+      async sendText(input) {
+        sends++;
+        assert.equal(input.correlationId, out.id);
+        acceptedByProvider = true;
+        entered();
+        await lostResponse;
+        return { state: "ACCEPTED", providerId: `demo:stale:${out.id}` };
+      },
+      async consultStatus(correlationId) {
+        checks++;
+        assert.equal(correlationId, out.id);
+        assert.equal(acceptedByProvider, true);
+        return { state: "ACCEPTED", providerId };
+      },
+    };
+    const interruptedWorker = deliverVirtualOutbox(20, () => adapter);
+    await providerAccepted;
+    try {
+      const claimed = await db.avMessageOutbox.findUniqueOrThrow({
+        where: { id: out.id },
+      });
+      assert.equal(claimed.state, "SENDING");
+      await db.avMessageOutbox.update({
+        where: { id: out.id },
+        data: { leaseUntil: new Date(Date.now() - 1000) },
+      });
+      await deliverVirtualOutbox(20, () => adapter);
+      const reconciled = await db.avMessageOutbox.findUniqueOrThrow({
+        where: { id: out.id },
+      });
+      assert.equal(reconciled.state, "ACCEPTED");
+      assert.equal(reconciled.providerId, providerId);
+      assert.equal(sends, 1);
+      assert.equal(checks, 1);
+    } finally {
+      release();
+      await interruptedWorker;
+    }
+    assert.equal(
+      (await db.avMessageOutbox.findUniqueOrThrow({ where: { id: out.id } }))
+        .providerId,
+      providerId,
+      "lease antigo não sobrescreve prova conciliada pela nova réplica",
+    );
+    assert.equal(
+      await db.avMessage.count({
+        where: { conversationId: id, direction: "OUTBOUND" },
+      }),
+      1,
+    );
+    assert.equal(sends, 1);
+  },
+);

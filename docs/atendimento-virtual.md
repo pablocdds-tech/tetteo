@@ -59,6 +59,23 @@ Escalar cria primeiro a tarefa durável, com motivo, trecho útil, cliente/conve
 
 ## Configuração privada e custos
 
+### Gemini pelo painel
+
+Abra **Atendimento virtual → Conexões** com permissão `crm.gerenciar`. A chave é inserida somente no campo privado da página HTTPS; não deve ser enviada pelo chat. Use [Google AI Studio](https://aistudio.google.com/api-keys) para criar/gerenciar a chave da sua conta.
+
+1. Salve a chave e consulte os modelos disponíveis na API. O servidor devolve somente nomes/metadados; não devolve a chave.
+2. Escolha um modelo da conta, confira as tarifas/cota aplicáveis na tabela oficial e salve a configuração. Tarifas zero exigem a mesma confirmação explícita das demais; o sistema não promete que sua conta terá cota gratuita.
+3. Clique em **Testar Gemini**. É uma chamada com texto fictício, sem cliente, reserva ou WhatsApp. O custo máximo é reservado antes da rede. Há limite de três testes por hora/unidade e orçamento compartilhado com as execuções.
+4. Após o resultado aprovado, ative a revisão testada. Salvar qualquer mudança desativa o modelo e invalida o teste anterior. Um teste antigo em andamento não aprova a revisão nova. O teste vale por 30 dias.
+
+A chave fica cifrada com AES-256-GCM, vinculada à organização e unidade. GETs e auditoria não contêm chave nem ciphertext. O campo é limpo após salvar/falhar, não usa armazenamento do navegador e não acompanha uma troca de unidade. Pausar/desativar ou alterar a configuração invalida turnos pendentes; mensagens já transmitidas a um provedor não podem ser recolhidas.
+
+`AV_CREDENTIAL_KEY` permite uma chave estável própria no ambiente privado. Sem ela, a cifra deriva de `AUTH_SECRET`. Antes de trocar o segredo de autenticação, preserve a chave efetiva ou planeje cadastrar as credenciais novamente; a falha de leitura bloqueia o modelo. Nunca imprima a chave para fazer essa manutenção.
+
+O modo do **canal** e o **processamento** são independentes. Gemini pode interpretar mensagens fictícias no canal local; isso não significa que o WhatsApp esteja conectado. A tela Saúde informa o estado real do modelo e inclui o custo dos testes. Enquanto nenhuma chave válida tiver sido cadastrada/testada, o sistema não deve ser anunciado como atendimento com IA real.
+
+A configuração avançada via ambiente continua disponível somente quando `AV_MODEL_ORGANIZATION_ID` e `AV_MODEL_STORE_ID` correspondem à unidade da execução. Uma chave global não é copiada silenciosamente para outra organização. A configuração salva pelo painel prevalece para sua unidade.
+
 Stack desta entrega: Next.js **16.3.0**, React **19.2.8**, Prisma **7.9.1**, Auth.js **5 beta** conforme `package-lock.json`; ensaio com PostgreSQL **17**. Não há dependência de fila externa. A implementação usa o PostgreSQL existente.
 
 | Variável                              | Padrão/efeito                                                               |
@@ -71,9 +88,9 @@ Stack desta entrega: Next.js **16.3.0**, React **19.2.8**, Prisma **7.9.1**, Aut
 | `AV_GEMINI_INPUT_MICROS_PER_MILLION`  | Tarifa de entrada em milionésimos de dólar por milhão de tokens             |
 | `AV_GEMINI_OUTPUT_MICROS_PER_MILLION` | Tarifa de saída na mesma unidade                                            |
 
-Valores reais ficam somente no ambiente privado do projeto/Dokploy. Nunca `NEXT_PUBLIC_*`, código, documentação compartilhada, screenshot ou chat. O repositório contém apenas nomes e campos vazios em `.env.example`.
+Valores reais ficam no cadastro cifrado do painel ou no ambiente privado do projeto/Dokploy. Nunca `NEXT_PUBLIC_*`, código, documentação compartilhada, screenshot ou chat. O repositório contém apenas nomes e campos vazios em `.env.example`.
 
-Sem modelo habilitado, a demonstração tem **custo de modelo/canal externo zero**; utiliza a infraestrutura já existente. Para ativar o extrator, escolha modelo e confira as tarifas do contrato na [tabela oficial Gemini](https://ai.google.dev/gemini-api/docs/pricing). Não há preço de modelo presumido. O servidor recusa configuração incompleta ou tarifa inválida.
+Sem modelo habilitado e sem executar testes da API, a demonstração usa apenas a infraestrutura existente, sem chamada externa de modelo/canal. O teste do Gemini pode consumir a cota ou gerar custo antes da ativação; esse consumo entra no painel. Para ativar o extrator, escolha modelo e confira as tarifas do contrato na [tabela oficial Gemini](https://ai.google.dev/gemini-api/docs/pricing). Não há preço de modelo presumido. O servidor recusa configuração incompleta ou tarifa inválida.
 
 Por conta, os limites iniciais são 4.000 tokens por turno, 30 segundos de turno, 8 execuções de ferramenta, **100.000 µUSD por turno (US$ 0,10)** e **5.000.000 µUSD de orçamento em janela móvel de 24 horas (US$ 5)**. A chamada do extrator tem timeout menor, até 15 segundos, e saída limitada. São tetos, não previsão de gasto. Uma reserva conservadora de custo precede a rede; falha com resultado incerto conserva esse débito e exige revisão, sem repetir chamada cegamente. O painel mostra consumo, erro e circuito.
 
@@ -90,6 +107,8 @@ O destinatário precisa estar ativo e possuir acesso atual de consulta e ediçã
 `POST /api/atendimento/webhook` aceita JSON de até 64 KiB, inclusive contagem dos bytes lidos. Cabeçalho `x-av-signature-256` contém `sha256=<HMAC-SHA256 do corpo original>`, usando o segredo privado de demonstração. Corpo: `{accountId, event}`. O evento exige ID externo, remetente fictício e tipo; campos extras não concedem escopo. A resposta `202` comprova gravação aceita/duplicada, não processamento, reserva ou entrega.
 
 Callbacks fictícios usam `type: "DELIVERY"`, `providerId` e `deliveryState: "DELIVERED" | "FAILED"`, com ID externo próprio. São deduplicados e podem chegar antes da aceitação sem perder o estado final. O adaptador distingue intenção de envio, aceitação e entrega. Timeout torna a saída `UNCERTAIN`; reconciliação consulta a mesma correlação, sem novo envio. Falha definitiva fica visível; incerteza repetida vira pendência.
+
+A outbox persiste `SENDING`, lease e correlação antes de acessar a rede. O envio ocorre fora da transação. Se o processo morrer depois da aceitação e antes de salvar o recibo, o lease vencido vira incerteza e consulta a mesma correlação; não volta a enviar. Takeover interrompe o que ainda não foi autorizado para transmissão. Uma requisição já transmitida pode terminar depois do takeover, e seu resultado permanece no histórico. Nenhuma UI deve apresentar esse caso como cancelamento garantido.
 
 Esse contrato é de ensaio do Tetteo. Não é o contrato de webhook Meta/Evolution e não deve ser cadastrado em uma conta real como se fosse compatível.
 

@@ -91,6 +91,7 @@ export type VirtualConversationDetail = {
   summary: string | null;
 };
 export type VirtualHealth = {
+  engine?: VirtualModelStatus;
   demo: true;
   accountName: string;
   active: boolean;
@@ -154,3 +155,26 @@ export type VirtualOperatorAction =
   | "reply"
   | "ack_escalation"
   | "retry_alert";
+
+export type VirtualModelStatus = {
+  provider: "GEMINI";
+  source: "DATABASE" | "ENVIRONMENT" | "NONE";
+  credentialPresent: boolean;
+  model: string | null;
+  revision: number;
+  enabled: boolean;
+  rates: {
+    inputMicrosPerMillion: number;
+    outputMicrosPerMillion: number;
+    confirmed: boolean;
+  };
+  test: {
+    state: "PENDING" | "TESTING" | "PASSED" | "FAILED" | "NONE";
+    revision: number | null;
+    testedAt: string | null;
+    errorCode: string | null;
+    tokens: number;
+    costMicros: number;
+  };
+  blockers: string[];
+};

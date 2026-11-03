@@ -2,8 +2,9 @@ import { db } from "@/server/db";
 import { maskVirtualSecrets } from "@/server/atendimento-canal";
 import {
   extractVirtualModelIntent,
-  virtualModelConfiguration,
+  type VirtualModelCredentials,
 } from "@/server/ia/atendimento";
+import { privateVirtualModelConfiguration } from "@/server/ia/modelo-atendimento-config";
 import type {
   VirtualTurnInput,
   VirtualTurnResult,
@@ -37,10 +38,35 @@ type CustomerData = {
     guestName: string;
   }[];
 };
-async function reserveModelBudget(input: VirtualTurnInput, bound: number) {
+export async function reserveModelBudget(
+  input: VirtualTurnInput,
+  bound: number,
+  configuration: VirtualModelCredentials,
+) {
   await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`av:model:${input.organizationId}:${input.storeId}`},0))`;
     await assertVirtualTurn(tx, input);
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`virtual-budget:${input.accountId}`},0))`;
+    const current = await tx.avModelConfiguration.findUnique({
+      where: {
+        organizationId_storeId: {
+          organizationId: input.organizationId,
+          storeId: input.storeId,
+        },
+      },
+    });
+    if (
+      configuration.source === "DATABASE"
+        ? !current ||
+          !current.enabled ||
+          current.revision !== configuration.revision ||
+          current.testState !== "PASSED" ||
+          current.testedRevision !== current.revision ||
+          !current.testedAt ||
+          current.testedAt.getTime() <= Date.now() - 30 * 86_400_000
+        : !!current
+    )
+      throw new Error("MODEL_CONFIGURATION_CHANGED");
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`virtual-budget:${input.organizationId}:${input.storeId}`},0))`;
     const account = await tx.avChannelAccount.findUniqueOrThrow({
       where: { id: input.accountId },
     });
@@ -49,9 +75,18 @@ async function reserveModelBudget(input: VirtualTurnInput, bound: number) {
       where: { accountId: input.accountId, createdAt: { gte: day } },
       _sum: { costMicros: true },
     });
+    const probes = await tx.avModelProbe.aggregate({
+      where: {
+        organizationId: input.organizationId,
+        storeId: input.storeId,
+        createdAt: { gte: day },
+      },
+      _sum: { costMicros: true },
+    });
     if (
       bound > input.limits.maxCostMicros ||
-      (total._sum.costMicros ?? 0) + bound > account.dailyBudgetMicros ||
+      (total._sum.costMicros ?? 0) + (probes._sum.costMicros ?? 0) + bound >
+        account.dailyBudgetMicros ||
       (account.circuitUntil && account.circuitUntil > new Date())
     )
       throw new Error("MODEL_COST_CIRCUIT_OPEN");
@@ -148,7 +183,10 @@ export async function runVirtualAgent(
       "Mensagem excedeu o limite do turno; precisa de leitura humana.",
     );
   let plan: VirtualIntent;
-  const config = virtualModelConfiguration();
+  const config = await privateVirtualModelConfiguration({
+    organizationId: input.organizationId,
+    storeId: input.storeId,
+  });
   if (config.enabled) {
     model = config.model || "MODEL_UNAVAILABLE";
     const bound = Math.ceil(
@@ -157,16 +195,19 @@ export async function runVirtualAgent(
     );
     try {
       if (!config.configured) throw new Error("MODEL_CONFIGURATION_MISSING");
-      await reserveModelBudget(input, bound);
+      await reserveModelBudget(input, bound, config);
       costMicros = bound;
-      const result = await extractVirtualModelIntent({
-        messages: input.messages.map((m) => m.text),
-        now: input.now.toISOString(),
-        timezone: input.timezone,
-        maxTokens: input.limits.maxTokens,
-        timeoutMs: input.limits.timeoutMs,
-        humanSummary: input.summary,
-      });
+      const result = await extractVirtualModelIntent(
+        {
+          messages: input.messages.map((m) => m.text),
+          now: input.now.toISOString(),
+          timezone: input.timezone,
+          maxTokens: input.limits.maxTokens,
+          timeoutMs: input.limits.timeoutMs,
+          humanSummary: input.summary,
+        },
+        config,
+      );
       plan = virtualIntentSchema.parse(result.plan);
       tokens = result.tokens;
       costMicros = result.costMicros;

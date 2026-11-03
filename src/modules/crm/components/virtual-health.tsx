@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
@@ -23,6 +24,7 @@ export default function VirtualHealthPage() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const health = data?.storeId === storeId ? data.health : null;
+  const engine = health?.engine;
   useEffect(() => {
     let alive = true;
     const refresh = () => {
@@ -84,7 +86,7 @@ export default function VirtualHealthPage() {
         [
           "Custo registrado",
           money(health.costMicros),
-          `${health.tokens} tokens. Teto diário: ${money(health.dailyBudgetMicros)}. Demonstração local sem cobrança de modelo.`,
+          `${health.tokens} tokens. Teto diário: ${money(health.dailyBudgetMicros)}. Chamadas ao Gemini podem consumir cota e gerar custo na conta do provedor.`,
         ],
       ]
     : [];
@@ -124,6 +126,36 @@ export default function VirtualHealthPage() {
                     : "Demonstração não iniciada"}
               </span>
             </div>
+            <p>
+              <strong>Canal:</strong> demonstração local. Nenhum WhatsApp está
+              conectado a este atendimento.
+            </p>
+            <p>
+              <strong>Processamento:</strong>{" "}
+              {engine
+                ? engine.enabled
+                  ? `Gemini ativo · ${engine.model ?? "modelo configurado"}`
+                  : "regras locais de demonstração, sem chamada de modelo"
+                : "estado do modelo indisponível"}
+              .
+            </p>
+            {engine && (
+              <p className={styles.muted}>
+                Configuração Gemini:{" "}
+                {engine.credentialPresent ? "chave presente" : "sem chave"};{" "}
+                {engine.test.state === "PASSED" &&
+                engine.test.revision === engine.revision
+                  ? "revisão atual testada"
+                  : "revisão atual ainda não validada"}
+                .{" "}
+                <Link
+                  className={styles.textLink}
+                  href="/crm/atendimento/conexoes"
+                >
+                  Ver conexões
+                </Link>
+              </p>
+            )}
             <p>
               Última entrada recebida:{" "}
               {health.lastWebhookAt

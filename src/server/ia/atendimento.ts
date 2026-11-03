@@ -1,4 +1,14 @@
-export function virtualModelConfiguration() {
+export type VirtualModelCredentials = {
+  enabled: boolean;
+  configured: boolean;
+  model: string;
+  inputRate: number;
+  outputRate: number;
+  apiKey?: string;
+  revision?: number;
+  source?: "DATABASE" | "ENVIRONMENT" | "NONE";
+};
+export function virtualModelConfiguration(): VirtualModelCredentials {
   const enabled = process.env.AV_MODEL_ENABLED === "true";
   const model = process.env.AV_GEMINI_MODEL ?? "";
   const inputRate = Number(process.env.AV_GEMINI_INPUT_MICROS_PER_MILLION);
@@ -10,17 +20,27 @@ export function virtualModelConfiguration() {
     inputRate > 0 &&
     Number.isSafeInteger(outputRate) &&
     outputRate > 0;
-  return { enabled, configured, model, inputRate, outputRate };
+  return {
+    enabled,
+    configured,
+    model,
+    inputRate,
+    outputRate,
+    apiKey: process.env.AV_GEMINI_API_KEY,
+    source: process.env.AV_GEMINI_API_KEY ? "ENVIRONMENT" : "NONE",
+  };
 }
-export async function extractVirtualModelIntent(input: {
-  messages: string[];
-  now: string;
-  timezone: string;
-  maxTokens: number;
-  timeoutMs: number;
-  humanSummary?: string | null;
-}) {
-  const config = virtualModelConfiguration();
+export async function extractVirtualModelIntent(
+  input: {
+    messages: string[];
+    now: string;
+    timezone: string;
+    maxTokens: number;
+    timeoutMs: number;
+    humanSummary?: string | null;
+  },
+  config: VirtualModelCredentials = virtualModelConfiguration(),
+) {
   if (!config.enabled || !config.configured)
     throw new Error("MODEL_CONFIGURATION_MISSING");
   const text = JSON.stringify({
@@ -38,7 +58,7 @@ export async function extractVirtualModelIntent(input: {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": process.env.AV_GEMINI_API_KEY!,
+        "x-goog-api-key": config.apiKey!,
       },
       body: JSON.stringify({
         systemInstruction: {
@@ -56,6 +76,7 @@ export async function extractVirtualModelIntent(input: {
         },
       }),
       signal: AbortSignal.timeout(Math.min(15_000, input.timeoutMs)),
+      redirect: "error",
     },
   );
   if (!res.ok) throw new Error("MODEL_PROVIDER_UNAVAILABLE");
@@ -96,4 +117,52 @@ export async function extractVirtualModelIntent(input: {
     ),
     model: config.model,
   };
+}
+
+export async function listVirtualGeminiModels(apiKey: string) {
+  const models: { name: string; displayName: string }[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < 5; page++) {
+    const url = new URL(
+      "https://generativelanguage.googleapis.com/v1beta/models",
+    );
+    url.searchParams.set("pageSize", "100");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const response = await fetch(url, {
+      headers: { "x-goog-api-key": apiKey },
+      signal: AbortSignal.timeout(10_000),
+      redirect: "error",
+    });
+    if (!response.ok)
+      throw new Error(
+        response.status === 401 || response.status === 403
+          ? "MODEL_CREDENTIAL_REJECTED"
+          : response.status === 429
+            ? "MODEL_RATE_LIMITED"
+            : "MODEL_PROVIDER_UNAVAILABLE",
+      );
+    const body = (await response.json()) as {
+      models?: {
+        name?: string;
+        displayName?: string;
+        supportedGenerationMethods?: string[];
+      }[];
+      nextPageToken?: string;
+    };
+    for (const item of body.models ?? [])
+      if (
+        item.name?.startsWith("models/") &&
+        item.supportedGenerationMethods?.includes("generateContent")
+      ) {
+        const name = item.name.slice(7);
+        if (/^gemini-[a-zA-Z0-9.-]{1,120}$/.test(name))
+          models.push({
+            name,
+            displayName: (item.displayName ?? name).slice(0, 160),
+          });
+      }
+    pageToken = body.nextPageToken;
+    if (!pageToken) break;
+  }
+  return models;
 }
