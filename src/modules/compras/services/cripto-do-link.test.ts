@@ -27,7 +27,11 @@ test("dois códigos nunca são iguais", () => {
 test("cifrado adulterado é recusado", () => {
   const { cifrado } = novoCodigo();
   const partes = cifrado.split(".");
-  partes[3] = partes[3].slice(0, -2) + (partes[3].endsWith("A") ? "BB" : "AA");
+  // Trocar caracteres Base64 pode mudar só bits de preenchimento e manter
+  // os mesmos bytes (por exemplo, BA e BB). Altere o conteúdo binário.
+  const conteudo = Buffer.from(partes[3], "base64url");
+  conteudo[0] ^= 1;
+  partes[3] = conteudo.toString("base64url");
   assert.throws(() => decifrar(partes.join(".")));
 });
 
