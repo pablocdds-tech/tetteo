@@ -109,12 +109,12 @@ export async function finalizarVendaAcao(
 export async function cancelarVendaAcao(dados: unknown): Promise<ResultadoPdv> {
   return executar(
     (ctx) => cancelarVenda(ctx, dados),
-    (resultado) =>
-      typeof resultado === "object" &&
-      resultado !== null &&
-      "devolucaoPagamento" in resultado &&
-      resultado.devolucaoPagamento
-        ? "Venda cancelada e estoque estornado. Faça a devolução do pagamento ao cliente."
-        : "Pedido cancelado e estoque estornado. Nenhum pagamento havia sido registrado.",
+    (resultado) => {
+      const r = resultado as {
+        devolucaoPagamento: boolean;
+        estoqueDevolvido: boolean;
+      };
+      return `Pedido cancelado. ${r.estoqueDevolvido ? "Ingredientes devolvidos ao estoque." : "Consumo mantido e perda registrada."} ${r.devolucaoPagamento ? "Faça a devolução do pagamento ao cliente." : "Nenhum pagamento havia sido registrado."}`;
+    },
   );
 }

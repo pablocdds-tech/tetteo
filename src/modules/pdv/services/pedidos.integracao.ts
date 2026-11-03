@@ -277,7 +277,7 @@ test("pedidos controlam produção, versão, isolamento e cancelamento sem dupli
         where: { localId_insumoId: { localId: local.id, insumoId: insumo.id } },
       })
     ).quantidade.toString(),
-    "100",
+    "99",
   );
   await assert.rejects(
     () =>

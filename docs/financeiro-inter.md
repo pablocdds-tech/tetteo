@@ -106,6 +106,14 @@ fica pendente, mesmo quando o valor é único. Candidatos exigem empresa, unidad
 direção, saldo em centavos e vencimento em ±5 dias; depois há desempate por
 documento e data exata. Sem resposta única, não há baixa automática.
 
+## Separação entre sandbox e produção
+
+Sandbox só retorna uma simulação das correspondências. Não cria baixas nem
+pendências no financeiro operacional. Pendências antigas de sandbox são
+preservadas no banco, ficam fora da fila operacional e não podem ser vinculadas
+ou reavaliadas para baixar obrigações. Baixas já existentes não são estornadas
+automaticamente: qualquer revisão histórica precisa conferir a origem.
+
 ## Roteiro de teste humano
 
 Use dados fictícios e sandbox, sem inserir registros de teste no banco de produção.
@@ -117,12 +125,13 @@ Use dados fictícios e sandbox, sem inserir registros de teste no banco de produ
    situação baixada, conta, data e histórico.
 4. Como diretor, marque outro lançamento como restrito. Como operador, ele não
    deve aparecer nem pela busca ou endereço direto.
-5. Teste a conexão sandbox. Registre lançamentos compatíveis com as transações
-   fictícias disponibilizadas pelo banco e sincronize duas vezes. A segunda
-   execução não pode duplicar baixas.
-6. Confira os casos de documento diferente, dois candidatos idênticos e ausência
-   de lançamento: devem permanecer pendentes. Depois de criar a obrigação,
-   reavalie ou vincule manualmente. Confirme a mesma empresa/direção.
+5. Teste a conexão sandbox em ambiente local ou de homologação. Crie lançamentos
+   fictícios compatíveis e sincronize duas vezes: a resposta deve indicar
+   simulação, sem criar baixas nem pendências e sem alterar os lançamentos.
+6. No ensaio automatizado com extrato sintético e integração marcada como produção,
+   confira documento diferente, dois candidatos idênticos e ausência de lançamento:
+   devem permanecer pendentes. Reavalie ou vincule manualmente e confirme empresa
+   e direção. Essa marca no ensaio não usa rede nem credenciais do Inter.
 7. Desmarque “Compõe o resultado” em um lançamento sem baixas e pague-o: o
    resultado deve excluí-lo, enquanto o fluxo deve manter o pagamento.
 

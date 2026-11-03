@@ -40,6 +40,7 @@ export const pagamentoIntegrado = z.enum([
 export const lancamentoIntegrado = z
   .object({
     id: opcional,
+    chave: z.uuid().optional(),
     versao: z.coerce.number().int().nonnegative().default(0),
     empresaId: id,
     pessoaId: opcional,
@@ -145,6 +146,9 @@ export const transferenciaIntegrada = z
     "Escolha contas diferentes e valor positivo.",
   );
 export const filtroIntegrado = z.object({
+  baseData: z
+    .enum(["vencimento", "competencia", "pagamento"])
+    .default("vencimento"),
   pagina: z.coerce.number().int().min(1).max(10000).default(1),
   q: texto(120).default(""),
   direcao: z.enum(["PAGAR", "RECEBER", ""]).default(""),

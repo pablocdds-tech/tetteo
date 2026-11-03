@@ -3,6 +3,7 @@ import { clienteInter } from "@/connectors/inter/cliente";
 import {
   obterIntegracaoInter,
   processarExtratoInter,
+  simularExtratoInter,
   registrarEstadoInter,
 } from "@/modules/financeiro/services/integrado";
 export const runtime = "nodejs";
@@ -55,6 +56,8 @@ export async function POST(
     const ate = new Date().toISOString().slice(0, 10),
       de = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
     const transacoes = await cliente.extrato(de, ate);
+    if (i.ambiente === "sandbox")
+      return resposta(await simularExtratoInter(ctx, id, transacoes));
     const totais = await processarExtratoInter(ctx, id, transacoes);
     await registrarEstadoInter(ctx, id, null);
     return resposta({ ok: true, ...totais });

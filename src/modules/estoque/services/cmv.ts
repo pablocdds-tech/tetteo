@@ -32,7 +32,7 @@ export async function contagensParaCmv(contexto: ContextoSessao) {
       id: true,
       referencia: true,
       descricao: true,
-      local: { select: { nome: true } },
+      local: { select: { id: true, nome: true } },
       _count: { select: { itens: true } },
     },
     take: 60,
@@ -80,6 +80,10 @@ export async function calcularCmvDoPeriodo(
   if (!inicial || !final) {
     throw new Error("Escolha duas contagens fechadas desta unidade.");
   }
+  if (inicial.localId !== final.localId)
+    throw new Error(
+      "Compare contagens do mesmo local, ou duas contagens da unidade inteira.",
+    );
   if (inicial.referencia >= final.referencia) {
     throw new Error(
       "A contagem inicial precisa ser anterior à final. Confira as datas.",
@@ -126,7 +130,32 @@ export async function calcularCmvDoPeriodo(
     select: { insumoId: true, quantidade: true, custoUnitario: true },
   });
 
+  const transferencias = final.localId
+    ? await db.movimentoEstoque.findMany({
+        where: {
+          unidadeId: unidade.id,
+          tipo: "TRANSFERENCIA",
+          ocorridoEm: { gt: inicial.referencia, lte: final.referencia },
+          OR: [{ localId: final.localId }, { localDestinoId: final.localId }],
+        },
+        select: {
+          insumoId: true,
+          quantidade: true,
+          custoUnitario: true,
+          localDestinoId: true,
+        },
+      })
+    : [];
   const compras: CompraDoPeriodo[] = [
+    ...transferencias.map((t) => ({
+      insumoId: t.insumoId,
+      quantidade:
+        Number(t.quantidade) * (t.localDestinoId === final.localId ? 1 : -1),
+      valor:
+        Number(t.quantidade) *
+        Number(t.custoUnitario) *
+        (t.localDestinoId === final.localId ? 1 : -1),
+    })),
     ...itensDeNota.map((i) => ({
       insumoId: i.insumoId,
       quantidade: Number(i.quantidade),

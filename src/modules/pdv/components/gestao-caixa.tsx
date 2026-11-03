@@ -58,6 +58,7 @@ export function GestaoCaixa({
   const [sucesso, setSucesso] = useState("");
   const [pendente, iniciar] = useTransition();
   const enviando = useRef(false);
+  const chaveMovimento = useRef("");
   const [historico, setHistorico] = useState(inicial);
   const [verHistorico, setVerHistorico] = useState(false);
   const [erroHistorico, setErroHistorico] = useState("");
@@ -90,6 +91,7 @@ export function GestaoCaixa({
   }
   function abrir(op: Operacao) {
     if (pendente || enviando.current) return;
+    chaveMovimento.current = crypto.randomUUID();
     setValor("");
     setMotivo(
       op === "SANGRIA" ? "Sangria" : op === "SUPRIMENTO" ? "Suprimento" : "",
@@ -160,6 +162,7 @@ export function GestaoCaixa({
               : await movimentarCaixaAcao({
                   caixaId: caixa!.id,
                   tipo: operacao,
+                  chave: chaveMovimento.current,
                   valorCentavos: centavos,
                   motivo: motivo.trim(),
                 });

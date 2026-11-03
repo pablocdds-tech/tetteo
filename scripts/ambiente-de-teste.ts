@@ -47,3 +47,7 @@ process.env.DATABASE_URL = url;
 // Nenhuma mensagem real sai de um teste: o canal é o simulador, e o conector
 // de WhatsApp recusa com NODE_ENV=test mesmo que alguém mude a variável.
 Object.assign(process.env, { NODE_ENV: "test", COMPRAS_CANAL: "simulador" });
+// Chave pública e descartável, exclusiva das identidades sintéticas deste banco.
+process.env.CRM_IDENTITY_KEY = "0123456789abcdef".repeat(4);
+process.env.AUTH_SECRET =
+  "tetteo-integracao-local-segredo-ficticio-descartavel";

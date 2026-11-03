@@ -195,7 +195,11 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
     descontoCentavos: 1,
     pagamentos: [{ forma: "DINHEIRO", valorCentavos: 2000 }],
   });
-  await cancelarVenda(ctx, { vendaId: segunda, motivo: "Teste de reversão" });
+  await cancelarVenda(ctx, {
+    vendaId: segunda,
+    motivo: "Teste de reversão",
+    destinoEstoque: "DEVOLVER",
+  });
   await assert.rejects(
     () =>
       finalizarVenda(
@@ -232,10 +236,12 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
     2000,
   );
   await cancelarVenda(ctx, {
+    destinoEstoque: "DEVOLVER",
     vendaId: ids[0],
     motivo: "Cancelamento fictício",
   });
   await cancelarVenda(ctx, {
+    destinoEstoque: "DEVOLVER",
     vendaId: ids[0],
     motivo: "Repetição sem duplicar",
   });
@@ -248,12 +254,14 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
     "10",
   );
   await movimentarCaixa(ctx, {
+    chave: randomUUID(),
     caixaId: caixa.id,
     tipo: "SUPRIMENTO",
     valorCentavos: 500,
     motivo: "Fundo fictício",
   });
   await movimentarCaixa(ctx, {
+    chave: randomUUID(),
     caixaId: caixa.id,
     tipo: "SANGRIA",
     valorCentavos: 200,
@@ -262,6 +270,7 @@ test("PDV integra autorização, concorrência, idempotência, estoque, cancelam
   await assert.rejects(
     () =>
       movimentarCaixa(ctx, {
+        chave: randomUUID(),
         caixaId: caixa.id,
         tipo: "SANGRIA",
         valorCentavos: 9999,

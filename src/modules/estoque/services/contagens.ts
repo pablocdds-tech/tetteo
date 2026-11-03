@@ -3,6 +3,7 @@ import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 import { Prisma } from "@prisma/client";
 
 import { db } from "@/server/db";
+import { transacaoSerializavel } from "@/server/transacao-serializavel";
 
 import type { DadosNovaContagem } from "../schemas/contagem";
 import {
@@ -30,6 +31,26 @@ import {
 export function exigirUnidade(contexto: ContextoSessao) {
   if (!contexto.unidadeAtiva) throw new ExigeUnidade();
   return contexto.unidadeAtiva;
+}
+
+async function conferirUnidade(
+  tx: Prisma.TransactionClient,
+  contexto: ContextoSessao,
+  unidadeId: string,
+) {
+  if (
+    !contexto.unidadesVisiveis.some((u) => u.id === unidadeId) ||
+    !(await tx.unidade.findFirst({
+      where: {
+        id: unidadeId,
+        organizacaoId: contexto.organizacao.id,
+        ativa: true,
+        excluidoEm: null,
+        organizacao: { ativa: true, excluidoEm: null },
+      },
+    }))
+  )
+    throw new SemPermissao("acessar esta unidade");
 }
 
 export async function listarContagens(contexto: ContextoSessao) {
@@ -262,21 +283,38 @@ export async function salvarQuantidades(
   const resultados =
     gravar.length === 0
       ? []
-      : await db.$transaction(
-          gravar.map(({ insumoId, valor, base }) =>
-            db.contagemItem.updateMany({
-              // A BASE vai no filtro. Se entre a leitura acima e esta escrita
-              // uma terceira pessoa salvou, o filtro não casa, nada é gravado
-              // e a linha vira conflito logo abaixo — em vez de sobrescrever.
-              where: { contagemId, insumoId, quantidade: base },
-              data: {
-                quantidade: valor,
-                contadoPorId: valor === null ? null : contexto.usuario.id,
-                contadoEm: valor === null ? null : agora,
-              },
-            }),
-          ),
-        );
+      : await db.$transaction(async (tx) => {
+          await conferirUnidade(tx, contexto, unidade.id);
+          await tx.$queryRaw`SELECT id FROM contagem WHERE id=${contagemId} AND "unidadeId"=${unidade.id} FOR UPDATE`;
+          const atual = await tx.contagem.findFirst({
+            where: { id: contagemId, unidadeId: unidade.id },
+            select: { status: true },
+          });
+          if (atual?.status !== "ABERTA")
+            throw new Error(
+              "Esta contagem já foi fechada e não aceita alterações.",
+            );
+          return Promise.all(
+            gravar.map(({ insumoId, valor, base }) =>
+              tx.contagemItem.updateMany({
+                // A BASE vai no filtro. Se entre a leitura acima e esta escrita
+                // uma terceira pessoa salvou, o filtro não casa, nada é gravado
+                // e a linha vira conflito logo abaixo — em vez de sobrescrever.
+                where: {
+                  contagemId,
+                  insumoId,
+                  quantidade: base,
+                  contagem: { status: "ABERTA" },
+                },
+                data: {
+                  quantidade: valor,
+                  contadoPorId: valor === null ? null : contexto.usuario.id,
+                  contadoEm: valor === null ? null : agora,
+                },
+              }),
+            ),
+          );
+        });
 
   const perdidas = gravar.filter((_, i) => resultados[i]?.count === 0);
 
@@ -353,74 +391,76 @@ export async function fecharContagem(contexto: ContextoSessao, id: string) {
   }
   const unidade = exigirUnidade(contexto);
 
-  const contagem = await db.contagem.findFirst({
-    where: { id, unidadeId: unidade.id },
-    include: {
-      itens: { select: { id: true, insumoId: true, quantidade: true } },
-    },
-  });
-  if (!contagem) throw new Error("Contagem não encontrada.");
-  if (contagem.status !== "ABERTA") {
-    throw new Error("Esta contagem já foi fechada.");
-  }
+  return transacaoSerializavel(async (tx) => {
+    await conferirUnidade(tx, contexto, unidade.id);
+    await tx.$queryRaw`SELECT id FROM contagem WHERE id=${id} AND "unidadeId"=${unidade.id} FOR UPDATE`;
+    const contagem = await tx.contagem.findFirst({
+      where: { id, unidadeId: unidade.id },
+      include: {
+        itens: { select: { id: true, insumoId: true, quantidade: true } },
+      },
+    });
+    if (!contagem) throw new Error("Contagem não encontrada.");
+    if (contagem.status === "FECHADA") return;
+    if (contagem.status !== "ABERTA") {
+      throw new Error("Esta contagem já foi fechada.");
+    }
 
-  const custos = await db.insumo.findMany({
-    where: { id: { in: contagem.itens.map((i) => i.insumoId) } },
-    select: { id: true, custoMedio: true },
-  });
-  const porInsumo = new Map(custos.map((c) => [c.id, c.custoMedio]));
+    const custos = await tx.insumo.findMany({
+      where: { id: { in: contagem.itens.map((i) => i.insumoId) } },
+      select: { id: true, custoMedio: true },
+    });
+    const porInsumo = new Map(custos.map((c) => [c.id, c.custoMedio]));
 
-  /**
-   * A CONTAGEM CORRIGE A POSIÇÃO — mas só quando ela sabe ONDE.
-   *
-   * Contar sem corrigir era fazer o trabalho e jogar fora o resultado: a
-   * pessoa contava 12 kg e o sistema seguia afirmando 40.
-   *
-   * A correção só acontece na contagem de um LUGAR. Na contagem da loja
-   * inteira o número contado é o total somado de várias prateleiras, e não há
-   * como dizer quanto disso está na câmara fria e quanto no depósito —
-   * escrever o total num lugar só criaria um saldo errado em dois lugares de
-   * uma vez. A tela avisa; o CMV, que é o que importa, não depende disso.
-   */
-  const ajustaPosicao = contagem.localId !== null;
+    /**
+     * A CONTAGEM CORRIGE A POSIÇÃO — mas só quando ela sabe ONDE.
+     *
+     * Contar sem corrigir era fazer o trabalho e jogar fora o resultado: a
+     * pessoa contava 12 kg e o sistema seguia afirmando 40.
+     *
+     * A correção só acontece na contagem de um LUGAR. Na contagem da loja
+     * inteira o número contado é o total somado de várias prateleiras, e não há
+     * como dizer quanto disso está na câmara fria e quanto no depósito —
+     * escrever o total num lugar só criaria um saldo errado em dois lugares de
+     * uma vez. A tela avisa; o CMV, que é o que importa, não depende disso.
+     */
+    const ajustaPosicao = contagem.localId !== null;
 
-  const posicoes = ajustaPosicao
-    ? await db.posicaoEstoque.findMany({
-        where: {
-          localId: contagem.localId!,
-          insumoId: { in: contagem.itens.map((i) => i.insumoId) },
-        },
-        select: { insumoId: true, quantidade: true },
-      })
-    : [];
-  const saldoAtual = new Map(
-    posicoes.map((p) => [p.insumoId, Number(p.quantidade)]),
-  );
-
-  const agora = new Date();
-  const escritas: Prisma.PrismaPromise<unknown>[] = [];
-
-  for (const item of contagem.itens) {
-    const custo = porInsumo.get(item.insumoId) ?? 0;
-
-    escritas.push(
-      db.contagemItem.update({
-        where: { id: item.id },
-        data: { custoUnitario: custo },
-      }),
+    if (ajustaPosicao)
+      await tx.$queryRaw`SELECT id FROM posicao_estoque WHERE "localId"=${contagem.localId} ORDER BY "insumoId" FOR UPDATE`;
+    const posicoes = ajustaPosicao
+      ? await tx.posicaoEstoque.findMany({
+          where: {
+            localId: contagem.localId!,
+            insumoId: { in: contagem.itens.map((i) => i.insumoId) },
+          },
+          select: { insumoId: true, quantidade: true },
+        })
+      : [];
+    const saldoAtual = new Map(
+      posicoes.map((p) => [p.insumoId, Number(p.quantidade)]),
     );
 
-    // Em branco é "não contei", não "acabou": o item fica de fora do ajuste,
-    // exatamente como fica de fora do CMV.
-    if (!ajustaPosicao || item.quantidade === null) continue;
+    const agora = new Date();
 
-    const contado = Number(item.quantidade);
-    const esperado = saldoAtual.get(item.insumoId) ?? 0;
-    const diferenca = Math.round((contado - esperado) * 1000) / 1000;
+    for (const item of contagem.itens) {
+      const custo = porInsumo.get(item.insumoId) ?? 0;
 
-    if (diferenca !== 0) {
-      escritas.push(
-        db.movimentoEstoque.create({
+      await tx.contagemItem.update({
+        where: { id: item.id },
+        data: { custoUnitario: custo },
+      });
+
+      // Em branco é "não contei", não "acabou": o item fica de fora do ajuste,
+      // exatamente como fica de fora do CMV.
+      if (!ajustaPosicao || item.quantidade === null) continue;
+
+      const contado = Number(item.quantidade);
+      const esperado = saldoAtual.get(item.insumoId) ?? 0;
+      const diferenca = Math.round((contado - esperado) * 1000) / 1000;
+
+      if (diferenca !== 0) {
+        await tx.movimentoEstoque.create({
           data: {
             unidadeId: unidade.id,
             insumoId: item.insumoId,
@@ -438,12 +478,10 @@ export async function fecharContagem(contexto: ContextoSessao, id: string) {
             ocorridoEm: contagem.referencia,
             registradoPorId: contexto.usuario.id,
           },
-        }),
-      );
-    }
+        });
+      }
 
-    escritas.push(
-      db.posicaoEstoque.upsert({
+      await tx.posicaoEstoque.upsert({
         where: {
           localId_insumoId: {
             localId: contagem.localId!,
@@ -459,32 +497,31 @@ export async function fecharContagem(contexto: ContextoSessao, id: string) {
           insumoId: item.insumoId,
           quantidade: contado,
         },
-      }),
-    );
-  }
+      });
+    }
 
-  escritas.push(
-    db.contagem.update({
+    await tx.contagem.update({
       where: { id },
       data: {
         status: "FECHADA",
         fechadaEm: agora,
         fechadaPorId: contexto.usuario.id,
       },
-    }),
-  );
+    });
 
-  await db.$transaction(escritas);
-
-  await registrarAuditoria(
-    contexto,
-    "ALTEROU",
-    id,
-    { status: "ABERTA" },
-    {
-      status: "FECHADA",
-    },
-  );
+    await tx.auditoria.create({
+      data: {
+        organizacaoId: contexto.organizacao.id,
+        unidadeId: unidade.id,
+        usuarioId: contexto.usuario.id,
+        entidade: "Contagem",
+        entidadeId: id,
+        acao: "ALTEROU",
+        valoresAntes: { status: "ABERTA" },
+        valoresDepois: { status: "FECHADA" },
+      },
+    });
+  });
 }
 
 /**
@@ -500,24 +537,31 @@ export async function cancelarContagem(contexto: ContextoSessao, id: string) {
   }
   const unidade = exigirUnidade(contexto);
 
-  const contagem = await db.contagem.findFirst({
-    where: { id, unidadeId: unidade.id, canceladaEm: null },
-    select: { id: true, status: true },
+  return transacaoSerializavel(async (tx) => {
+    await conferirUnidade(tx, contexto, unidade.id);
+    await tx.$queryRaw`SELECT id FROM contagem WHERE id=${id} AND "unidadeId"=${unidade.id} FOR UPDATE`;
+    const contagem = await tx.contagem.findFirst({
+      where: { id, unidadeId: unidade.id },
+      select: { status: true },
+    });
+    if (!contagem) throw new Error("Contagem não encontrada.");
+    if (contagem.status === "CANCELADA") return;
+    await tx.contagem.update({
+      where: { id },
+      data: { status: "CANCELADA", canceladaEm: new Date() },
+    });
+    await tx.auditoria.create({
+      data: {
+        organizacaoId: contexto.organizacao.id,
+        unidadeId: unidade.id,
+        usuarioId: contexto.usuario.id,
+        entidade: "Contagem",
+        entidadeId: id,
+        acao: "EXCLUIU",
+        valoresAntes: { status: contagem.status },
+      },
+    });
   });
-  if (!contagem) throw new Error("Contagem não encontrada.");
-
-  await db.contagem.update({
-    where: { id },
-    data: { status: "CANCELADA", canceladaEm: new Date() },
-  });
-
-  await registrarAuditoria(
-    contexto,
-    "EXCLUIU",
-    id,
-    { status: contagem.status },
-    null,
-  );
 }
 
 async function registrarAuditoria(

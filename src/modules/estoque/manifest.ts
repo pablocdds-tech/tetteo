@@ -38,7 +38,5 @@ export const manifestoEstoque: ManifestoDoApp = {
   eventosQuePublica: ["nota.lancada", "nota.cancelada", "contagem.fechada"],
   comportamentoNaRede: "exige-unidade",
 
-  /// O banco já existe; as telas não. Sai daqui quando Contagens e Entradas
-  /// estiverem de pé — até lá a equipe não vê um módulo vazio.
-  emConstrucao: true,
+  emConstrucao: false,
 };

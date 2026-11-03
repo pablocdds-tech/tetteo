@@ -8,6 +8,8 @@ import {
 import { consultarFinanceiro, detalheFinanceiro } from "../services/integrado";
 import { assinaturaEmpresa } from "../services/bancos";
 import { FormContaBanco, FormEmpresaBanco } from "./formularios-bancos";
+import { consultarRecebimentosPdv } from "../services/recebimentos-pdv";
+import { RecebimentosPdv } from "./recebimentos-pdv";
 
 export async function PaginaFinanceiroIntegrado({
   secao = "lancamentos",
@@ -23,7 +25,8 @@ export async function PaginaFinanceiroIntegrado({
   const ctx = await obterContexto();
   if (!ctx) redirect("/login");
   if (!pode(ctx, "financeiro.ver")) notFound();
-  if (secao === "integracoes" && !ctx.ehDiretor) notFound();
+  if (["integracoes", "recebimentos-pdv"].includes(secao) && !ctx.ehDiretor)
+    notFound();
   if (
     ["dre", "fluxo", "relatorios"].includes(secao) &&
     !pode(ctx, "financeiro.resultado")
@@ -31,12 +34,22 @@ export async function PaginaFinanceiroIntegrado({
     notFound();
   if (!ctx.unidadeAtiva) return <AvisoUnidade acao="Abrir o financeiro" />;
   const filtro = await searchParams;
-  const resultado = await consultarFinanceiro(ctx, filtro);
+  const resultado = await consultarFinanceiro(ctx, {
+    ...filtro,
+    baseData:
+      secao === "dre"
+        ? "competencia"
+        : ["fluxo", "relatorios"].includes(secao)
+          ? "pagamento"
+          : "vencimento",
+  });
   const dados = JSON.parse(
     JSON.stringify(resultado, (_k, v) =>
       typeof v === "bigint" ? v.toString() : v,
     ),
   ) as DadosFinanceiroIntegrado;
+  const recebimentos =
+    secao === "recebimentos-pdv" ? await consultarRecebimentosPdv(ctx) : null;
   const detalhe = id
     ? JSON.parse(JSON.stringify(await detalheFinanceiro(ctx, id)))
     : undefined;
@@ -54,6 +67,7 @@ export async function PaginaFinanceiroIntegrado({
       detalheInicial={detalhe}
       novo={novo}
     >
+      {recebimentos && <RecebimentosPdv inicial={recebimentos} />}
       {secao === "contas" && pode(ctx, "financeiro.lancar") && (
         <div className="space-y-3">
           <details className="border-line bg-surface rounded-xl border p-4">

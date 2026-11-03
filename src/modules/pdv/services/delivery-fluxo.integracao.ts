@@ -564,7 +564,7 @@ test("delivery integra frete, snapshot, privacidade, rascunho, despacho e estorn
     vendaId,
     motivo: "Retry fictício sem estorno duplicado",
   });
-  assert.equal(await saldo(), 10);
+  assert.equal(await saldo(), 8);
   assert.equal(
     await db.movimentoEstoque.count({
       where: { unidadeId: unidade.id, tipo: "ESTORNO_VENDA" },
@@ -617,9 +617,10 @@ test("delivery integra frete, snapshot, privacidade, rascunho, despacho e estorn
   );
   await cancelarVenda(ctx, {
     vendaId: manualId,
+    destinoEstoque: "DEVOLVER",
     motivo: "Encerramento do teste manual fictício",
   });
-  assert.equal(await saldo(), 10);
+  assert.equal(await saldo(), 8);
   assert.equal((await carregarPdv(ctx)).caixa!.saldoEsperadoCentavos, 1000);
   const auditoria = await db.auditoria.findMany({
     where: { organizacaoId: org.id },

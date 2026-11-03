@@ -1,5 +1,6 @@
 "use client";
 
+import { DestinoEstoqueCancelamento } from "./destino-estoque-cancelamento";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -242,6 +243,9 @@ export function GestaoPedidos({
   const [cancelando, setCancelando] = useState<PedidoPdv | null>(null);
   const [recebendoId, setRecebendoId] = useState<string | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [destinoEstoque, setDestinoEstoque] = useState<"PERDA" | "DEVOLVER">(
+    "PERDA",
+  );
   const [erroCancelamento, setErroCancelamento] = useState("");
   const lendo = useRef(false);
   const alterando = useRef(false);
@@ -341,6 +345,7 @@ export function GestaoPedidos({
     if (destino === "CANCELADO") {
       if (podeCancelar) {
         setCancelando(p);
+        setDestinoEstoque("PERDA");
         setMotivo("");
         setErroCancelamento("");
       }
@@ -393,6 +398,10 @@ export function GestaoPedidos({
       const resposta = await cancelarVendaAcao({
         vendaId: cancelando.vendaId,
         motivo: motivo.trim(),
+        destinoEstoque:
+          cancelando.status === "COZINHA" || cancelando.status === "AGENDADO"
+            ? destinoEstoque
+            : "PERDA",
         pedidoId: cancelando.id,
         versaoPedido: cancelando.versao,
         versaoFinanceira: cancelando.venda.versaoFinanceira ?? 1,
@@ -1061,7 +1070,7 @@ export function GestaoPedidos({
             ? `Cancelar pedido ${identificacao(cancelando)}`
             : "Cancelar pedido"
         }
-        apoio="Cancelamento integral da venda, com estorno do consumo registrado."
+        apoio="Cancelamento integral, com destino dos ingredientes e histórico preservados."
         rodape={
           <Botao
             peso="destrutivo"
@@ -1080,9 +1089,22 @@ export function GestaoPedidos({
             {cancelando?.venda.pagamentos.length
               ? "A devolução do pagamento ao cliente é manual."
               : "Nenhum pagamento foi registrado; não haverá devolução de dinheiro."}{" "}
-            Se os ingredientes já foram consumidos, registre a perda
-            correspondente no Estoque.
+            Ingredientes usados serão registrados como perda, sem uma nova
+            redução do saldo.
           </p>
+          <DestinoEstoqueCancelamento
+            valor={
+              cancelando && !["COZINHA", "AGENDADO"].includes(cancelando.status)
+                ? "PERDA"
+                : destinoEstoque
+            }
+            mudar={setDestinoEstoque}
+            podeDevolver={
+              !!cancelando &&
+              ["COZINHA", "AGENDADO"].includes(cancelando.status)
+            }
+            disabled={mutando}
+          />
           <Campo
             rotulo="Motivo do cancelamento"
             value={motivo}

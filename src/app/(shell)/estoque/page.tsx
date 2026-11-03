@@ -192,11 +192,9 @@ async function CorpoDaDespensa({
       {/* A honestidade que a tela precisa ter: sem baixa de saída, este saldo
           só cresce. Dizer isso evita decisão de compra sobre número falso. */}
       <p className="border-line-2 bg-surface-2 text-ink-2 rounded-lg border border-dashed px-4 py-3 text-sm leading-5">
-        O saldo vem das{" "}
-        <strong className="font-semibold">contagens fechadas</strong> mais as{" "}
-        <strong className="font-semibold">notas lançadas</strong> depois delas.
-        As saídas ainda não são registradas — então ele fica alto até a próxima
-        contagem corrigir.{" "}
+        O saldo considera entradas, contagens, vendas do PDV e saídas
+        registradas. O custo médio é consolidado pela organização. Movimentos
+        físicos precisam ser registrados para que o saldo acompanhe a operação.{" "}
         {despensa.ultimaContagem
           ? `A última contagem fechada é de ${dataCurta.format(despensa.ultimaContagem.referencia)}.`
           : "Nenhuma contagem foi fechada ainda."}

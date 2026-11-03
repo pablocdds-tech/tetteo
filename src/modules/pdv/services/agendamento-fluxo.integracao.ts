@@ -408,7 +408,7 @@ test("worker concorre com reagendar, iniciar, cancelar e fechar sem dupla produ√
     const venda = await db.pdvVenda.findUniqueOrThrow({
       where: { id: vendaId },
     });
-    assert.equal(await f.saldo(), venda.status === "CANCELADA" ? 20 : 19);
+    assert.equal(await f.saldo(), 19);
     assert.deepEqual(venda.pagamentos, []);
     assert.equal(venda.caixaRecebimentoId, null);
     if (operacao === "reagendar" && respostas[1].status === "fulfilled")

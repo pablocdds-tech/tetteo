@@ -115,6 +115,7 @@ export const esquemaAbrir = z.object({
   localEstoqueId: identificador,
 });
 export const esquemaMovimento = z.object({
+  chave: z.uuid(),
   caixaId: identificador,
   tipo: z.enum(["SANGRIA", "SUPRIMENTO"]),
   valorCentavos: centavos.refine(
@@ -132,6 +133,7 @@ export const esquemaCancelar = z
   .object({
     vendaId: identificador,
     motivo: z.string().trim().min(3).max(300),
+    destinoEstoque: z.enum(["DEVOLVER", "PERDA"]).default("PERDA"),
     pedidoId: identificador.optional(),
     versaoPedido: z.number().int().min(1).max(2_000_000_000).optional(),
     versaoFinanceira: z.number().int().min(1).max(2_000_000_000).optional(),

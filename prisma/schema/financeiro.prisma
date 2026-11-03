@@ -70,6 +70,7 @@ model ContaFinanceira {
   atualizadoEm DateTime @updatedAt
 
   baixasV2 BaixaFinanceira[]
+  configuracoesPdv ConfiguracaoRecebimentoPdv[]
   integracoesInter IntegracaoInter[]
   transferenciasV2Origem TransferenciaInterna[] @relation("TransferenciaInternaOrigem")
   transferenciasV2Destino TransferenciaInterna[] @relation("TransferenciaInternaDestino")
@@ -101,6 +102,7 @@ model EmpresaFinanceira {
   integracoesInter IntegracaoInter[]
   lancamentos Lancamento[]
   transferencias TransferenciaFinanceira[]
+  configuracoesPdv ConfiguracaoRecebimentoPdv[]
 
   @@unique([unidadeId, id])
   @@unique([unidadeId, cnpj])
@@ -201,10 +203,34 @@ model CategoriaFinanceira {
   atualizadoEm DateTime @updatedAt
 
   lancamentos Lancamento[]
+  configuracoesPdv ConfiguracaoRecebimentoPdv[]
 
   @@unique([organizacaoId, nome])
   @@index([organizacaoId, tipo, ativa])
   @@map("categoria_financeira")
+}
+
+/// Mapeamento manual por unidade. Ausência de configuração não presume conta ou taxa.
+model ConfiguracaoRecebimentoPdv {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  forma String
+  ativa Boolean @default(false)
+  empresaId String?
+  empresa EmpresaFinanceira? @relation(fields:[unidadeId,empresaId],references:[unidadeId,id])
+  contaId String?
+  conta ContaFinanceira? @relation(fields:[unidadeId,empresaId,contaId],references:[unidadeId,empresaId,id])
+  categoriaId String?
+  categoria CategoriaFinanceira? @relation(fields:[categoriaId],references:[id])
+  taxaBps Int?
+  prazoDias Int?
+  baixarNoRecebimento Boolean @default(false)
+  versao Int @default(0)
+  atualizadoEm DateTime @updatedAt
+  @@unique([unidadeId,forma])
+  @@index([organizacaoId,unidadeId])
+  @@map("configuracao_recebimento_pdv")
 }
 
 /// A pagar ou a receber. A mesma tabela porque são a mesma coisa com o sinal
@@ -244,6 +270,8 @@ model Lancamento {
   numeroPedido String?
   numeroNotaFiscal String?
   versao Int @default(0)
+  chaveCriacao String?
+  assinaturaCriacao String?
   baixas BaixaFinanceira[]
 
   direcao DirecaoDoLancamento
@@ -300,6 +328,7 @@ model Lancamento {
   @@index([unidadeId, direcao, vencimento])
   @@index([grupoParcelas])
   @@unique([unidadeId, id])
+  @@unique([unidadeId, chaveCriacao])
   @@map("lancamento")
 }
 

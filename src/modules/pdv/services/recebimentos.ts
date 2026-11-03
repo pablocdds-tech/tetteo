@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { db } from "@/server/db";
+import { publicarFatoFinanceiroPdv } from "@/server/recebimentos-pdv";
 import type { DadosRecebimento } from "../recebimento-types";
 import { ErroPdv } from "../schemas/erro";
 import {
@@ -123,6 +124,13 @@ export async function receberPedido(
           versaoFinanceira: { increment: 1 },
         },
       });
+      await publicarFatoFinanceiroPdv(
+        tx,
+        escopo,
+        venda.id,
+        "pdv.recebimento_registrado",
+        ctx.usuario.id,
+      );
       const pedido = await tx.pdvPedido.findFirst({
         where: { ...escopo, vendaId: venda.id },
       });

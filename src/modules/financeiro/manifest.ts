@@ -17,6 +17,11 @@ export const manifestoFinanceiro: ManifestoDoApp = {
     { rota: "/financeiro/pessoas", nome: "Pessoas" },
     { rota: "/financeiro/planos", nome: "Plano de contas" },
     { rota: "/financeiro/contas", nome: "Empresas e contas" },
+    {
+      rota: "/financeiro/recebimentos-pdv",
+      nome: "Recebimentos do PDV",
+      permissao: "*",
+    },
     { rota: "/financeiro/transferencias", nome: "Transferências" },
     { rota: "/financeiro/centros", nome: "Centros de custo" },
     {
@@ -33,6 +38,11 @@ export const manifestoFinanceiro: ManifestoDoApp = {
   permissaoParaVer: "financeiro.ver",
   permissoes: [...PERMISSOES_FINANCEIRO],
   eventosQuePublica: ["conta.criada", "conta.quitada"],
-  eventosQueEscuta: ["nota.lancada", "pedido.recebido"],
+  eventosQueEscuta: [
+    "nota.lancada",
+    "pedido.recebido",
+    "pdv.recebimento_registrado",
+    "pdv.venda_cancelada",
+  ],
   comportamentoNaRede: "exige-unidade",
 };

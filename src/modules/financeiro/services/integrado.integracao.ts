@@ -74,10 +74,11 @@ async function fixture() {
     empresaId: empresa.id,
     contaId: conta.id,
     envKey: `T${sufixo.replaceAll("-", "").slice(0, 20).toUpperCase()}`,
-    ambiente: "sandbox",
+    ambiente: "producao",
   });
   const lancar = (extra: Record<string, unknown> = {}) =>
     salvarLancamentoIntegrado(ctx, {
+      chave: randomUUID(),
       empresaId: empresa.id,
       pessoaId: pessoa.id,
       categoriaId: plano.id,
@@ -235,6 +236,7 @@ test("lançamento restrito é invisível na lista, busca, detalhe e baixa do ope
   await assert.rejects(
     f.lancar.call(null, { restritoMaster: true }).then(() =>
       salvarLancamentoIntegrado(f.operador, {
+        chave: randomUUID(),
         empresaId: f.empresa.id,
         pessoaId: f.pessoa.id,
         categoriaId: f.plano.id,
@@ -258,6 +260,7 @@ test("outra unidade ou organização não pode acessar nem usar referências fin
   await assert.rejects(detalheFinanceiro(outro.ctx, a.id));
   await assert.rejects(
     salvarLancamentoIntegrado(outro.ctx, {
+      chave: randomUUID(),
       empresaId: f.empresa.id,
       categoriaId: f.plano.id,
       direcao: "PAGAR",
@@ -366,7 +369,7 @@ test("sandbox e produção da mesma empresa mantêm integrações distintas", as
     empresaId: f.empresa.id,
     contaId: f.conta.id,
     envKey: `P${randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
-    ambiente: "producao",
+    ambiente: "sandbox",
   });
   assert.notEqual(producao.id, f.integracao.id);
   assert.equal((await consultarFinanceiro(f.ctx)).integracoes.length, 2);
@@ -375,7 +378,7 @@ test("sandbox e produção da mesma empresa mantêm integrações distintas", as
       empresaId: f.empresa.id,
       contaId: f.conta.id,
       envKey: `P${randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
-      ambiente: "producao",
+      ambiente: "sandbox",
     }),
   );
 });

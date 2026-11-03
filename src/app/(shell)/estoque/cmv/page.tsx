@@ -72,7 +72,17 @@ export default async function PaginaCmv({
   // Sem escolha explícita, as duas mais recentes — o caso comum é "como foi a
   // última semana", e ninguém deveria precisar clicar para ver isso.
   const finalId = ate ?? contagens[0].id;
-  const inicialId = de ?? contagens[1].id;
+  const pontaFinal = contagens.find((c) => c.id === finalId);
+  const inicialId =
+    de ??
+    contagens.find(
+      (c) =>
+        c.id !== finalId &&
+        c.local?.id === pontaFinal?.local?.id &&
+        pontaFinal &&
+        c.referencia < pontaFinal.referencia,
+    )?.id ??
+    "";
 
   let resultado: Awaited<ReturnType<typeof calcularCmvDoPeriodo>> | null = null;
   let erro: string | null = null;

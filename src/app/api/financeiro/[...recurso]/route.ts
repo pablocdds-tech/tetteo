@@ -3,6 +3,11 @@ import { z } from "zod";
 import { obterContexto } from "@/core/sessao/contexto";
 import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 import {
+  consultarRecebimentosPdv,
+  salvarRecebimentosPdv,
+  processarRecebimentosPdv,
+} from "@/modules/financeiro/services/recebimentos-pdv";
+import {
   baixarIntegrado,
   cancelarIntegrado,
   consultarFinanceiro,
@@ -41,6 +46,8 @@ export async function GET(
   if (!ctx) return resposta({ erro: "Entre no sistema." }, 401);
   try {
     const { recurso } = await params;
+    if (recurso.length === 1 && recurso[0] === "recebimentos-pdv")
+      return resposta(await consultarRecebimentosPdv(ctx));
     if (!(
       (recurso.length === 1 && recurso[0] === "base") ||
       (recurso.length === 2 && recurso[0] === "lancamentos")
@@ -124,6 +131,10 @@ export async function POST(
     if (recurso.length !== 1)
       return resposta({ erro: "Rota não encontrada." }, 404);
     switch (recurso[0]) {
+      case "recebimentos-pdv":
+        return resposta(await salvarRecebimentosPdv(ctx, d));
+      case "processar-recebimentos-pdv":
+        return resposta(await processarRecebimentosPdv(ctx));
       case "lancamentos":
         return resposta(await salvarLancamentoIntegrado(ctx, d));
       case "pessoas":

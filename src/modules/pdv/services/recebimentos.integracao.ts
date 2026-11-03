@@ -202,6 +202,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
     "hash legado sem flag default confirma depois de fechar",
   );
   const cancelamento = await cancelarVenda(ctx, {
+    destinoEstoque: "DEVOLVER",
     vendaId: cancelarPendenteId,
     versaoFinanceira: 1,
     motivo: "Pendente não retirado",
@@ -210,6 +211,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   assert.equal(
     (
       await cancelarVenda(ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId: cancelarPendenteId,
         versaoFinanceira: 1,
         motivo: "Mesmo cancelamento",
@@ -221,6 +223,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   await assert.rejects(
     () =>
       cancelarVenda(ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId: pagaId,
         versaoFinanceira: 1,
         motivo: "Legado pago fechado",
@@ -337,6 +340,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   await assert.rejects(
     () =>
       cancelarVenda(ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId: pendenteId,
         versaoFinanceira: 1,
         motivo: "Cancelamento antigo",
@@ -346,6 +350,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   assert.equal(
     (
       await cancelarVenda(ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId: pendenteId,
         versaoFinanceira: 2,
         motivo: "Pagamento devolvido manualmente",
@@ -356,6 +361,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   assert.equal(
     (
       await cancelarVenda(ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId: pendenteId,
         versaoFinanceira: 2,
         motivo: "Mesmo cancelamento",
@@ -414,6 +420,7 @@ test("pendente baixa uma vez, recebe snapshot em outro caixa, cancela corretamen
   await assert.rejects(
     () =>
       cancelarVenda(ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId: fechadoId,
         versaoFinanceira: 2,
         motivo: "Recebimento já encerrado",

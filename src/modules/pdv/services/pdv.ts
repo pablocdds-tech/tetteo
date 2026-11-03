@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
+import { publicarFatoFinanceiroPdv } from "@/server/recebimentos-pdv";
 import type {
   CaixaPdv,
   DadosPdv,
@@ -233,13 +234,26 @@ async function caixaAberto(tx: Transacao, escopo: Escopo, id: string) {
 export async function movimentarCaixa(ctx: ContextoSessao, entrada: unknown) {
   const escopo = await exigirEscopo(ctx, "pdv.caixa");
   const dados = esquemaMovimento.parse(entrada);
+  const assinatura = createHash("sha256")
+    .update(JSON.stringify(dados))
+    .digest("hex");
   await db.$transaction(async (tx) => {
     await travarUnidade(tx, escopo);
+    const anterior = await tx.pdvMovimentoCaixa.findUnique({
+      where: {
+        organizacaoId_unidadeId_chave: { ...escopo, chave: dados.chave },
+      },
+    });
+    if (anterior) {
+      if (anterior.assinatura !== assinatura)
+        throw new ErroPdv("Chave já utilizada com outros dados de movimento.");
+      return;
+    }
     const caixa = await caixaAberto(tx, escopo, dados.caixaId);
     if (dados.tipo === "SANGRIA" && dados.valorCentavos > saldoCaixa(caixa))
       throw new ErroPdv("A sangria supera o saldo esperado em dinheiro.");
     const movimento = await tx.pdvMovimentoCaixa.create({
-      data: { ...escopo, ...dados, usuarioId: ctx.usuario.id },
+      data: { ...escopo, ...dados, assinatura, usuarioId: ctx.usuario.id },
     });
     await auditar(
       tx,
@@ -566,6 +580,14 @@ export async function finalizarVenda(ctx: ContextoSessao, entrada: unknown) {
           consumo: json(consumo),
         },
       });
+      if (venda.status === "CONCLUIDA")
+        await publicarFatoFinanceiroPdv(
+          tx,
+          escopo,
+          venda.id,
+          "pdv.recebimento_registrado",
+          ctx.usuario.id,
+        );
       // O número é apenas visual; autorização e rotas continuam usando id aleatório.
       // A trava da unidade já adquirida serializa a sequência junto da venda.
       const ultimoPedido = await tx.pdvPedido.aggregate({
@@ -712,7 +734,12 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
           throw new ErroPdv(
             "Este pedido mudou em outra tela. Atualize o quadro antes de continuar.",
           );
-        return { devolucaoPagamento };
+        return {
+          devolucaoPagamento,
+          estoqueDevolvido:
+            venda.destinoEstoqueCancelamento === "DEVOLVER" ||
+            venda.destinoEstoqueCancelamento === null,
+        };
       }
       if (
         dados.versaoFinanceira !== undefined &&
@@ -734,25 +761,37 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
         throw new ErroPdv(
           "O caixa do recebimento desta venda já foi fechado. O cancelamento exige um fluxo de devolução posterior.",
         );
+      const estoqueDevolvido = dados.destinoEstoque === "DEVOLVER";
+      if (
+        estoqueDevolvido &&
+        pedido &&
+        ["AGUARDANDO_COLETA", "SAIU_ENTREGA", "ENTREGUE"].includes(
+          pedido.status,
+        )
+      )
+        throw new ErroPdv(
+          "Pedido já preparado: ingredientes não podem voltar ao estoque. Mantenha o consumo como perda.",
+        );
       const consumo = venda.consumo as ConsumoPdv[];
       for (const c of consumo) {
-        await tx.posicaoEstoque.upsert({
-          where: {
-            localId_insumoId: {
+        if (estoqueDevolvido)
+          await tx.posicaoEstoque.upsert({
+            where: {
+              localId_insumoId: {
+                localId: venda.caixa.localEstoqueId,
+                insumoId: c.insumoId,
+              },
+            },
+            update: {
+              quantidade: { increment: new Prisma.Decimal(c.quantidade) },
+            },
+            create: {
+              unidadeId: escopo.unidadeId,
               localId: venda.caixa.localEstoqueId,
               insumoId: c.insumoId,
+              quantidade: c.quantidade,
             },
-          },
-          update: {
-            quantidade: { increment: new Prisma.Decimal(c.quantidade) },
-          },
-          create: {
-            unidadeId: escopo.unidadeId,
-            localId: venda.caixa.localEstoqueId,
-            insumoId: c.insumoId,
-            quantidade: c.quantidade,
-          },
-        });
+          });
         await tx.movimentoEstoque.create({
           data: {
             unidadeId: escopo.unidadeId,
@@ -765,6 +804,19 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
             registradoPorId: ctx.usuario.id,
           },
         });
+        if (!estoqueDevolvido)
+          await tx.movimentoEstoque.create({
+            data: {
+              unidadeId: escopo.unidadeId,
+              localId: venda.caixa.localEstoqueId,
+              insumoId: c.insumoId,
+              tipo: "PERDA",
+              quantidade: c.quantidade,
+              custoUnitario: c.custoUnitario,
+              motivo: `Produção cancelada PDV ${venda.id}: ${dados.motivo}`,
+              registradoPorId: ctx.usuario.id,
+            },
+          });
       }
       await tx.pdvVenda.update({
         where: { id: venda.id },
@@ -773,6 +825,7 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
           canceladaEm: new Date(),
           canceladaPorId: ctx.usuario.id,
           motivoCancelamento: dados.motivo,
+          destinoEstoqueCancelamento: dados.destinoEstoque,
           versaoFinanceira: { increment: 1 },
         },
       });
@@ -807,6 +860,7 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
             status: "CANCELADO",
             versao: pedido.versao + 1,
             motivo: dados.motivo,
+            destinoEstoque: dados.destinoEstoque,
           },
         );
       }
@@ -821,11 +875,19 @@ export async function cancelarVenda(ctx: ContextoSessao, entrada: unknown) {
         {
           status: "CANCELADA",
           motivo: dados.motivo,
+          destinoEstoque: dados.destinoEstoque,
           versaoFinanceira: venda.versaoFinanceira + 1,
           devolucaoPagamento,
         },
       );
-      return { devolucaoPagamento };
+      await publicarFatoFinanceiroPdv(
+        tx,
+        escopo,
+        venda.id,
+        "pdv.venda_cancelada",
+        ctx.usuario.id,
+      );
+      return { devolucaoPagamento, estoqueDevolvido };
     },
     { timeout: 20_000 },
   );

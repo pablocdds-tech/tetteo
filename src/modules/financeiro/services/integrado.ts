@@ -1,3 +1,5 @@
+import { pagamentosAgregados } from "./pagamentos-agregados";
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
@@ -195,9 +197,9 @@ export async function consultarFinanceiro(
       ...(filtro.direcao ? { direcao: filtro.direcao } : {}),
       ...(filtro.status ? { status: filtro.status } : {}),
       ...(filtro.empresaId ? { empresaId: filtro.empresaId } : {}),
-      ...(filtro.de || filtro.ate
+      ...((filtro.de || filtro.ate) && filtro.baseData !== "pagamento"
         ? {
-            vencimento: {
+            [filtro.baseData]: {
               ...(filtro.de ? { gte: dataBancaria(filtro.de) } : {}),
               ...(filtro.ate
                 ? {
@@ -256,7 +258,11 @@ export async function consultarFinanceiro(
           })
         : [],
       tx.pendenciaInter.findMany({
-        where: { ...base, status: "pendente" },
+        where: {
+          ...base,
+          status: "pendente",
+          integracao: { ambiente: "producao" },
+        },
         orderBy: { data: "desc" },
         take: 200,
       }),
@@ -266,18 +272,7 @@ export async function consultarFinanceiro(
       }),
       tx.lancamento.groupBy({
         by: ["direcao", "status", "composeDre", "categoriaId"],
-        where: {
-          unidadeId,
-          ...visivel(ctx),
-          ...(filtro.de || filtro.ate
-            ? {
-                competencia: {
-                  ...(filtro.de ? { gte: dataBancaria(filtro.de) } : {}),
-                  ...(filtro.ate ? { lte: dataBancaria(filtro.ate) } : {}),
-                },
-              }
-            : {}),
-        },
+        where,
         _sum: {
           valor: true,
           desconto: true,
@@ -286,15 +281,10 @@ export async function consultarFinanceiro(
           valorQuitado: true,
         },
       }),
-      tx.baixaFinanceira.findMany({
-        where: { ...base, estornadoEm: null, lancamento: visivel(ctx) },
-        include: { lancamento: { select: { direcao: true } } },
-      }),
+      pagamentosAgregados(tx, base, { unidadeId, ...visivel(ctx) }),
       tx.lancamento.findMany({
         where: {
-          unidadeId,
-          status: "QUITADO",
-          ...visivel(ctx),
+          AND: [where, { status: "QUITADO" }],
           baixas: { none: {} },
         },
         select: {
@@ -308,11 +298,12 @@ export async function consultarFinanceiro(
         ? tx.transferenciaFinanceira.findMany({ where: { unidadeId } })
         : [],
     ]);
+    const pagamentosDoFiltro = await pagamentosAgregados(tx, base, where);
     const fluxo = { entradas: 0n, saidas: 0n };
     const dentro = (data: Date) =>
       (!filtro.de || data.toISOString().slice(0, 10) >= filtro.de) &&
       (!filtro.ate || data.toISOString().slice(0, 10) <= filtro.ate);
-    for (const b of baixas)
+    for (const b of pagamentosDoFiltro)
       if (dentro(b.dataPagamento))
         fluxo[b.lancamento.direcao === "RECEBER" ? "entradas" : "saidas"] +=
           centavos(b.valor);
@@ -327,6 +318,20 @@ export async function consultarFinanceiro(
         select: { fusoHorario: true },
       })
     ).fusoHorario;
+    const antigasSaldo = await tx.lancamento.findMany({
+      where: {
+        unidadeId,
+        status: "QUITADO",
+        ...visivel(ctx),
+        baixas: { none: {} },
+      },
+      select: {
+        contaId: true,
+        direcao: true,
+        valorQuitado: true,
+        quitadoEm: true,
+      },
+    });
     const hojeSaldo = diaNoFuso(new Date(), fuso);
     const saldos = contas.map((c) => {
       const corte = diaNoFuso(c.iniciadaEm, fuso);
@@ -339,7 +344,7 @@ export async function consultarFinanceiro(
         if (b.contaId === c.id && noSaldo(b.dataPagamento))
           saldo +=
             centavos(b.valor) * (b.lancamento.direcao === "RECEBER" ? 1n : -1n);
-      for (const l of antigas)
+      for (const l of antigasSaldo)
         if (l.contaId === c.id && l.quitadoEm && noSaldo(l.quitadoEm))
           saldo +=
             centavos(l.valorQuitado ?? 0) *
@@ -364,7 +369,7 @@ export async function consultarFinanceiro(
     return {
       saldoSemConta: ctx.ehDiretor
         ? reais(
-            antigas
+            antigasSaldo
               .filter(
                 (l) => !l.contaId && l.quitadoEm && l.quitadoEm <= new Date(),
               )
@@ -433,11 +438,27 @@ export async function salvarLancamentoIntegrado(
   entrada: unknown,
 ) {
   const dados = lancamentoIntegrado.parse(entrada);
+  if (!dados.id && !dados.chave)
+    throw new Error("Atualize a tela para obter uma chave de cadastro.");
+  const { chave, ...corpo } = dados;
+  const assinatura = createHash("sha256")
+    .update(JSON.stringify(corpo))
+    .digest("hex");
   return transacaoFinanceira(
     ctx,
     "financeiro.lancar",
     async (tx, unidadeId) => {
       if (dados.restritoMaster) exigirDiretor(ctx);
+      if (!dados.id && chave) {
+        const anterior = await tx.lancamento.findUnique({
+          where: { unidadeId_chaveCriacao: { unidadeId, chaveCriacao: chave } },
+        });
+        if (anterior) {
+          if (anterior.assinaturaCriacao !== assinatura)
+            throw new Error("Esta chave já foi usada com outros dados.");
+          return { id: anterior.id };
+        }
+      }
       await empresa(tx, ctx, unidadeId, dados.empresaId);
       const plano = await tx.categoriaFinanceira.findFirst({
         where: {
@@ -486,7 +507,7 @@ export async function salvarLancamentoIntegrado(
         throw new Error(
           "Lançamento mudou ou já tem baixas. Atualize a tela; estorne antes de editar.",
         );
-      const { id, versao, ...campos } = dados;
+      const { id, versao, ...campos } = corpo;
       void versao;
       const data = {
         ...campos,
@@ -497,7 +518,13 @@ export async function salvarLancamentoIntegrado(
       const salvo = id
         ? await tx.lancamento.update({ where: { id }, data })
         : await tx.lancamento.create({
-            data: { ...data, unidadeId, criadoPorId: ctx.usuario.id },
+            data: {
+              ...data,
+              unidadeId,
+              criadoPorId: ctx.usuario.id,
+              chaveCriacao: chave,
+              assinaturaCriacao: assinatura,
+            },
           });
       await auditar(tx, ctx, "Lancamento", salvo.id, antes, salvo);
       return { id: salvo.id };
@@ -655,12 +682,13 @@ export async function salvarIntegracaoInter(
   });
 }
 
-async function registrarBaixa(
+export async function registrarBaixa(
   tx: Tx,
   ctx: ContextoSessao,
   u: string,
   dados: z.infer<typeof baixaIntegrada>,
   interId?: string,
+  origem: "manual" | "pdv" = "manual",
 ) {
   const anterior = await tx.baixaFinanceira.findUnique({
     where: { chave: dados.chave },
@@ -696,7 +724,7 @@ async function registrarBaixa(
       ...dados,
       ...escopo(ctx, u),
       dataPagamento: dataBancaria(dados.dataPagamento),
-      origem: interId ? "inter" : "manual",
+      origem: interId ? "inter" : origem,
       interTransacaoId: interId,
       criadoPorId: ctx.usuario.id,
     },
@@ -888,6 +916,44 @@ async function candidatos(
     empresaId,
   );
 }
+/** Avalia o extrato sem escrever em lançamentos, baixas ou pendências. */
+export async function simularExtratoInter(
+  ctx: ContextoSessao,
+  id: string,
+  transacoes: TransacaoBancaria[],
+) {
+  exigirDiretor(ctx);
+  return transacaoFinanceira(ctx, "financeiro.ver", async (tx, u) => {
+    const i = await tx.integracaoInter.findFirst({
+      where: { id, ...escopo(ctx, u), ativa: true },
+    });
+    if (!i) throw new Error("Integração indisponível.");
+    const vistos = new Set<string>(),
+      usados = new Set<string>();
+    let correspondencias = 0,
+      ambiguas = 0,
+      semCorrespondencia = 0;
+    for (const t of transacoes) {
+      if (vistos.has(t.id)) continue;
+      vistos.add(t.id);
+      const lista = (await candidatos(tx, ctx, u, t, i.empresaId)).filter(
+        (c) => !usados.has(c.id),
+      );
+      if (lista.length === 1) {
+        correspondencias++;
+        usados.add(lista[0].id);
+      } else if (lista.length > 1) ambiguas++;
+      else semCorrespondencia++;
+    }
+    return {
+      simulacao: true,
+      correspondencias,
+      ambiguas,
+      semCorrespondencia,
+      mensagem: `Simulação: ${correspondencias} correspondências, ${ambiguas} ambíguas e ${semCorrespondencia} sem lançamento. Nenhuma baixa ou pendência foi gravada.`,
+    };
+  });
+}
 export async function processarExtratoInter(
   ctx: ContextoSessao,
   id: string,
@@ -909,6 +975,10 @@ export async function processarExtratoInter(
           where: { id, ...escopo(ctx, u), ativa: true },
         });
         if (!i) throw new Error("Integração indisponível.");
+        if (i.ambiente !== "producao")
+          throw new Error(
+            "Sandbox permite somente simulação, sem baixas ou pendências operacionais.",
+          );
         if (
           (await tx.baixaFinanceira.count({
             where: { interTransacaoId: t.id },
@@ -987,6 +1057,13 @@ export async function resolverPendenciasInter(
         include: { integracao: true },
       });
       if (!p) throw new Error("Pendência não encontrada ou já resolvida.");
+      if (
+        p.integracao.ambiente !== "producao" &&
+        ["vincular", "reavaliar"].includes(d.acao)
+      )
+        throw new Error(
+          "Sandbox só permite simulação, sem baixar lançamentos reais.",
+        );
       if (d.acao === "ignorar" || d.acao === "excluir") {
         await tx.pendenciaInter.update({
           where: { id },

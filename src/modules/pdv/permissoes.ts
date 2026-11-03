@@ -12,7 +12,10 @@ export const PERMISSOES_PDV = [
   },
   { chave: "pdv.caixa", descricao: "Abrir, movimentar e fechar caixa" },
   { chave: "pdv.desconto", descricao: "Conceder descontos nas vendas" },
-  { chave: "pdv.cancelar", descricao: "Cancelar vendas e estornar estoque" },
+  {
+    chave: "pdv.cancelar",
+    descricao: "Cancelar vendas e registrar destino do estoque",
+  },
   {
     chave: "pdv.configurar",
     descricao: "Configurar produtos, complementos e áreas de entrega",

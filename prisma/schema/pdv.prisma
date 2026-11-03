@@ -42,8 +42,11 @@ model PdvMovimentoCaixa {
   tipo String
   valorCentavos Int
   motivo String
+  chave String?
+  assinatura String?
   usuarioId String
   criadoEm DateTime @default(now())
+  @@unique([organizacaoId, unidadeId, chave])
   @@index([caixaId, criadoEm])
   @@map("pdv_movimento_caixa")
 }
@@ -85,6 +88,7 @@ model PdvVenda {
   canceladaEm DateTime?
   canceladaPorId String?
   motivoCancelamento String?
+  destinoEstoqueCancelamento String?
   pedido PdvPedido?
   @@unique([organizacaoId, unidadeId, chave])
   @@unique([organizacaoId, unidadeId, id], map: "pdv_venda_escopo_id_key")

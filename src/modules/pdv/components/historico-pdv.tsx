@@ -1,5 +1,6 @@
 "use client";
 
+import { DestinoEstoqueCancelamento } from "./destino-estoque-cancelamento";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -453,6 +454,9 @@ function DetalheVenda({
   const router = useRouter();
   const [cancelando, setCancelando] = useState(false);
   const [motivo, setMotivo] = useState("");
+  const [destinoEstoque, setDestinoEstoque] = useState<"PERDA" | "DEVOLVER">(
+    "PERDA",
+  );
   const [erro, setErro] = useState("");
   const [pendente, iniciar] = useTransition();
   function cancelar(evento: React.FormEvent<HTMLFormElement>) {
@@ -465,6 +469,7 @@ function DetalheVenda({
           vendaId: venda.id,
           versaoFinanceira: venda.versaoFinanceira ?? 1,
           motivo: motivo.trim(),
+          destinoEstoque,
         });
         if (resultado.erro) setErro(resultado.erro);
         else {
@@ -507,7 +512,13 @@ function DetalheVenda({
               </Botao>
             </>
           ) : (
-            <Botao peso="secundario" onClick={() => setCancelando(true)}>
+            <Botao
+              peso="secundario"
+              onClick={() => {
+                setDestinoEstoque("PERDA");
+                setCancelando(true);
+              }}
+            >
               Cancelar venda
             </Botao>
           )
@@ -666,12 +677,17 @@ function DetalheVenda({
           >
             <h3 className="font-semibold">Cancelar esta venda</h3>
             <p className="text-ink-3 text-sm">
-              O cancelamento preserva o histórico e estorna o consumo de
-              estoque.
+              O cancelamento preserva o histórico e registra o destino dos
+              ingredientes.
               {venda.pagamentos.length
                 ? " A devolução de dinheiro ou estorno da operadora deve ser realizado separadamente."
                 : " Nenhum pagamento foi registrado; não haverá devolução de dinheiro."}
             </p>
+            <DestinoEstoqueCancelamento
+              valor={destinoEstoque}
+              mudar={setDestinoEstoque}
+              disabled={pendente}
+            />
             <Campo
               rotulo="Motivo do cancelamento"
               value={motivo}

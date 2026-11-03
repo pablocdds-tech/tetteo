@@ -288,11 +288,19 @@ async function postarNota(tx: Tx, notaId: string, usuarioId: string) {
     SELECT "id" FROM "insumo" WHERE "id" IN (${Prisma.join(insumoIds)})
     ORDER BY "id" FOR NO KEY UPDATE`;
 
-  // O saldo atual de cada insumo na unidade INTEIRA: a média ponderada é do
-  // insumo, não do lugar. O mesmo queijo não tem dois custos por estar em
-  // duas geladeiras.
+  // Catálogo e custo médio são da organização, então a base inclui todas
+  // as unidades; posições são travadas para preservar o peso da média.
+  // O custo é compartilhado pela organização; a ponderação usa toda a rede.
+  const organizacao = await tx.unidade.findUniqueOrThrow({
+    where: { id: nota.unidadeId },
+    select: { organizacaoId: true },
+  });
+  await tx.$queryRaw`SELECT p.id FROM posicao_estoque p JOIN insumo i ON i.id=p."insumoId" WHERE i."organizacaoId"=${organizacao.organizacaoId} AND p."insumoId" IN (${Prisma.join(insumoIds)}) ORDER BY p."insumoId",p."localId" FOR UPDATE OF p`;
   const posicoes = await tx.posicaoEstoque.findMany({
-    where: { unidadeId: nota.unidadeId, insumoId: { in: insumoIds } },
+    where: {
+      insumo: { organizacaoId: organizacao.organizacaoId },
+      insumoId: { in: insumoIds },
+    },
     select: { insumoId: true, quantidade: true, localId: true },
   });
   const insumos = await tx.insumo.findMany({

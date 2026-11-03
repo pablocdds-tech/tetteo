@@ -275,7 +275,13 @@ export function FinanceiroIntegrado({
             ? `${json.baixadasAutomatico} baixas automáticas; ${json.manuaisAmbiguas} ambíguas; ${json.semCorrespondencia} sem lançamento; ${json.jaConciliadas} já processadas.`
             : "Operação concluída."),
       );
-      await carregar();
+      try {
+        await carregar();
+      } catch {
+        setErro(
+          "Operação salva. Não foi possível atualizar a lista; atualize a página para conferir.",
+        );
+      }
       return true;
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Operação indisponível.");
@@ -317,6 +323,7 @@ export function FinanceiroIntegrado({
     conciliacao: "Conciliação Inter",
     transferencias: "Transferências",
     contas: "Empresas e contas",
+    "recebimentos-pdv": "Recebimentos do PDV",
     dre: "Resultado por competência",
     fluxo: "Fluxo de caixa",
     relatorios: "Relatórios",
@@ -390,6 +397,7 @@ export function FinanceiroIntegrado({
           ["pessoas", "Pessoas"],
           ["planos", "Plano de contas"],
           ["contas", "Contas"],
+          ...(p.diretor ? [["recebimentos-pdv", "Recebimentos do PDV"]] : []),
           ["transferencias", "Transferências"],
           ["centros", "Centros de custo"],
           ...(p.diretor ? [["integracoes", "Inter"]] : []),
@@ -446,7 +454,7 @@ export function FinanceiroIntegrado({
               setSelecionado(null);
               setOcupado(true);
               try {
-                await carregar({ ...d, pagina: 1 });
+                await carregar({ ...dados.filtro, ...d, pagina: 1 });
               } catch (e) {
                 setErro(
                   e instanceof Error ? e.message : "Não foi possível filtrar.",
@@ -953,7 +961,9 @@ export function FinanceiroIntegrado({
                       onClick={() => {
                         if (
                           window.confirm(
-                            `Sincronizar ${x.empresa.nome} (${x.ambiente})? Transações compatíveis darão baixa em lançamentos existentes.`,
+                            x.ambiente === "sandbox"
+                              ? `Simular o extrato de ${x.empresa.nome}? Nenhum lançamento, baixa ou pendência será alterado.`
+                              : `Sincronizar ${x.empresa.nome} (${x.ambiente})? Transações compatíveis darão baixa em lançamentos existentes.`,
                           )
                         )
                           void executar(
@@ -962,7 +972,9 @@ export function FinanceiroIntegrado({
                           );
                       }}
                     >
-                      Sincronizar agora
+                      {x.ambiente === "sandbox"
+                        ? "Simular extrato"
+                        : "Sincronizar agora"}
                     </button>
                     <button
                       className={botao}
@@ -1150,6 +1162,7 @@ export function FinanceiroIntegrado({
           )}
         </>
       )}
+      {secao === "recebimentos-pdv" && children}
       {secao === "contas" && (
         <>
           <Tabela colunas={["Conta", "Empresa", "Tipo", "Saldo do sistema"]}>
@@ -1181,7 +1194,7 @@ export function FinanceiroIntegrado({
               e.preventDefault();
               const d = Object.fromEntries(new FormData(e.currentTarget));
               try {
-                await carregar({ ...d, pagina: 1 });
+                await carregar({ ...dados.filtro, ...d, pagina: 1 });
               } catch (e) {
                 setErro(e instanceof Error ? e.message : "Falha ao filtrar.");
               }
@@ -1483,6 +1496,7 @@ function FormLancamento({
   edicao: Record<string, unknown> | null;
   salvar: (d: Record<string, unknown>) => Promise<boolean>;
 }) {
+  const [chave] = useState(() => crypto.randomUUID());
   const [pessoaId, setPessoaId] = useState(String(edicao?.pessoaId ?? ""));
   const [operacao, setOperacao] = useState(String(edicao?.direcao ?? "PAGAR"));
   const [plano, setPlano] = useState(String(edicao?.categoriaId ?? ""));
@@ -1592,6 +1606,7 @@ function FormLancamento({
         salvar({
           ...d,
           id: edicao?.id ?? null,
+          ...(!edicao?.id ? { chave } : {}),
           versao: edicao?.versao ?? 0,
           pessoaId,
           categoriaId: plano,

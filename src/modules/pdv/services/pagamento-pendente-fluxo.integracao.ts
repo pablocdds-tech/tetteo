@@ -383,11 +383,12 @@ test("pendente consome uma vez, recebe em outro caixa/local e cancela com estoqu
     localEstoqueId: f.localB.id,
   });
   await cancelarVenda(f.ctx, {
+    destinoEstoque: "PERDA",
     vendaId: semReceberId,
     versaoFinanceira: 1,
     motivo: "Pendente não recebido cancelado",
   });
-  assert.equal(await f.saldo(), 7);
+  assert.equal(await f.saldo(), 6);
   assert.equal(await f.cash(), 500);
   await db.fichaTecnica.update({
     where: { id: f.ficha.id },
@@ -470,7 +471,7 @@ test("pendente consome uma vez, recebe em outro caixa/local e cancela com estoqu
   );
   assert.deepEqual(recebida.consumo, original.consumo);
   assert.deepEqual(recebida.itens, original.itens);
-  assert.equal(await f.saldo(), 7);
+  assert.equal(await f.saldo(), 6);
   assert.equal(await f.saldo(f.localB.id), 20);
   assert.equal(await f.cash(), 2000);
   assert.equal(
@@ -490,6 +491,7 @@ test("pendente consome uma vez, recebe em outro caixa/local e cancela com estoqu
   await assert.rejects(
     () =>
       cancelarVenda(f.ctx, {
+        destinoEstoque: "DEVOLVER",
         vendaId,
         versaoFinanceira: 1,
         motivo: "Versão financeira antiga",
@@ -497,14 +499,15 @@ test("pendente consome uma vez, recebe em outro caixa/local e cancela com estoqu
     /mudou|versão|recebid/i,
   );
   await cancelarVenda(f.ctx, {
+    destinoEstoque: "DEVOLVER",
     vendaId,
     versaoFinanceira: 2,
     motivo: "Cancelamento após recebimento em outro caixa",
   });
   assert.equal(
     await f.saldo(),
-    9,
-    "somente a venda imediata permanece consumida",
+    8,
+    "venda imediata e perda do pedido entregue permanecem consumidas",
   );
   assert.equal(await f.saldo(f.localB.id), 20);
   assert.equal(await f.cash(), 500);
@@ -524,7 +527,7 @@ test("pendente consome uma vez, recebe em outro caixa/local e cancela com estoqu
     vendaId,
     "retry após fechamento recupera a confirmação original",
   );
-  assert.equal(await f.saldo(), 9);
+  assert.equal(await f.saldo(), 8);
   const auditorias = await db.auditoria.findMany({
     where: { organizacaoId: f.org.id },
     select: { valoresAntes: true, valoresDepois: true },
@@ -611,6 +614,7 @@ test("receber e cancelar a mesma versão não podem confirmar duas alterações 
   const [receber, cancelar] = await Promise.allSettled([
     receberPedido(f.ctx, pagamento),
     cancelarVenda(f.ctx, {
+      destinoEstoque: "DEVOLVER",
       vendaId,
       versaoFinanceira: 1,
       motivo: "Cancelamento concorrente fictício",
@@ -626,6 +630,7 @@ test("receber e cancelar a mesma versão não podem confirmar duas alterações 
     assert.equal(await f.saldo(), 9);
     assert.equal(await f.cash(), 2000);
     await cancelarVenda(f.ctx, {
+      destinoEstoque: "DEVOLVER",
       vendaId,
       versaoFinanceira: venda.versaoFinanceira,
       motivo: "Encerramento da corrida fictícia",
@@ -636,6 +641,7 @@ test("receber e cancelar a mesma versão não podem confirmar duas alterações 
     assert.equal(await f.saldo(), 10);
     assert.equal(await f.cash(), 1000);
     await cancelarVenda(f.ctx, {
+      destinoEstoque: "DEVOLVER",
       vendaId,
       versaoFinanceira: 1,
       motivo: "Retry sem duplicar estorno",
@@ -682,6 +688,7 @@ test("recebimento concorrente com fechamento fica integralmente no fechamento ou
     await assert.rejects(
       () =>
         cancelarVenda(f.ctx, {
+          destinoEstoque: "DEVOLVER",
           vendaId,
           versaoFinanceira: venda.versaoFinanceira,
           motivo: "Caixa que recebeu fechado",
