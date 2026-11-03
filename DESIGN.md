@@ -1,5 +1,26 @@
 # Design do Tetteo
 
+## Atendimento virtual — 02/11/2026
+
+O atendimento do CRM usa as prévias ilustrativas Kairu como referência de fluxo:
+lista de conversas à esquerda, mensagens no centro e contexto mínimo à direita.
+A marca, os tokens Aurora e a fonte do sistema são preservados: paper #f2f3f5,
+surface #fdfdfe, ink #202124, ink-3 #646870 e accent #0066cc. Avisos e pendências
+usam os semânticos existentes, com texto além da cor. Nada de valores financeiros
+ou notas internas no contexto do atendimento.
+
+A faixa de pausa aparece diretamente sobre o histórico com responsável e prazo.
+Assumir atendimento antecede a resposta manual; reconhecimento de uma escalação
+e aceitação do alerta pelo canal ficam separados. Filtros, busca, contagens e
+paginação consultam o servidor. A seleção nunca mostra contexto da conversa
+anterior enquanto outra está carregando. No tablet o contexto desce; no celular,
+a lista ocupa a primeira faixa e o histórico vem em seguida, com alvos de 44 px.
+
+Inbox, escalações e saúde da operação compartilham navegação curta e a indicação
+permanente de demonstração. O simulador aceita somente mensagens fictícias e não
+oferece campo de destinatário real. Créditos Kairu deixam explícito que as prévias
+e os exemplos não comprovam uma integração de WhatsApp ou entrega real.
+
 ## Financeiro integrado — 30/10/2026
 
 A nova navegação substitui o financeiro anterior por lançamentos unificados,

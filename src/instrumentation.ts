@@ -7,14 +7,17 @@ export async function register() {
       { iniciarWorkerCw },
       { iniciarRelogioAgendamentos },
       { iniciarRelogioPedidosRecebidos },
+      { startVirtualWorker },
     ] = await Promise.all([
       import("./connectors/cardapioweb/worker"),
       import("./modules/pdv/services/agendamentos-worker"),
       import("./modules/pdv/services/pedidos-recebidos"),
+      import("./modules/crm/services/virtual-worker"),
     ]);
     iniciarWorkerCw();
     iniciarRelogioAgendamentos();
     iniciarRelogioPedidosRecebidos();
+    startVirtualWorker();
   }
   if (
     process.env.NEXT_RUNTIME === "nodejs" &&

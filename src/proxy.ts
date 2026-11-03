@@ -97,9 +97,11 @@ export default async function proxy(
  * `api/cardapioweb/callback` — valida sessão, state e cookie na própria rota.
  * `api/cardapioweb/webhook` — valida token e vínculo da loja antes de gravar.
  *                      As exceções são exatas; outros caminhos exigem login.
+ * `api/atendimento/webhook` — ensaio assinado HMAC, somente destinatários demo:.
+ *                      Desativado sem segredo próprio; não é webhook WhatsApp.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|api/cardapioweb/(?:callback|webhook)$|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|api/cardapioweb/(?:callback|webhook)$|api/atendimento/webhook$|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
   ],
 };

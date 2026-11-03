@@ -30,6 +30,7 @@ model CrmSale {
 }
 
 model CrmContact {
+  virtualReservations AvReservation[]
   id             String              @id @default(uuid())
   storeId        String
   store          Unidade             @relation(fields: [storeId], references: [id], onDelete: Restrict)

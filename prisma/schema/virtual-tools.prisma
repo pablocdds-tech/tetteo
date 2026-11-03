@@ -1,0 +1,88 @@
+// Atendimento ao cliente: fatos aprovados e reservas. Nunca usa o canal da equipe.
+model AvKnowledgeVersion {
+  id             String   @id @default(uuid())
+  organizationId String
+  storeId        String
+  accountId      String
+  account        AvChannelAccount @relation(fields: [organizationId, storeId, accountId], references: [organizationId, storeId, id], onDelete: Restrict)
+  version        Int
+  status         String   @default("DRAFT")
+  authorId       String
+  approvedById   String?
+  approvedAt     DateTime?
+  validFrom      DateTime
+  validUntil     DateTime
+  facts          Json
+  createdAt      DateTime @default(now())
+
+  @@unique([accountId, version])
+  @@index([organizationId, storeId, accountId, status, validUntil])
+  @@map("av_knowledge_version")
+}
+
+model AvReservationSlot {
+  id             String @id @default(uuid())
+  organizationId String
+  storeId        String
+  accountId      String
+  account        AvChannelAccount @relation(fields: [organizationId, storeId, accountId], references: [organizationId, storeId, id], onDelete: Restrict)
+  date           String @db.VarChar(10)
+  time           String @db.VarChar(5)
+  capacity       Int
+  enabled        Boolean @default(true)
+  version        Int @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  reservations   AvReservation[]
+
+  @@unique([accountId, date, time])
+  @@unique([organizationId, storeId, accountId, id])
+  @@index([organizationId, storeId, accountId, date, enabled])
+  @@map("av_reservation_slot")
+}
+
+model AvReservation {
+  id                 String @id @default(uuid())
+  organizationId     String
+  storeId            String
+  accountId          String
+  conversationId     String
+  conversation       AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  contactId          String?
+  contact            CrmContact? @relation(fields: [storeId, contactId], references: [storeId, id], onDelete: Restrict)
+  account            AvChannelAccount @relation(fields: [organizationId, storeId, accountId], references: [organizationId, storeId, id], onDelete: Restrict)
+  externalCustomerId String
+  slotId             String
+  slot               AvReservationSlot @relation(fields: [organizationId, storeId, accountId, slotId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  guestName          String
+  partySize          Int
+  status             String @default("CONFIRMED")
+  idempotencyKey     String
+  payloadHash        String
+  version            Int @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([accountId, idempotencyKey])
+  @@index([organizationId, storeId, accountId, conversationId, status])
+  @@index([slotId, status])
+  @@map("av_reservation")
+}
+
+model AvCustomerPreference {
+  id                 String @id @default(uuid())
+  organizationId     String
+  storeId            String
+  accountId          String
+  account            AvChannelAccount @relation(fields: [organizationId, storeId, accountId], references: [organizationId, storeId, id], onDelete: Restrict)
+  externalCustomerId String
+  contactId          String?
+  key                String
+  value              String
+  source             String @default("CUSTOMER")
+  updatedAt          DateTime @updatedAt
+
+  @@unique([accountId, externalCustomerId, key])
+  @@index([organizationId, storeId, accountId, contactId])
+  @@map("av_customer_preference")
+}

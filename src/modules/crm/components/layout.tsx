@@ -11,13 +11,19 @@ export default function CrmLayout({ children }: { children: React.ReactNode }) {
       <nav className={styles.tabs} aria-label="Áreas do CRM">
         {[
           ["/crm", "Contatos"],
+          ["/crm/atendimento", "Atendimento virtual"],
           ["/crm/publicos", "Públicos"],
           ["/crm/campanhas", "Campanhas e resultados"],
         ].map(([href, label]) => (
           <Link
             key={href}
             href={href}
-            aria-current={pathname === href ? "page" : undefined}
+            aria-current={
+              pathname === href ||
+              (href === "/crm/atendimento" && pathname.startsWith(`${href}/`))
+                ? "page"
+                : undefined
+            }
           >
             {label}
           </Link>

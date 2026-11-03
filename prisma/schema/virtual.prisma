@@ -1,0 +1,242 @@
+// Atendimento externo: separado dos avisos internos da Severina.
+model AvChannelAccount {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  store Unidade @relation(fields: [organizationId, storeId], references: [organizacaoId, id], onDelete: Restrict)
+  name String
+  mode String @default("DEMO")
+  active Boolean @default(true)
+  timezone String @default("America/Sao_Paulo")
+  debounceMs Int @default(1500)
+  maxWaitMs Int @default(8000)
+  notificationUserId String?
+  maxTurnTokens Int @default(4000)
+  maxTurnCostMicros Int @default(100000)
+  dailyBudgetMicros Int @default(5000000)
+  circuitUntil DateTime?
+  lastWebhookAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  conversations AvConversation[]
+  events AvInboundEvent[]
+  knowledgeVersions AvKnowledgeVersion[]
+  reservationSlots AvReservationSlot[]
+  customerPreferences AvCustomerPreference[]
+  reservations AvReservation[]
+  @@unique([organizationId, storeId, mode])
+  @@unique([organizationId, storeId, id])
+}
+
+model AvInboundEvent {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  account AvChannelAccount @relation(fields: [organizationId, storeId, accountId], references: [organizationId, storeId, id], onDelete: Restrict)
+  externalId String
+  type String
+  senderKey String
+  payload Json
+  status String @default("RECEIVED")
+  attempts Int @default(0)
+  error String?
+  receivedAt DateTime @default(now())
+  processedAt DateTime?
+  @@unique([accountId, externalId])
+  @@index([organizationId, storeId, status, receivedAt])
+}
+
+model AvConversation {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  account AvChannelAccount @relation(fields: [organizationId, storeId, accountId], references: [organizationId, storeId, id], onDelete: Restrict)
+  externalCustomerId String
+  contactId String?
+  displayName String
+  status String @default("OPEN")
+  version Int @default(1)
+  assignedToId String?
+  agentEnabled Boolean @default(true)
+  optedOut Boolean @default(false)
+  state Json @default("{}")
+  summary String?
+  pendingSince DateTime?
+  processAfter DateTime?
+  leaseOwner String?
+  leaseUntil DateTime?
+  attempts Int @default(0)
+  lastError String?
+  lastMessageAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages AvMessage[]
+  runs AvAgentRun[]
+  outbox AvMessageOutbox[]
+  pauses AvAgentPause[]
+  escalations AvEscalation[]
+  tools AvToolExecution[]
+  reservations AvReservation[]
+  @@unique([accountId, externalCustomerId])
+  @@unique([organizationId, storeId, accountId, id])
+  @@index([organizationId, storeId, status, lastMessageAt])
+  @@index([agentEnabled, processAfter, leaseUntil])
+}
+
+model AvMessage {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  conversationId String
+  conversation AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  externalId String?
+  direction String
+  author String
+  text String
+  kind String @default("TEXT")
+  transcriptionCertain Boolean @default(true)
+  actorId String?
+  sequence Int @default(autoincrement())
+  createdAt DateTime @default(now())
+  processedAt DateTime?
+  @@unique([accountId, externalId])
+  @@index([conversationId, sequence])
+}
+
+model AvAgentRun {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  conversationId String
+  conversation AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  version Int
+  status String @default("RUNNING")
+  leaseOwner String
+  model String @default("DEMO_RULES")
+  tokens Int @default(0)
+  costMicros Int @default(0)
+  latencyMs Int @default(0)
+  error String?
+  createdAt DateTime @default(now())
+  completedAt DateTime?
+  @@index([organizationId, storeId, createdAt])
+  @@index([conversationId, status])
+}
+
+model AvToolExecution {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  conversationId String
+  conversation AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  runId String
+  key String
+  name String
+  argsHash String
+  success Boolean
+  objectId String?
+  state String?
+  result Json
+  createdAt DateTime @default(now())
+  @@unique([conversationId, key])
+  @@index([runId, createdAt])
+}
+
+model AvMessageOutbox {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  conversationId String
+  conversation AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  runId String?
+  requestId String
+  version Int
+  author String @default("AGENT")
+  actorId String?
+  text String
+  claims Json @default("[]")
+  state String @default("PENDING")
+  providerId String?
+  attempts Int @default(0)
+  leaseOwner String?
+  leaseUntil DateTime?
+  error String?
+  createdAt DateTime @default(now())
+  acceptedAt DateTime?
+  deliveredAt DateTime?
+  @@unique([conversationId, requestId])
+  @@unique([accountId, providerId])
+  @@index([state, createdAt])
+}
+
+model AvAgentPause {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  conversationId String
+  conversation AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  actorId String
+  reason String
+  until DateTime?
+  resumedAt DateTime?
+  resumedById String?
+  summary String?
+  createdAt DateTime @default(now())
+  @@index([conversationId, resumedAt, until])
+}
+
+model AvEscalation {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  conversationId String
+  conversation AvConversation @relation(fields: [organizationId, storeId, accountId, conversationId], references: [organizationId, storeId, accountId, id], onDelete: Restrict)
+  key String
+  reason String
+  excerpt String
+  status String @default("OPEN")
+  assignedToId String?
+  acknowledgedAt DateTime?
+  acknowledgedById String?
+  resolvedAt DateTime?
+  alertState String @default("PENDING")
+  notificationId String?
+  alertAttempts Int @default(0)
+  alertError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([conversationId, key])
+  @@index([organizationId, storeId, status, updatedAt])
+}
+
+model AvAuditEvent {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  conversationId String?
+  actorId String
+  action String
+  data Json @default("{}")
+  createdAt DateTime @default(now())
+  @@index([organizationId, storeId, createdAt])
+}
+
+model AvOperatorRequest {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  conversationId String
+  actorId String
+  requestId String
+  hash String
+  createdAt DateTime @default(now())
+  @@unique([conversationId, requestId])
+}
