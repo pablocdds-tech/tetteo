@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
+import { useVirtualAccount } from "../client/virtual-channel-context";
 import type { VirtualHealth } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
 import styles from "./virtual.module.css";
@@ -17,25 +18,35 @@ const money = (micros: number) =>
 
 export default function VirtualHealthPage() {
   const { selectedStoreId: storeId } = useAuth();
+  const {
+    selectedAccountId: accountId,
+    account,
+    refreshAccounts,
+  } = useVirtualAccount();
   const [data, setData] = useState<{
     storeId: string;
+    accountId: string;
     health: VirtualHealth;
   } | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const health = data?.storeId === storeId ? data.health : null;
+  const health =
+    data?.storeId === storeId && data.accountId === accountId
+      ? data.health
+      : null;
   const engine = health?.engine;
   useEffect(() => {
+    if (!accountId) return;
     let alive = true;
     const refresh = () => {
       if (document.hidden) return;
       void api
         .get<VirtualHealth>(
-          `/api/crm/virtual/health?storeId=${encodeURIComponent(storeId)}`,
+          `/api/crm/virtual/health?${new URLSearchParams({ storeId, accountId })}`,
         )
         .then((result) => {
           if (alive) {
-            setData({ storeId, health: result });
+            setData({ storeId, accountId, health: result });
             setError("");
           }
         })
@@ -54,7 +65,7 @@ export default function VirtualHealthPage() {
       alive = false;
       clearInterval(timer);
     };
-  }, [storeId, revision]);
+  }, [storeId, accountId, revision]);
 
   const metrics = health
     ? [
@@ -96,7 +107,10 @@ export default function VirtualHealthPage() {
       <VirtualHeader section="saude">
         <button
           className="btn"
-          onClick={() => setRevision((value) => value + 1)}
+          onClick={() => {
+            setRevision((value) => value + 1);
+            refreshAccounts();
+          }}
         >
           Atualizar
         </button>
@@ -108,7 +122,9 @@ export default function VirtualHealthPage() {
       )}
       {!health && !error && (
         <p className={styles.empty} role="status">
-          Consultando a operação…
+          {accountId
+            ? "Consultando a operação…"
+            : "Selecione ou configure uma conta de canal para acompanhar a operação."}
         </p>
       )}
       {health && (
@@ -122,13 +138,18 @@ export default function VirtualHealthPage() {
                 {health.circuitUntil
                   ? "Proteção automática acionada"
                   : health.active
-                    ? "Canal local ativo"
-                    : "Demonstração não iniciada"}
+                    ? "Conta ativada"
+                    : "Conta pausada"}
               </span>
             </div>
             <p>
-              <strong>Canal:</strong> demonstração local. Nenhum WhatsApp está
-              conectado a este atendimento.
+              <strong>Canal:</strong>{" "}
+              {account?.provider === "DEMO"
+                ? "demonstração local, sem destinatário real"
+                : account?.provider === "META"
+                  ? "Meta WhatsApp Business Platform"
+                  : "Evolution"}
+              .
             </p>
             <p>
               <strong>Processamento:</strong>{" "}
@@ -150,7 +171,7 @@ export default function VirtualHealthPage() {
                 .{" "}
                 <Link
                   className={styles.textLink}
-                  href="/crm/atendimento/conexoes"
+                  href="/assistente/configuracao#gemini"
                 >
                   Ver conexões
                 </Link>
@@ -199,10 +220,19 @@ export default function VirtualHealthPage() {
           <section className={styles.panel}>
             <h2>Conexão de produção</h2>
             <p>
-              O atendimento usa somente o adaptador de demonstração. A conexão
-              Evolution existente atende outros fluxos e continua separada. A
-              ativação de WhatsApp exige conta configurada, documentação do
-              provedor e teste autorizado; esta tela não habilita envios reais.
+              Cada conta possui verificação, webhook e teste de entrega
+              próprios. Configure as contas em{" "}
+              <Link className={styles.textLink} href="/assistente/evolution">
+                Chips Evolution
+              </Link>{" "}
+              ou{" "}
+              <Link
+                className={styles.textLink}
+                href="/assistente/meta-whatsapp"
+              >
+                Meta WhatsApp
+              </Link>
+              . A conexão usada pelos avisos da equipe continua separada.
             </p>
           </section>
         </>

@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
+import { useVirtualAccount } from "../client/virtual-channel-context";
 import type {
   VirtualConversationDetail,
   VirtualEscalation,
@@ -11,6 +12,7 @@ import type {
   VirtualStatus,
 } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
+import VirtualCustomerBinding from "./virtual-customer-binding";
 import styles from "./virtual.module.css";
 
 const LABELS: Record<VirtualStatus, string> = {
@@ -144,7 +146,25 @@ export default function VirtualInbox({
 }: {
   escalations?: boolean;
 }) {
+  const { selectedAccountId } = useVirtualAccount();
+  return (
+    <VirtualInboxForAccount
+      key={selectedAccountId}
+      escalations={escalations}
+      accountId={selectedAccountId}
+    />
+  );
+}
+
+function VirtualInboxForAccount({
+  escalations,
+  accountId,
+}: {
+  escalations: boolean;
+  accountId: string;
+}) {
   const { selectedStoreId: storeId, user, can } = useAuth();
+  const { refreshAccounts, setSelectedAccountId } = useVirtualAccount();
   const editable = can("CRM", "EDIT");
   const [status, setStatus] = useState<VirtualStatus | "">("");
   const [searchDraft, setSearchDraft] = useState("");
@@ -184,7 +204,7 @@ export default function VirtualInbox({
     setEscalationToResolve("");
     setNotice("");
   }, []);
-  const listKey = `${storeId}:${status}:${search}:${page}:${escalations}`;
+  const listKey = `${storeId}:${accountId}:${status}:${search}:${page}:${escalations}`;
   const currentList = list?.key === listKey ? list.data : null;
   const activeId = currentList?.items.some((item) => item.id === selected)
     ? selected
@@ -224,8 +244,14 @@ export default function VirtualInbox({
   }, []);
 
   useEffect(() => {
+    if (!accountId) return;
     let alive = true;
-    const query = new URLSearchParams({ storeId, search, page: String(page) });
+    const query = new URLSearchParams({
+      storeId,
+      accountId,
+      search,
+      page: String(page),
+    });
     if (status) query.set("status", status);
     if (escalations) query.set("escalationOnly", "true");
     void api
@@ -244,7 +270,17 @@ export default function VirtualInbox({
     return () => {
       alive = false;
     };
-  }, [storeId, search, page, status, escalations, listKey, revision, choose]);
+  }, [
+    storeId,
+    accountId,
+    search,
+    page,
+    status,
+    escalations,
+    listKey,
+    revision,
+    choose,
+  ]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -318,11 +354,18 @@ export default function VirtualInbox({
     setError("");
     setNotice("");
     try {
-      await api.post("/api/crm/virtual/demo", {
-        storeId,
-        requestId: crypto.randomUUID(),
-        ...(text && activeId ? { conversationId: activeId, text } : {}),
-      });
+      const result = await api.post<{ accountId?: string }>(
+        "/api/crm/virtual/demo",
+        {
+          storeId,
+          requestId: crypto.randomUUID(),
+          ...(text && activeId ? { conversationId: activeId, text } : {}),
+        },
+      );
+      if (!text) {
+        if (result.accountId) setSelectedAccountId(result.accountId);
+        refreshAccounts();
+      }
       setSimulation("");
       setNotice(
         text
@@ -352,6 +395,15 @@ export default function VirtualInbox({
           </button>
         )}
       </VirtualHeader>
+      {conversation?.demo && (
+        <div className={styles.demo} style={{ marginTop: 16 }}>
+          <strong>Conversa de demonstração</strong>
+          <span>
+            Mensagens fictícias no canal local. Nenhum destinatário real recebe
+            estes envios.
+          </span>
+        </div>
+      )}
       {error && (
         <div className={styles.error} role="alert">
           {error}{" "}
@@ -421,7 +473,12 @@ export default function VirtualInbox({
             className={styles.conversationList}
             aria-busy={!currentList && !error}
           >
-            {!currentList && !error && (
+            {!accountId && (
+              <p className={styles.empty}>
+                Configure uma conta ou prepare exemplos fictícios para começar.
+              </p>
+            )}
+            {accountId && !currentList && !error && (
               <p className={styles.empty}>Carregando conversas…</p>
             )}
             {currentList?.items.map((item) => (
@@ -679,41 +736,43 @@ export default function VirtualInbox({
                           </small>
                         </div>
                       </form>
-                      <details open className={styles.simulator}>
-                        <summary>
-                          Testar como cliente · mensagem fictícia
-                        </summary>
-                        <p>
-                          A mensagem entra na mesma fila durável. Use apenas
-                          conteúdo fictício.
-                        </p>
-                        <form
-                          onSubmit={(event) => {
-                            event.preventDefault();
-                            void demo(simulation);
-                          }}
-                        >
-                          <label htmlFor="virtual-simulation">
-                            Mensagem fictícia
-                            <textarea
-                              id="virtual-simulation"
-                              value={simulation}
-                              onChange={(event) =>
-                                setSimulation(event.target.value)
-                              }
-                              placeholder="Ex.: amanhã às 19h, quatro pessoas"
-                              maxLength={4000}
-                            />
-                          </label>
-                          <button
-                            className="btn"
-                            disabled={busy || !simulation.trim()}
-                            style={{ marginTop: 12 }}
+                      {conversation?.demo && (
+                        <details open className={styles.simulator}>
+                          <summary>
+                            Testar como cliente · mensagem fictícia
+                          </summary>
+                          <p>
+                            A mensagem entra na mesma fila durável. Use apenas
+                            conteúdo fictício.
+                          </p>
+                          <form
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void demo(simulation);
+                            }}
                           >
-                            Receber mensagem fictícia
-                          </button>
-                        </form>
-                      </details>
+                            <label htmlFor="virtual-simulation">
+                              Mensagem fictícia
+                              <textarea
+                                id="virtual-simulation"
+                                value={simulation}
+                                onChange={(event) =>
+                                  setSimulation(event.target.value)
+                                }
+                                placeholder="Ex.: amanhã às 19h, quatro pessoas"
+                                maxLength={4000}
+                              />
+                            </label>
+                            <button
+                              className="btn"
+                              disabled={busy || !simulation.trim()}
+                              style={{ marginTop: 12 }}
+                            >
+                              Receber mensagem fictícia
+                            </button>
+                          </form>
+                        </details>
+                      )}
                     </>
                   )}
                 </div>
@@ -754,6 +813,17 @@ export default function VirtualInbox({
                         )}
                       </ul>
                     )}
+                    {user.role === "MANAGER" &&
+                      !currentDetail.customer.known &&
+                      conversation &&
+                      !conversation.demo && (
+                        <VirtualCustomerBinding
+                          key={conversation.id}
+                          conversationId={conversation.id}
+                          version={conversation.version}
+                          onBound={() => setRevision((value) => value + 1)}
+                        />
+                      )}
                   </section>
                   <section>
                     <h3>Reservas</h3>

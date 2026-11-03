@@ -508,7 +508,7 @@ test("limite de turno interrompe sem sucesso falso e sem enviar conteúdo vazio"
   assert.equal(
     (await db.avAgentRun.findFirstOrThrow({ where: { conversationId: id } }))
       .error,
-    "TURN_LIMIT",
+    "EMPTY_RESPONSE",
   );
   assert.equal(
     await db.avEscalation.count({ where: { conversationId: id } }),
@@ -956,7 +956,7 @@ test("teto de custo abre pendência antes de executar o agente", async () => {
   );
 });
 
-test("banco recusa modo real e referências compostas incoerentes mesmo fora do serviço", async () => {
+test("banco recusa modo desconhecido e referências compostas incoerentes mesmo fora do serviço", async () => {
   const f = await fixture();
   const other = await fixture();
   await assert.rejects(

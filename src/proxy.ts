@@ -99,9 +99,11 @@ export default async function proxy(
  *                      As exceções são exatas; outros caminhos exigem login.
  * `api/atendimento/webhook` — ensaio assinado HMAC, somente destinatários demo:.
  *                      Desativado sem segredo próprio; não é webhook WhatsApp.
+ * `api/atendimento/meta|evolution/<UUID>` — somente os webhooks autenticados
+ *                      de contas configuradas; outras rotas continuam privadas.
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|api/cardapioweb/(?:callback|webhook)$|api/atendimento/webhook$|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
+    "/((?!api/auth|api/severina|api/whatsapp|api/compras/tick|api/assistente-privado/registros|api/saipos/maquina(?:/|$)|api/cardapioweb/(?:callback|webhook)$|api/atendimento/webhook$|api/atendimento/(?:meta|evolution)/[0-9a-fA-F-]{36}$|fornecedor/|_next/static|_next/image|favicon.ico|login(?:/|$)|recuperar-senha(?:/|$)|redefinir-senha(?:/|$)|sobre$|privacidade$|termos$).*)",
   ],
 };

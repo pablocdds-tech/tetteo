@@ -1,1 +1,5 @@
-export { default } from "@/modules/crm/components/virtual-connections";
+import { redirect } from "next/navigation";
+
+export default function ConexoesLegadas() {
+  redirect("/assistente/configuracao#gemini");
+}

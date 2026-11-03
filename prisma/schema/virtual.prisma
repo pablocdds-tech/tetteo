@@ -24,7 +24,10 @@ model AvChannelAccount {
   reservationSlots AvReservationSlot[]
   customerPreferences AvCustomerPreference[]
   reservations AvReservation[]
-  @@unique([organizationId, storeId, mode])
+  connection AvChannelConnection?
+  channelTests AvChannelTest[]
+  serviceWindows AvChannelWindow[]
+  @@index([organizationId, storeId, mode])
   @@unique([organizationId, storeId, id])
 }
 

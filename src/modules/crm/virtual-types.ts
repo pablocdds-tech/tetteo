@@ -92,7 +92,7 @@ export type VirtualConversationDetail = {
 };
 export type VirtualHealth = {
   engine?: VirtualModelStatus;
-  demo: true;
+  demo: boolean;
   accountName: string;
   active: boolean;
   lastWebhookAt: string | null;
@@ -133,6 +133,7 @@ export type VirtualTurnInput = {
     text: string;
     kind: string;
     transcriptionCertain: boolean;
+    occurredAt?: string;
   }[];
   limits: { maxTokens: number; maxCostMicros: number; timeoutMs: number };
   now: Date;

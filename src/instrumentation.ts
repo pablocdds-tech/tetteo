@@ -17,7 +17,9 @@ export async function register() {
     iniciarWorkerCw();
     iniciarRelogioAgendamentos();
     iniciarRelogioPedidosRecebidos();
-    startVirtualWorker();
+    const { channelFor } =
+      await import("./app/api/atendimento/_costura/providers");
+    startVirtualWorker(channelFor);
   }
   if (
     process.env.NEXT_RUNTIME === "nodejs" &&

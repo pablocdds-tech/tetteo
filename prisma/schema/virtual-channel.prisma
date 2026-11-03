@@ -1,0 +1,94 @@
+model AvChannelConnection {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String @unique
+  account AvChannelAccount @relation(fields:[organizationId,storeId,accountId],references:[organizationId,storeId,id],onDelete:Restrict)
+  revision Int @default(1)
+  encryptedCredentials String
+  settings Json
+  bindingKey String @unique
+  connectionState String @default("PENDING")
+  verifiedRevision Int?
+  verifiedAt DateTime?
+  lastError String?
+  webhookSeenAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([organizationId,storeId,accountId])
+  @@unique([organizationId,storeId,accountId,id])
+  @@map("av_channel_connection")
+}
+
+model AvChannelTest {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  account AvChannelAccount @relation(fields:[organizationId,storeId,accountId],references:[organizationId,storeId,id],onDelete:Restrict)
+  revision Int
+  actorId String
+  requestId String
+  encryptedRecipient String
+  recipientHash String
+  state String @default("SENDING")
+  providerId String?
+  error String?
+  observedAt DateTime?
+  observedById String?
+  acceptedAt DateTime?
+  deliveredAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([accountId,requestId])
+  @@unique([accountId,providerId])
+  @@index([organizationId,storeId,accountId,createdAt])
+  @@map("av_channel_test")
+}
+
+model AvChannelWindow {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String
+  account AvChannelAccount @relation(fields:[organizationId,storeId,accountId],references:[organizationId,storeId,id],onDelete:Restrict)
+  recipientHash String
+  lastInboundAt DateTime
+  @@unique([accountId,recipientHash])
+  @@map("av_channel_window")
+}
+
+model AvBookingCapacity {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  store Unidade @relation(fields:[organizationId,storeId],references:[organizacaoId,id],onDelete:Restrict)
+  date String @db.VarChar(10)
+  time String @db.VarChar(5)
+  capacity Int
+  enabled Boolean @default(true)
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+  @@unique([organizationId,storeId,date,time])
+  @@map("av_booking_capacity")
+}
+
+model AvAgentPolicy {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  store Unidade @relation(fields:[organizationId,storeId],references:[organizacaoId,id],onDelete:Restrict)
+  version Int
+  status String @default("DRAFT")
+  authorId String
+  approvedById String?
+  approvedAt DateTime?
+  instructions String
+  tone String
+  greeting String
+  fallbackMessage String
+  createdAt DateTime @default(now())
+  @@unique([organizationId,storeId,version])
+  @@index([organizationId,storeId,status,version])
+  @@map("av_agent_policy")
+}

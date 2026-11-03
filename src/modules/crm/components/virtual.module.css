@@ -14,6 +14,17 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+.channelBar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 16px 0;
+}
+.channelBar label {
+  min-width: 240px;
+  max-width: 100%;
+}
 .heading {
   align-items: flex-start;
   margin-bottom: 20px;
@@ -397,6 +408,12 @@
   gap: 16px;
   margin: 20px 0;
 }
+.overviewGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
 .healthMetric {
   border: 1px solid var(--line);
   background: var(--surface);
@@ -484,6 +501,35 @@
   color: var(--ink-2);
   line-height: 1.6;
 }
+.accountCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 12px;
+}
+.accountCard {
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface);
+  padding: 16px;
+  color: var(--ink);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.accountCard[aria-pressed="true"] {
+  background: var(--accent-sub);
+  border-color: var(--accent);
+}
+.callbackUrl {
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 12px 0;
+  background: var(--surface-2);
+}
 .fields {
   display: grid;
   gap: 16px;
@@ -521,6 +567,9 @@
   .healthGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .overviewGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (max-width: 640px) {
   .page {
@@ -541,6 +590,7 @@
     align-items: center;
   }
   .healthGrid,
+  .overviewGrid,
   .context,
   .fields {
     grid-template-columns: minmax(0, 1fr);

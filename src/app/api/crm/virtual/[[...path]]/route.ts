@@ -22,6 +22,20 @@ import {
   virtualSettings,
   changeVirtualSettings,
 } from "@/modules/crm/services/virtual-settings";
+import {
+  virtualChannels,
+  changeVirtualChannel,
+} from "@/modules/crm/services/virtual-channels";
+import {
+  virtualPolicy,
+  changeVirtualPolicy,
+} from "@/modules/crm/services/virtual-policy";
+import { virtualQuality } from "@/modules/crm/services/virtual-quality";
+import { bindVirtualCustomer } from "@/modules/crm/services/virtual-identity";
+import {
+  managementFor,
+  channelFor,
+} from "@/app/api/atendimento/_costura/providers";
 
 export const runtime = "nodejs";
 const json = (value: unknown, status = 200) =>
@@ -76,6 +90,36 @@ async function handle(
     if (requested !== undefined && requested !== storeId)
       return json({ error: "A unidade mudou. Atualize a tela." }, 403);
     const { path = [] } = await params;
+    const accountId =
+      query.accountId === undefined
+        ? undefined
+        : z.string().uuid().parse(query.accountId);
+    if (path.length === 1 && path[0] === "channels")
+      return json(
+        writing
+          ? await changeVirtualChannel(context, body, managementFor)
+          : await virtualChannels(context, storeId),
+      );
+    if (path.length === 1 && path[0] === "policy")
+      return json(
+        writing
+          ? await changeVirtualPolicy(context, body)
+          : await virtualPolicy(context, storeId),
+      );
+    if (path.length === 1 && path[0] === "quality" && !writing)
+      return json(
+        await virtualQuality(
+          context,
+          storeId,
+          accountId,
+          z.coerce
+            .number()
+            .pipe(z.union([z.literal(7), z.literal(30), z.literal(90)]))
+            .parse(query.periodDays ?? 30),
+        ),
+      );
+    if (path.length === 1 && path[0] === "bind-customer" && writing)
+      return json(await bindVirtualCustomer(context, body));
     if (path.length === 1 && path[0] === "model")
       return json(
         writing
@@ -85,25 +129,25 @@ async function handle(
     if (!path.length && !writing)
       return json(await listVirtualInbox(context, { ...query, storeId }));
     if (path.length === 1 && path[0] === "health" && !writing)
-      return json(await getVirtualHealth(context, storeId));
+      return json(await getVirtualHealth(context, storeId, accountId));
     if (path.length === 1 && path[0] === "knowledge")
       return json(
         writing
           ? await changeVirtualKnowledge(context, body)
-          : await virtualKnowledge(context, storeId),
+          : await virtualKnowledge(context, storeId, accountId),
       );
     if (path.length === 1 && path[0] === "settings")
       return json(
         writing
           ? await changeVirtualSettings(context, body)
-          : await virtualSettings(context, storeId),
+          : await virtualSettings(context, storeId, accountId),
       );
     if (path.length === 1 && path[0] === "demo" && writing)
       return json(await simulateVirtualMessage(context, body), 202);
     if (path.length === 1 && z.string().uuid().safeParse(path[0]).success)
       return json(
         writing
-          ? await actOnVirtualConversation(context, path[0], body)
+          ? await actOnVirtualConversation(context, path[0], body, channelFor)
           : await getVirtualConversation(context, storeId, path[0]),
       );
     return json({ error: "Operação de atendimento não encontrada." }, 404);

@@ -1,5 +1,5 @@
-import VirtualInbox from "@/modules/crm/components/virtual-inbox";
+import { redirect } from "next/navigation";
 
 export default function EscalacoesPage() {
-  return <VirtualInbox escalations />;
+  redirect("/assistente/escalacoes");
 }

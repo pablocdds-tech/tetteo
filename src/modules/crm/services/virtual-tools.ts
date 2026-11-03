@@ -2,6 +2,11 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import {
+  bookingCapacityLock,
+  bookedPartySize,
+  sharedBookingSlot,
+} from "@/server/atendimento-reservas";
 import type { VirtualTurnInput, VirtualClaim } from "../virtual-types";
 import { canonicalHash, CrmError } from "./campaign-domain";
 import {
@@ -62,7 +67,8 @@ export const pendingReservationSchema = z
     partySize: z.number().int().min(1).max(50),
     guestName: z.string().min(2).max(160),
     reservationId: z.string().uuid().optional(),
-    expiresAt: z.string(),
+    expiresAt: z.iso.datetime(),
+    createdAt: z.iso.datetime().optional(),
   })
   .strict();
 export const virtualStateSchema = z
@@ -101,6 +107,7 @@ async function slotAvailability(
   time: string,
   partySize: number,
   excludeId?: string,
+  createAccountSlot = false,
 ) {
   const now = new Date();
   const today = dateInZone(now, input.timezone);
@@ -112,22 +119,19 @@ async function slotAvailability(
   }).format(now);
   if (date < today || (date === today && time <= localTime))
     return fail("Escolha uma data e um horário futuros no fuso da unidade.");
-  const slot = await tx.avReservationSlot.findFirst({
-    where: { ...scopeOf(input), date, time, enabled: true },
-  });
+  const slot = await sharedBookingSlot(
+    tx,
+    scopeOf(input),
+    date,
+    time,
+    createAccountSlot,
+  );
   if (!slot)
     return fail(
       "Não há grade de reserva publicada para esse horário. A equipe precisa conferir.",
     );
-  const used = await tx.avReservation.aggregate({
-    where: {
-      slotId: slot.id,
-      status: "CONFIRMED",
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
-    _sum: { partySize: true },
-  });
-  const remaining = slot.capacity - (used._sum.partySize ?? 0);
+  const used = await bookedPartySize(tx, scopeOf(input), date, time, excludeId);
+  const remaining = slot.capacity - used;
   return {
     success: true,
     id: slot.id,
@@ -169,6 +173,23 @@ async function reserve(
     return fail(
       "A ação precisa de uma confirmação explícita do resumo atual. Nenhuma reserva foi alterada.",
     );
+  const summaryCreatedAt = pending.createdAt
+    ? new Date(pending.createdAt).getTime()
+    : new Date(pending.expiresAt).getTime() - 10 * 60_000;
+  if (
+    input.messages.some(
+      (message) =>
+        message.occurredAt &&
+        (!Number.isFinite(new Date(message.occurredAt).getTime()) ||
+          new Date(message.occurredAt).getTime() < summaryCreatedAt - 1000),
+    )
+  )
+    return {
+      success: false,
+      state: "CONFIRMATION_OUTDATED",
+      error:
+        "A confirmação foi enviada antes do resumo atual. Confira o novo resumo e confirme novamente.",
+    };
   const scope = scopeOf(input);
   const key = `${expected}:${token}`;
   const payloadHash = canonicalHash(pending);
@@ -233,7 +254,7 @@ async function reserve(
       data: { reservationId: cancelled.id },
     };
   }
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`virtual-slot:${input.accountId}:${pending.date}:${pending.time}`},0))`;
+  await bookingCapacityLock(tx, scope, pending.date, pending.time);
   // Recheck the approved policy and capacity inside the writing transaction.
   if (!(await approvedVirtualKnowledge(tx, scope, new Date())))
     return fail("A base aprovada venceu. A equipe precisa conferir a reserva.");
@@ -244,6 +265,7 @@ async function reserve(
     pending.time,
     pending.partySize,
     old?.id,
+    true,
   );
   if (
     !available.success ||
@@ -568,11 +590,16 @@ export function claimFor(
     : [];
 }
 export function newPendingReservation(
-  data: Omit<z.infer<typeof pendingReservationSchema>, "token" | "expiresAt">,
+  data: Omit<
+    z.infer<typeof pendingReservationSchema>,
+    "token" | "expiresAt" | "createdAt"
+  >,
 ) {
+  const createdAt = new Date();
   return {
     ...data,
     token: randomUUID(),
-    expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+    createdAt: createdAt.toISOString(),
+    expiresAt: new Date(createdAt.getTime() + 10 * 60_000).toISOString(),
   };
 }

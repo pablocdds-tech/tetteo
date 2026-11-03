@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
+import { useVirtualAccount } from "../client/virtual-channel-context";
 import type { VirtualFacts } from "../services/virtual-knowledge";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
 import VirtualSettings from "./virtual-settings";
@@ -58,7 +59,41 @@ const failureText = (error: unknown) =>
     ? error.message
     : "Não foi possível salvar a configuração.";
 
-export default function VirtualKnowledgePage() {
+export default function VirtualKnowledgePage({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
+  const { selectedAccountId, account } = useVirtualAccount();
+  if (!selectedAccountId)
+    return (
+      <section className={styles.panel}>
+        <h2>Informações da conta</h2>
+        <p>
+          Configure ou selecione uma conta de canal para cadastrar a base
+          operacional.
+        </p>
+      </section>
+    );
+  return (
+    <VirtualKnowledgeForAccount
+      key={selectedAccountId}
+      embedded={embedded}
+      accountId={selectedAccountId}
+      demo={account?.provider === "DEMO"}
+    />
+  );
+}
+
+function VirtualKnowledgeForAccount({
+  embedded,
+  accountId,
+  demo,
+}: {
+  embedded: boolean;
+  accountId: string;
+  demo: boolean;
+}) {
   const { selectedStoreId: storeId, user } = useAuth();
   const manageable = user.role === "MANAGER";
   const unitName =
@@ -108,7 +143,7 @@ export default function VirtualKnowledgePage() {
     let alive = true;
     void api
       .get<Knowledge>(
-        `/api/crm/virtual/knowledge?storeId=${encodeURIComponent(storeId)}`,
+        `/api/crm/virtual/knowledge?${new URLSearchParams({ storeId, accountId })}`,
       )
       .then((result) => {
         if (alive) {
@@ -122,7 +157,7 @@ export default function VirtualKnowledgePage() {
     return () => {
       alive = false;
     };
-  }, [storeId, revision]);
+  }, [storeId, revision, accountId]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -147,7 +182,11 @@ export default function VirtualKnowledgePage() {
     setError("");
     setNotice("");
     try {
-      await api.post("/api/crm/virtual/knowledge", { storeId, ...body });
+      await api.post("/api/crm/virtual/knowledge", {
+        storeId,
+        accountId,
+        ...body,
+      });
       setNotice(message);
       setRevision((value) => value + 1);
     } catch (failure) {
@@ -170,9 +209,10 @@ export default function VirtualKnowledgePage() {
     );
   }
 
+  const Container = embedded ? "section" : "main";
   return (
-    <main className={styles.page}>
-      <VirtualHeader section="base" />
+    <Container className={embedded ? undefined : styles.page}>
+      {!embedded && <VirtualHeader section="base" />}
       {manageable && <VirtualSettings />}
       {error && (
         <p className={styles.error} role="alert">
@@ -203,8 +243,10 @@ export default function VirtualKnowledgePage() {
             <p>
               Horários, cardápio, links e regras pertencem a esta unidade.
               Alterações ficam em rascunho até uma pessoa com permissão de
-              gestão aprovar. O canal local continua sendo uma demonstração
-              mesmo ao aprovar informações.
+              gestão aprovar.{" "}
+              {demo
+                ? "O canal local continua sendo uma demonstração mesmo ao aprovar informações."
+                : "A versão aprovada será usada somente na conta selecionada."}
             </p>
             {!data.accountId && (
               <p className={styles.warning}>
@@ -952,7 +994,7 @@ export default function VirtualKnowledgePage() {
           )}
         </>
       )}
-      <VirtualCredit />
-    </main>
+      {!embedded && <VirtualCredit />}
+    </Container>
   );
 }

@@ -51,14 +51,20 @@ async function authorizedDestinations(
 export async function virtualSettings(
   context: ContextoSessao,
   storeId: string,
+  accountId?: string,
 ) {
   const scope = await authorizeVirtual(context, storeId);
   return db.$transaction(
     async (tx) => {
       const account = await tx.avChannelAccount.findFirst({
-        where: { organizationId: scope.organizationId, storeId, mode: "DEMO" },
+        where: {
+          organizationId: scope.organizationId,
+          storeId,
+          ...(accountId ? { id: accountId } : { mode: "DEMO" }),
+        },
         select: {
           id: true,
+          mode: true,
           active: true,
           debounceMs: true,
           maxWaitMs: true,
@@ -89,6 +95,7 @@ export async function virtualSettings(
 const settingsSchema = z
   .object({
     storeId: z.string().min(1).max(128),
+    accountId: z.string().uuid().optional(),
     active: z.boolean(),
     debounceMs: z.number().int().min(0).max(10000),
     maxWaitMs: z.number().int().min(250).max(60000),
@@ -120,16 +127,22 @@ export async function changeVirtualSettings(
         where: {
           organizationId: scope.organizationId,
           storeId: data.storeId,
-          mode: "DEMO",
+          ...(data.accountId ? { id: data.accountId } : { mode: "DEMO" }),
         },
       });
       if (!account)
         throw new CrmError(
           "ACCOUNT_MISSING",
-          "Inicie a demonstração antes de configurar o atendimento.",
+          "Selecione um canal desta unidade antes de configurar o atendimento.",
           409,
         );
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`av:account:${account.id}`}))`;
+      if (account.mode !== "DEMO" && data.active && !account.active)
+        throw new CrmError(
+          "CHANNEL_ACTIVATION_REQUIRED",
+          "Valide e ative o canal real pela tela de Conexões.",
+          409,
+        );
       const destinations = await authorizedDestinations(
         tx,
         scope.organizationId,
@@ -204,5 +217,5 @@ export async function changeVirtualSettings(
     },
     { timeout: 20000 },
   );
-  return virtualSettings(context, data.storeId);
+  return virtualSettings(context, data.storeId, data.accountId);
 }

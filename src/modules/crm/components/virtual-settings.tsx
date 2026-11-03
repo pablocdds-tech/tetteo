@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
+import { useVirtualAccount } from "../client/virtual-channel-context";
 import styles from "./virtual.module.css";
 
 type AccountSettings = {
@@ -26,7 +27,19 @@ type SettingsResponse = {
 };
 
 export default function VirtualSettings() {
+  const { selectedAccountId } = useVirtualAccount();
+  if (!selectedAccountId) return null;
+  return (
+    <VirtualAccountSettings
+      key={selectedAccountId}
+      accountId={selectedAccountId}
+    />
+  );
+}
+
+function VirtualAccountSettings({ accountId }: { accountId: string }) {
   const { selectedStoreId: storeId } = useAuth();
+  const { account, refreshAccounts } = useVirtualAccount();
   const [settings, setSettings] = useState<AccountSettings | null>(null);
   const [destinations, setDestinations] = useState<
     SettingsResponse["destinations"]
@@ -39,7 +52,7 @@ export default function VirtualSettings() {
     let alive = true;
     void api
       .get<SettingsResponse>(
-        `/api/crm/virtual/settings?storeId=${encodeURIComponent(storeId)}`,
+        `/api/crm/virtual/settings?${new URLSearchParams({ storeId, accountId })}`,
       )
       .then((result) => {
         if (!alive) return;
@@ -85,7 +98,7 @@ export default function VirtualSettings() {
     return () => {
       alive = false;
     };
-  }, [storeId]);
+  }, [storeId, accountId]);
 
   async function save() {
     if (!settings || busy) return;
@@ -93,8 +106,13 @@ export default function VirtualSettings() {
     setError("");
     setNotice("");
     try {
-      await api.post("/api/crm/virtual/settings", { storeId, ...settings });
-      setNotice("Configuração do canal local salva e auditada.");
+      await api.post("/api/crm/virtual/settings", {
+        storeId,
+        accountId,
+        ...settings,
+      });
+      setNotice("Configuração da conta salva e auditada.");
+      refreshAccounts();
     } catch (failure) {
       setError(
         failure instanceof Error
@@ -108,11 +126,11 @@ export default function VirtualSettings() {
 
   return (
     <section className={styles.panel}>
-      <h2>Canal local e limites de operação</h2>
+      <h2>Conta do canal e limites de operação</h2>
       <p>
-        A configuração vale somente para o atendimento de demonstração desta
-        unidade. O destino recebe notificações internas; a equipe registra o
-        reconhecimento na conversa.
+        A configuração vale para a conta selecionada desta unidade. O destino
+        recebe notificações internas; a equipe registra o reconhecimento na
+        conversa.
       </p>
       {error && (
         <p className={styles.error} role="alert">
@@ -141,23 +159,31 @@ export default function VirtualSettings() {
             className={styles.fields}
             style={{ border: 0, minWidth: 0 }}
           >
-            <label className={styles.field}>
-              Funcionamento do canal
-              <select
-                value={settings.active ? "active" : "paused"}
-                onChange={(event) =>
-                  setSettings({
-                    ...settings,
-                    active: event.target.value === "active",
-                  })
-                }
-              >
-                <option value="active">Ativo no modo demonstração</option>
-                <option value="paused">
-                  Pausar todo o atendimento deste canal
-                </option>
-              </select>
-            </label>
+            {account?.provider === "DEMO" && (
+              <label className={styles.field}>
+                Funcionamento do canal
+                <select
+                  value={settings.active ? "active" : "paused"}
+                  onChange={(event) =>
+                    setSettings({
+                      ...settings,
+                      active: event.target.value === "active",
+                    })
+                  }
+                >
+                  <option value="active">Ativo no modo demonstração</option>
+                  <option value="paused">
+                    Pausar todo o atendimento deste canal
+                  </option>
+                </select>
+              </label>
+            )}
+            {account?.provider !== "DEMO" && (
+              <p className={styles.muted}>
+                A ativação e a pausa desta conta são controladas na configuração
+                do provedor.
+              </p>
+            )}
             <label className={styles.field}>
               Pessoa que recebe os alertas
               <select

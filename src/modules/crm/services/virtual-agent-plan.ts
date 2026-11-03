@@ -30,6 +30,63 @@ export const virtualIntentSchema = z
   })
   .strict();
 export type VirtualIntent = z.infer<typeof virtualIntentSchema>;
+/** Relative dates belong to the utterance that supplied them, even after midnight. */
+export function virtualReferenceTime(
+  messages: { text: string; occurredAt?: string }[],
+  fallback: Date,
+): Date {
+  let reference: Date | null = null;
+  for (const message of messages) {
+    if (
+      !/\b(?:hoje|amanha)\b/i.test(
+        message.text.normalize("NFD").replace(/[\u0300-\u036f]/g, ""),
+      ) ||
+      !message.occurredAt
+    )
+      continue;
+    const date = new Date(message.occurredAt);
+    if (Number.isFinite(date.getTime()) && (!reference || date > reference))
+      reference = date;
+  }
+  return reference ?? fallback;
+}
+export function virtualLiteralDate(
+  messages: { text: string; occurredAt?: string }[],
+  fallback: Date,
+  timezone: string,
+): string | undefined {
+  let selected: { text: string; time: Date } | undefined;
+  for (const message of messages) {
+    const text = message.text
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    if (
+      !/\b(?:hoje|amanha)\b|\b20\d{2}-\d{2}-\d{2}\b|\b\d{1,2}\/\d{1,2}(?:\/20\d{2})?\b/.test(
+        text,
+      )
+    )
+      continue;
+    const parsed = message.occurredAt ? new Date(message.occurredAt) : fallback;
+    const time = Number.isFinite(parsed.getTime()) ? parsed : fallback;
+    if (!selected || time >= selected.time) selected = { text, time };
+  }
+  if (!selected) return undefined;
+  const matches = [
+    ...selected.text.matchAll(
+      /\b(hoje|amanha|20\d{2}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}(?:\/20\d{2})?)\b/g,
+    ),
+  ];
+  const value = matches.at(-1)?.[1];
+  if (!value) return undefined;
+  if (value === "hoje" || value === "amanha")
+    return relativeVirtualDate(value, selected.time, timezone);
+  if (value.includes("/")) {
+    const [day, month, year] = value.split("/");
+    return `${year ?? relativeVirtualDate("hoje", selected.time, timezone).slice(0, 4)}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  return value;
+}
 export function demoVirtualIntent(
   text: string,
   now: Date,
@@ -62,7 +119,7 @@ export function demoVirtualIntent(
   )
     intent = "confirm";
   const plan: VirtualIntent = { intent };
-  const relative = t.match(/\b(amanha|hoje)\b/);
+  const relative = [...t.matchAll(/\b(amanha|hoje)\b/g)].at(-1);
   const iso = t.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
   const br = t.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(20\d{2}))?\b/);
   const date = relative

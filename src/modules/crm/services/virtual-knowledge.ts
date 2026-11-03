@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import { setLiveBookingCapacity } from "@/server/atendimento-reservas";
 import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { CrmError } from "./campaign-domain";
 import { dateInZone, relativeVirtualDate, virtualDate } from "./virtual-domain";
@@ -134,10 +135,18 @@ export async function approvedVirtualKnowledge(
       }
     : null;
 }
-export async function virtualKnowledge(ctx: ContextoSessao, storeId: string) {
+export async function virtualKnowledge(
+  ctx: ContextoSessao,
+  storeId: string,
+  accountId?: string,
+) {
   await virtualAccess(ctx, storeId);
   const account = await db.avChannelAccount.findFirst({
-    where: { organizationId: ctx.organizacao.id, storeId, mode: "DEMO" },
+    where: {
+      organizationId: ctx.organizacao.id,
+      storeId,
+      ...(accountId ? { id: accountId } : { mode: "DEMO" }),
+    },
   });
   if (!account) return { accountId: null, versions: [], slots: [] };
   const scope = {
@@ -151,20 +160,31 @@ export async function virtualKnowledge(ctx: ContextoSessao, storeId: string) {
       orderBy: { version: "desc" },
       take: 30,
     }),
-    db.avReservationSlot.findMany({
-      where: {
-        ...scope,
-        date: { gte: dateInZone(new Date(), account.timezone) },
-      },
-      orderBy: [{ date: "asc" }, { time: "asc" }],
-      take: 200,
-    }),
+    account.mode === "DEMO"
+      ? db.avReservationSlot.findMany({
+          where: {
+            ...scope,
+            date: { gte: dateInZone(new Date(), account.timezone) },
+          },
+          orderBy: [{ date: "asc" }, { time: "asc" }],
+          take: 200,
+        })
+      : db.avBookingCapacity.findMany({
+          where: {
+            organizationId: ctx.organizacao.id,
+            storeId,
+            date: { gte: dateInZone(new Date(), account.timezone) },
+          },
+          orderBy: [{ date: "asc" }, { time: "asc" }],
+          take: 200,
+        }),
   ]);
-  return { accountId: account.id, versions, slots };
+  return { accountId: account.id, accountMode: account.mode, versions, slots };
 }
 const draftSchema = z
   .object({
     storeId: z.string().min(1),
+    accountId: z.string().uuid().optional(),
     action: z.literal("draft"),
     facts: virtualFactsSchema,
     validFrom: z.iso.datetime(),
@@ -174,6 +194,7 @@ const draftSchema = z
 const approvalSchema = z
   .object({
     storeId: z.string().min(1),
+    accountId: z.string().uuid().optional(),
     action: z.literal("approve"),
     versionId: z.string().uuid(),
   })
@@ -181,6 +202,7 @@ const approvalSchema = z
 const slotSchema = z
   .object({
     storeId: z.string().min(1),
+    accountId: z.string().uuid().optional(),
     action: z.literal("slot"),
     date: virtualDate,
     time,
@@ -201,13 +223,13 @@ export async function changeVirtualKnowledge(
       where: {
         organizationId: ctx.organizacao.id,
         storeId: data.storeId,
-        mode: "DEMO",
+        ...(data.accountId ? { id: data.accountId } : { mode: "DEMO" }),
       },
     });
     if (!account)
       throw new CrmError(
         "ACCOUNT_MISSING",
-        "Inicie a demonstração para configurar esta unidade.",
+        "Selecione um canal desta unidade antes de configurar a base.",
         409,
       );
     const scope = {
@@ -261,6 +283,13 @@ export async function changeVirtualKnowledge(
           approvedAt: new Date(),
           approvedById: ctx.usuario.id,
         },
+      });
+    } else if (account.mode !== "DEMO") {
+      result = await setLiveBookingCapacity(tx, scope, {
+        date: data.date,
+        time: data.time,
+        capacity: data.capacity,
+        enabled: data.enabled,
       });
     } else {
       // The same lock as creation/update: reducing capacity cannot race a booking.
@@ -321,6 +350,21 @@ export async function ensureVirtualDemoKnowledge(
   scope: VirtualScope,
   actorId: string,
 ) {
+  const demoAccount = await tx.avChannelAccount.findFirst({
+    where: {
+      id: scope.accountId,
+      organizationId: scope.organizationId,
+      storeId: scope.storeId,
+      mode: "DEMO",
+    },
+    select: { id: true },
+  });
+  if (!demoAccount)
+    throw new CrmError(
+      "DEMO_ONLY",
+      "Dados fictícios são permitidos somente no canal de demonstração.",
+      403,
+    );
   if (await tx.avKnowledgeVersion.findFirst({ where: scope })) return;
   const now = new Date();
   await tx.avKnowledgeVersion.create({

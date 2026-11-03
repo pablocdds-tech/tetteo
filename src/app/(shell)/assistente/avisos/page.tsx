@@ -90,7 +90,7 @@ export default async function PaginaAvisos({
   return (
     <div className="mx-auto w-full max-w-5xl">
       <CabecalhoDePagina
-        titulo="Avisos"
+        titulo="Feed de Disparos"
         contexto="O que vai sair pelo WhatsApp — e só sai depois que alguém confirma"
         controles={
           <FiltroPorLink
@@ -99,7 +99,7 @@ export default async function PaginaAvisos({
             opcoes={GRUPOS.map((g) => ({
               valor: g.valor,
               rotulo: g.rotulo,
-              href: `/assistente/avisos?grupo=${g.valor}`,
+              href: `/assistente/disparos?grupo=${g.valor}`,
               contagem: g.valor === "todos" ? undefined : contagens[g.valor],
             }))}
           />

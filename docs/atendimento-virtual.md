@@ -2,27 +2,33 @@
 
 ## O que foi integrado
 
-O CRM agora possui inbox, conversa com contexto mínimo, reservas, controle humano, escalações reconhecíveis e saúde da operação. Usa o login, as unidades e as permissões existentes. O primeiro canal é uma demonstração persistida no banco: conversa, fila, ferramentas, reservas fictícias, tarefas e auditoria são reais no sistema; nenhum número real recebe mensagem e nenhuma mesa da operação é bloqueada.
+O atendimento fica **dentro da Severina** e reaproveita CRM, login, unidades, reservas, notificações e permissões. Existem adaptadores separados para demonstração Kairu, Evolution e API oficial Meta. Cada conta pertence a uma organização/unidade; a mesma unidade pode ter várias contas. A demonstração continua isolada: nenhum destinatário real é aceito e nenhuma mesa real é bloqueada por ela.
 
 A composição se inspira nas prévias ilustrativas Kairu de atendimento. Os nomes, endereço, horários, item de cardápio e grade de demonstração são fictícios e identificados como tal. Não foram copiados horários, promoções, contatos ou personalidade de outra rede. As imagens de referência não comprovam atendimento real.
 
 ## Telas e permissões
 
-| Tela                   | Caminho                       | Uso                                                                       |
-| ---------------------- | ----------------------------- | ------------------------------------------------------------------------- |
-| Inbox/conversa         | `/crm/atendimento`            | Busca, filtros, paginação, contexto, mensagens e controles humanos        |
-| Escalações             | `/crm/atendimento/escalacoes` | Motivo, trecho útil, falha do alerta, reconhecimento e responsável        |
-| Saúde                  | `/crm/atendimento/saude`      | Última entrada, atraso, erros, respostas vazias, loops, tarefas e consumo |
-| Informações da unidade | `/crm/atendimento/base`       | Rascunhos, aprovação, validade, cardápio, links e grade de reservas       |
+| Tela                | Caminho                     | Uso                                                           |
+| ------------------- | --------------------------- | ------------------------------------------------------------- |
+| Overview            | `/assistente`               | Resumo da operação e acessos ao atendimento                   |
+| Inbox/conversa      | `/assistente/inbox`         | Busca, filtros, paginação, contexto e controles humanos       |
+| Escalações          | `/assistente/escalacoes`    | Falha do alerta, reconhecimento e responsável                 |
+| Feed de Disparos    | `/assistente/disparos`      | Histórico de avisos existente; não libera marketing ao agente |
+| Skills / Tom de voz | `/assistente/skills`        | Orientações de estilo com versão, rascunho e aprovação        |
+| Qualidade           | `/assistente/qualidade`     | Execuções, erros, ferramentas, latência e consumo reais       |
+| Saúde da Operação   | `/assistente/saude`         | Entrada recente, atraso, circuito e pendências                |
+| Chips Evolution     | `/assistente/evolution`     | Contas de clientes, instância, QR privado, webhook e teste    |
+| Meta WhatsApp       | `/assistente/meta-whatsapp` | Cloud API oficial, callback, teste e ativação                 |
+| Configuração        | `/assistente/configuracao`  | Gemini privado, fatos reais, grade e limites por conta        |
 
-`crm.ver` permite consultar; `crm.editar` permite operar; `crm.gerenciar` controla a base aprovada e a grade. O servidor exige a unidade ativa e não amplia acesso com IDs do navegador ou da mensagem. Cliente externo não obtém acesso ao painel por possuir o identificador do canal.
+A interface na Severina exige `assistente.ver`. `crm.ver` permite consultar; `crm.editar` permite operar; `crm.gerenciar` controla conexões, base aprovada, vínculo verificado e grade. O servidor exige a unidade ativa e não amplia acesso com IDs do navegador ou da mensagem. Cliente externo não obtém acesso ao painel por possuir o telefone. As rotas antigas do CRM redirecionam para a Severina. Avisos, agentes e números internos continuam separados.
 
 O contexto mostra nome conhecido, origem/atualização, preferências deste canal e reservas permitidas. CPF, finanças, notas internas, consentimentos de marketing e dados de terceiros não entram no contexto. A correção de nome cria um alias no canal e atualiza o rascunho da conversa; não sobrescreve silenciosamente o cadastro CRM.
 
 ## Iniciar a demonstração
 
 1. Publique a migração aditiva pelo fluxo normal do projeto e entre no sistema com uma unidade ativa.
-2. Abra CRM → Atendimento virtual e inicie a demonstração. A ação cria uma conta `DEMO` da unidade, contatos/identidades fictícios, conversas de exemplo e fatos versionados para o ensaio. Repetir não duplica o conjunto inicial.
+2. Abra Severina → Inbox e inicie a demonstração. A ação cria uma conta `DEMO` da unidade, contatos/identidades fictícios, conversas de exemplo e fatos versionados para o ensaio. Repetir não duplica o conjunto inicial.
 3. Use o simulador da conversa para enviar mensagens fictícias, por exemplo “Quero reservar amanhã” e depois “às 19h, quatro pessoas”. O worker agrupa e processa o conjunto.
 4. Confira o resumo antes de responder “confirmo”. A consulta não bloqueia vaga; a confirmação revalida a capacidade na transação.
 5. Experimente assumir, responder, pausar, retomar com resumo e reconhecer a escalação. Os exemplos Kairu permanecem marcados como demonstração.
@@ -32,6 +38,10 @@ Não cole telefone, credencial nem dados reais no simulador. O adaptador aceita 
 ## Fila, ferramentas e garantias
 
 Os eventos são duráveis e deduplicados por conta + ID externo. Conta, organização e unidade são resolvidas no servidor. Mensagem do próprio bot, grupo e callback de entrega não viram fala de cliente. O webhook responde após a gravação e deixa modelo/ferramentas para o worker.
+
+As mensagens preservam a ordem pelo horário informado pelo provedor. “Hoje” e “amanhã” usam a data da fala que contém a expressão, no fuso da unidade; esperar na fila ou agrupar uma continuação depois da meia-noite não muda o dia pedido. A disponibilidade, os prazos de confirmação e os limites continuam sendo validados pelo relógio atual do servidor.
+
+Mensagem com mais de 24 horas é registrada como `IGNORED / STALE_EVENT`, sem resposta automática, para evitar que um histórico reenviado na reconexão dispare atendimento. No canal real, a ausência do horário de origem é registrada como `IGNORED / MISSING_EVENT_TIME`; a falta desse dado não libera uma reserva. Callbacks de entrega não renovam a janela de atendimento.
 
 O worker roda no processo Next.js com leases persistidos, advisory locks transacionais e versão de conversa. O booleano local evita apenas agendamento repetido no mesmo processo; não é a trava entre réplicas. Mensagem nova ou takeover invalida a geração antiga. Morte de worker permite recuperação do lease e mantém tentativa/erro final rastreáveis. A fila tenta no máximo três vezes antes de pedir equipe.
 
@@ -61,7 +71,7 @@ Escalar cria primeiro a tarefa durável, com motivo, trecho útil, cliente/conve
 
 ### Gemini pelo painel
 
-Abra **Atendimento virtual → Conexões** com permissão `crm.gerenciar`. A chave é inserida somente no campo privado da página HTTPS; não deve ser enviada pelo chat. Use [Google AI Studio](https://aistudio.google.com/api-keys) para criar/gerenciar a chave da sua conta.
+Abra **Severina → Configuração → Gemini** com permissão `crm.gerenciar`. A chave é inserida somente no campo privado da página HTTPS; não deve ser enviada pelo chat. Use [Google AI Studio](https://aistudio.google.com/api-keys) para criar/gerenciar a chave da sua conta.
 
 1. Salve a chave e consulte os modelos disponíveis na API. O servidor devolve somente nomes/metadados; não devolve a chave.
 2. Escolha um modelo da conta, confira as tarifas/cota aplicáveis na tabela oficial e salve a configuração. Tarifas zero exigem a mesma confirmação explícita das demais; o sistema não promete que sua conta terá cota gratuita.
@@ -78,15 +88,15 @@ A configuração avançada via ambiente continua disponível somente quando `AV_
 
 Stack desta entrega: Next.js **16.3.0**, React **19.2.8**, Prisma **7.9.1**, Auth.js **5 beta** conforme `package-lock.json`; ensaio com PostgreSQL **17**. Não há dependência de fila externa. A implementação usa o PostgreSQL existente.
 
-| Variável                              | Padrão/efeito                                                               |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| `AV_WORKER_ENABLED`                   | Ativo salvo valor `false`; processa exclusivamente contas DEMO nesta versão |
-| `AV_DEMO_WEBHOOK_SECRET`              | Opcional, mínimo 32 caracteres; ausente mantém entrada de máquina fechada   |
-| `AV_MODEL_ENABLED`                    | `false`; usa `DEMO_RULES`, sem chamada paga                                 |
-| `AV_GEMINI_API_KEY`                   | Chave própria do atendimento, diferente da redação de avisos internos       |
-| `AV_GEMINI_MODEL`                     | Nome explícito do modelo contratado; sem valor não ativa chamada            |
-| `AV_GEMINI_INPUT_MICROS_PER_MILLION`  | Tarifa de entrada em milionésimos de dólar por milhão de tokens             |
-| `AV_GEMINI_OUTPUT_MICROS_PER_MILLION` | Tarifa de saída na mesma unidade                                            |
+| Variável                              | Padrão/efeito                                                             |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| `AV_WORKER_ENABLED`                   | Ativo salvo valor `false`; processa contas configuradas e ativas          |
+| `AV_DEMO_WEBHOOK_SECRET`              | Opcional, mínimo 32 caracteres; ausente mantém entrada de máquina fechada |
+| `AV_MODEL_ENABLED`                    | `false`; usa `DEMO_RULES`, sem chamada paga                               |
+| `AV_GEMINI_API_KEY`                   | Chave própria do atendimento, diferente da redação de avisos internos     |
+| `AV_GEMINI_MODEL`                     | Nome explícito do modelo contratado; sem valor não ativa chamada          |
+| `AV_GEMINI_INPUT_MICROS_PER_MILLION`  | Tarifa de entrada em milionésimos de dólar por milhão de tokens           |
+| `AV_GEMINI_OUTPUT_MICROS_PER_MILLION` | Tarifa de saída na mesma unidade                                          |
 
 Valores reais ficam no cadastro cifrado do painel ou no ambiente privado do projeto/Dokploy. Nunca `NEXT_PUBLIC_*`, código, documentação compartilhada, screenshot ou chat. O repositório contém apenas nomes e campos vazios em `.env.example`.
 
@@ -112,13 +122,45 @@ A outbox persiste `SENDING`, lease e correlação antes de acessar a rede. O env
 
 Esse contrato é de ensaio do Tetteo. Não é o contrato de webhook Meta/Evolution e não deve ser cadastrado em uma conta real como se fosse compatível.
 
-## Ativar um canal real futuramente
+## Conectar Evolution ou API oficial
 
-Nenhuma variável desta entrega converte a conta DEMO em WhatsApp: código e CHECK do banco impedem modo real. Para ativar, é necessário implementar/selecionar o adaptador oficial, configurar a conta e realizar teste autorizado com observação do resultado.
+Os dois adaptadores estão implementados. Credenciais e testes reais permanecem sob controle do gestor no painel HTTPS. Salvar uma conta nunca ativa o atendimento. Os testes automatizados usam mensagens fictícias e HTTP simulado; não comprovam entrega real.
 
-Antes dessa ativação, conferir a [documentação oficial WhatsApp Business Platform](https://developers.facebook.com/docs/whatsapp/), fixar versão suportada, mapear a conta/número à unidade, validar autenticidade do corpo e callbacks, permissões do aplicativo, opt-in/janela de atendimento, templates quando exigidos, mídia, política de retenção e custo. A documentação técnica da Meta respondeu HTTP 429 durante a revisão; deve ser relida na configuração real. Não se trata um build verde como homologação do fornecedor.
+1. Em **Configuração**, cadastre/teste/ative o Gemini e confira tarifas e teto de consumo.
+2. Em **Chips Evolution** ou **Meta WhatsApp**, salve uma conta real da unidade com seus campos privados. Eles ficam cifrados e não são devolvidos em GET/auditoria. Campos omitidos na edição preservam o segredo existente; salvar desativa a conta, invalida a revisão/teste e as respostas antigas. Alterar número/instância exige outra conta para manter a reconciliação do histórico.
+3. Selecione a conta no cabeçalho de Configuração. Publique fatos reais com validade e configure a grade e o responsável pelos alertas. Evolution e Meta compartilham capacidade por unidade/data/horário; a demonstração fica fora dessa capacidade.
+4. Faça a configuração específica abaixo. Verifique a conexão da revisão atual.
+5. Envie o teste **somente para um número de teste que você controla**, marcado explicitamente no formulário. A mensagem é fixa, tem ID durável e limite de três testes/hora/conta. Na Meta, envie primeiro “oi” do telefone de teste para o número comercial para abrir a janela de 24 horas.
+6. Aguarde callback autenticado de **entrega** e confirme no painel que observou a mensagem. Aceitação HTTP isolada não habilita a ativação. Em timeout, **Consultar teste** reconcilia a mesma tentativa, sem reenviar.
+7. Ative a conta. O servidor exige revisão verificada, webhook autenticado, entrega + observação, Gemini ativo e fatos aprovados vigentes. Use **Pausar canal** para suspender sem apagar histórico; uma conversa pode continuar pausada individualmente.
 
-Evolution/Baileys **2.3.7** já existe para avisos internos da Severina e continua isolada. Seu JWT autentica a chamada, mas não equivale a assinatura integral do corpo; não oferece idempotência nativa de envio. Não é API oficial nem aprovação da Meta. Não substitua seu webhook, número, agendamento ou configuração para encaixar o atendimento. Detalhes: `src/connectors/whatsapp/README.md` e `docs/operacao/whatsapp/README.md`.
+### Evolution
+
+Use uma instância **exclusiva para clientes**. As instâncias `EVOLUTION_INSTANCIA` dos avisos internos e `COMPRAS_EVOLUTION_INSTANCIA` de Compras são recusadas no mesmo servidor. Essa proteção também é revalidada antes de acessar o provedor. Se necessário, crie a nova instância com o botão do painel (a chave precisa de permissão de criação), configure o webhook e gere o QR privado. Não desconectamos nem substituímos a instância da equipe. O QR expira na interface e não deve ser compartilhado em prints.
+
+O servidor permite apenas `EVOLUTION_URL` e a lista administrativa `AV_EVOLUTION_ALLOWED_ORIGINS` (origens/base URLs separadas por vírgula). Campos do navegador não abrem URL arbitrária; redirects são recusados. Adicionar servidor exige configurar essa lista no ambiente privado, sem gravar a API key no arquivo. Um webhook diferente já existente exige confirmação explícita de substituição; nunca use essa opção na instância interna.
+
+Contrato consultado: Evolution/Baileys **2.3.7**, [DTO de envio](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/dto/sendMessage.dto.ts), [webhook](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/event/webhook/webhook.controller.ts). O JWT HS256 autentica a chamada, mas não assina o corpo; exige TLS e segredo privado forte. Eventos são vinculados à instância. LID sem telefone alternativo autenticado não é convertido em número. Não existe idempotência nativa de envio: a outbox persiste a intenção e usa um protocolo visível único para reconciliar por destinatário, período e mensagem. Se faltar prova, mantém incerteza e pede conferência humana.
+
+Evolution não é API oficial nem aprovação da Meta. Seus requisitos, estabilidade e riscos são diferentes. Os avisos internos continuam usando seu conector/webhook anterior; veja `src/connectors/whatsapp/README.md`.
+
+### Meta WhatsApp Business Platform
+
+Configure **Phone Number ID**, **WABA ID**, token de acesso com permissões adequadas, App Secret e Verify Token no painel privado. A versão inicial é **v26.0**, consultada no [SDK oficial](https://github.com/facebook/facebook-nodejs-business-sdk/blob/main/src/api.js). O host é fixo `graph.facebook.com`; a aplicação não aceita um host escolhido pelo navegador.
+
+Cadastre no aplicativo Meta o callback HTTPS mostrado pelo painel e o mesmo Verify Token privado. Valide o desafio e assine o campo `messages`; use **Configurar webhook** para assinar a WABA no aplicativo. Cada mensagem/status precisa ter WABA + Phone Number ID correspondentes e assinatura `X-Hub-Signature-256` do corpo original. Aplicativos compartilhados entre números usam um callback âncora na mesma organização; cada destino ainda precisa validar sua própria assinatura e metadados. Organizações distintas não são roteadas pelo mesmo endpoint.
+
+Esta entrega envia texto livre somente dentro da janela de 24 horas aberta por mensagem autêntica do cliente. Templates de marketing/utilidade fora da janela e envio de mídia ainda não estão habilitados neste atendimento. Não invente um template aprovado nem confunda o Feed de Disparos dos avisos internos com uma campanha de clientes. A correlação `biz_opaque_callback_data` ajuda a conciliar timeout quando o provedor a devolve; sem callback correlacionado, o sistema não reenvia cegamente. Não existe consulta genérica inventada de status por ID.
+
+Consulte a [documentação oficial WhatsApp](https://developers.facebook.com/docs/whatsapp/) e a [coleção oficial Meta](https://www.postman.com/meta/whatsapp-business-platform/folder/o48mro7/messages) ao configurar permissões, número e aplicativo. Parte da documentação técnica respondeu HTTP 429 nesta revisão; o contrato precisa ser conferido no teste autorizado do ambiente real. Custo/categoria/mercado são os do contrato vigente, não os tokens Gemini. Nenhuma chave, QR ou entrega real foi validada apenas por build.
+
+### Cliente conhecido no canal real
+
+Não se procura cadastro pelo nome digitado nem por um telefone encontrado no texto. O remetente internacional autenticado consulta identidade verificada da conta ou identidade `PHONE` verificada da mesma unidade/organização, criando então o vínculo da conta. Onde o CRM antigo só possui telefone sem prova, a conversa atende dúvidas públicas e coleta apenas o próximo campo necessário. Um gestor pode buscar o contato e registrar um vínculo explícito após a verificação humana no painel; a evidência deve incluir mensagem recebida no webhook autenticado. Outra unidade/organização não herda o cadastro. Preferências e reservas consultadas continuam restritas à conta da conversa.
+
+### Skills e Qualidade
+
+Skills publica versões de estilo, saudação e mensagem de ajuda. Não altera ferramentas, permissões ou fatos automaticamente. Links/contatos ficam na base operacional e confirmações de ação vêm do resultado real da ferramenta. Qualidade usa execuções e falhas reais em 7/30/90 dias; não apresenta uma nota fictícia de satisfação.
 
 ## Pausar, monitorar e recuperar
 

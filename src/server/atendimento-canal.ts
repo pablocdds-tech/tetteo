@@ -4,7 +4,11 @@ export type ChannelSendResult =
   | { state: "ACCEPTED"; providerId: string }
   | { state: "UNCERTAIN" | "FAILED"; error: string };
 export interface AtendimentoChannelAdapter {
-  identify(): { mode: "DEMO"; accountKey: string };
+  identify(): {
+    mode: "DEMO" | "EVOLUTION" | "META";
+    accountKey: string;
+    revision?: number;
+  };
   sendText(input: {
     recipient: string;
     text: string;

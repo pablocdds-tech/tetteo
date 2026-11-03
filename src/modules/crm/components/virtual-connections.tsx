@@ -30,12 +30,28 @@ const TEST_LABELS: Record<VirtualModelStatus["test"]["state"], string> = {
   FAILED: "Teste falhou",
 };
 
-export default function VirtualConnections() {
+export default function VirtualConnections({
+  embedded = false,
+}: {
+  embedded?: boolean;
+}) {
   const { selectedStoreId: storeId } = useAuth();
-  return <VirtualConnectionForStore key={storeId} storeId={storeId} />;
+  return (
+    <VirtualConnectionForStore
+      key={storeId}
+      storeId={storeId}
+      embedded={embedded}
+    />
+  );
 }
 
-function VirtualConnectionForStore({ storeId }: { storeId: string }) {
+function VirtualConnectionForStore({
+  storeId,
+  embedded,
+}: {
+  storeId: string;
+  embedded: boolean;
+}) {
   const { user } = useAuth();
   const manageable = user.role === "MANAGER";
   const secure = useSyncExternalStore(subscribe, secureOrigin, () => false);
@@ -196,7 +212,7 @@ function VirtualConnectionForStore({ storeId }: { storeId: string }) {
       accept(result);
       setNotice(
         enabled
-          ? "Gemini ativado para interpretar as mensagens recebidas pelo canal de demonstração."
+          ? "Gemini ativado para interpretar as mensagens desta unidade."
           : "Gemini desativado. Consulte o estado do processamento na saúde da operação.",
       );
     } catch (failure) {
@@ -206,20 +222,23 @@ function VirtualConnectionForStore({ storeId }: { storeId: string }) {
     }
   }
 
+  const Container = embedded ? "section" : "main";
   return (
-    <main className={styles.page}>
-      <VirtualHeader section="conexoes">
-        <button
-          className="btn"
-          disabled={Boolean(busy)}
-          onClick={() => {
-            setError("");
-            setRevision((value) => value + 1);
-          }}
-        >
-          Atualizar estado
-        </button>
-      </VirtualHeader>
+    <Container className={embedded ? undefined : styles.page}>
+      {!embedded && (
+        <VirtualHeader section="conexoes">
+          <button
+            className="btn"
+            disabled={Boolean(busy)}
+            onClick={() => {
+              setError("");
+              setRevision((value) => value + 1);
+            }}
+          >
+            Atualizar estado
+          </button>
+        </VirtualHeader>
+      )}
       {error && (
         <p className={styles.error} role="alert">
           {error}
@@ -531,23 +550,28 @@ function VirtualConnectionForStore({ storeId }: { storeId: string }) {
           <section className={styles.panel}>
             <div className={styles.sectionHeading}>
               <h2>Canal de atendimento</h2>
-              <span className={`${styles.badge} ${styles.warning}`}>
-                Demonstração · sem WhatsApp conectado
-              </span>
+              <span className={styles.badge}>Conexões por conta e unidade</span>
             </div>
             <p>
-              O canal recebe mensagens fictícias no{" "}
-              <Link className={styles.textLink} href="/crm/atendimento">
-                inbox
+              Configure as contas em{" "}
+              <Link className={styles.textLink} href="/assistente/evolution">
+                Chips Evolution
+              </Link>{" "}
+              ou{" "}
+              <Link
+                className={styles.textLink}
+                href="/assistente/meta-whatsapp"
+              >
+                Meta WhatsApp
               </Link>
-              . A escolha e a configuração do provedor de WhatsApp continuam
-              pendentes. Ativar Gemini não conecta nem autoriza um canal de
+              . Consulte o estado verificado de cada conexão antes de ativar
+              envios. Ativar Gemini não conecta nem autoriza um canal de
               WhatsApp.
             </p>
           </section>
         </>
       )}
-      <VirtualCredit />
-    </main>
+      {!embedded && <VirtualCredit />}
+    </Container>
   );
 }

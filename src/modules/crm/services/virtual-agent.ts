@@ -15,8 +15,11 @@ import {
   demoVirtualIntent,
   virtualIntentSchema,
   type VirtualIntent,
+  virtualReferenceTime,
+  virtualLiteralDate,
 } from "./virtual-agent-plan";
 import { relativeVirtualDate } from "./virtual-knowledge";
+import { approvedVirtualPolicy } from "./virtual-policy";
 import {
   executeVirtualTool,
   claimFor,
@@ -102,6 +105,7 @@ export async function runVirtualAgent(
   input: VirtualTurnInput,
 ): Promise<VirtualTurnResult> {
   const joined = input.messages.map((m) => m.text).join("\n");
+  const referenceTime = virtualReferenceTime(input.messages, input.now);
   const state = virtualStateSchema.safeParse(input.state);
   let nextState = state.success ? state.data : {};
   const claims: VirtualClaim[] = [];
@@ -176,17 +180,43 @@ export async function runVirtualAgent(
       "Não consegui confirmar o conteúdo do áudio. Pode escrever o trecho com a data, horário e quantidade de pessoas? Nenhuma reserva foi alterada.",
     );
   }
+  if (input.messages.some((m) => m.kind === "TEXT" && !m.transcriptionCertain))
+    return escalate(
+      "A mensagem chegou com horário de origem ausente ou incerto. A equipe precisa conferir a data antes de executar qualquer ação.",
+    );
   if (input.messages.some((m) => m.kind === "IMAGE"))
     return escalate("Imagem ou anexo precisa de conferência humana.");
   if (Buffer.byteLength(joined, "utf8") > 16_000)
     return escalate(
       "Mensagem excedeu o limite do turno; precisa de leitura humana.",
     );
+  // Route sensitive requests before sending customer content to a model provider.
+  const serverPlan = demoVirtualIntent(joined, referenceTime, input.timezone);
+  if (serverPlan.intent === "human")
+    return escalate(
+      "Solicitação fora do escopo automático ou assunto que exige a equipe.",
+    );
   let plan: VirtualIntent;
   const config = await privateVirtualModelConfiguration({
     organizationId: input.organizationId,
     storeId: input.storeId,
   });
+  const [account, policy] = await Promise.all([
+    db.avChannelAccount.findUniqueOrThrow({
+      where: { id: input.accountId },
+      select: { mode: true },
+    }),
+    db.$transaction((tx) =>
+      approvedVirtualPolicy(tx, {
+        organizationId: input.organizationId,
+        storeId: input.storeId,
+      }),
+    ),
+  ]);
+  if (account.mode !== "DEMO" && (!config.enabled || !config.configured))
+    return escalate(
+      "A configuração do modelo foi desativada ou perdeu a validade. Atendimento humano necessário.",
+    );
   if (config.enabled) {
     model = config.model || "MODEL_UNAVAILABLE";
     const bound = Math.ceil(
@@ -205,6 +235,11 @@ export async function runVirtualAgent(
           maxTokens: input.limits.maxTokens,
           timeoutMs: input.limits.timeoutMs,
           humanSummary: input.summary,
+          referenceDate: referenceTime.toISOString(),
+          messageTimes: input.messages.map((m) => m.occurredAt ?? null),
+          approvedStyle: policy
+            ? { tone: policy.tone, instructions: policy.instructions }
+            : null,
         },
         config,
       );
@@ -217,10 +252,15 @@ export async function runVirtualAgent(
         "Modelo indisponível, resposta inválida ou limite de custo atingido. Nenhuma ação de reserva executada.",
       );
     }
-  } else plan = demoVirtualIntent(joined, input.now, input.timezone);
+  } else plan = demoVirtualIntent(joined, referenceTime, input.timezone);
+  const literalDate = virtualLiteralDate(
+    input.messages,
+    input.now,
+    input.timezone,
+  );
+  if (literalDate) plan = { ...plan, date: literalDate };
   // Sensitive/conflicting requests are routed by server policy even if a model misclassifies them.
-  const serverPlan = demoVirtualIntent(joined, input.now, input.timezone);
-  if (serverPlan.intent === "human" || plan.intent === "human")
+  if (plan.intent === "human")
     return escalate(
       "Solicitação fora do escopo automático ou assunto que exige a equipe.",
     );
@@ -336,6 +376,21 @@ export async function runVirtualAgent(
       `${p.type}:${p.token}`,
     );
     nextState = {};
+    if (!r.success && r.state === "CONFIRMATION_OUTDATED") {
+      nextState = {
+        pending: newPendingReservation({
+          type: p.type,
+          date: p.date,
+          time: p.time,
+          partySize: p.partySize,
+          guestName: p.guestName,
+          ...(p.reservationId ? { reservationId: p.reservationId } : {}),
+        }),
+      };
+      return reply(
+        `A confirmação anterior chegou fora de ordem e não alterou a reserva.\nResumo atual: ${p.date}, às ${p.time}, ${p.partySize} pessoas, em nome de ${p.guestName}. Responda “confirmo” para ${p.type === "cancel" ? "cancelar" : p.type === "update" ? "alterar" : "criar"} a reserva. A disponibilidade será conferida novamente.`,
+      );
+    }
     if (!r.success)
       return reply(
         r.error ??
@@ -418,7 +473,11 @@ export async function runVirtualAgent(
     }
     if (plan.date) {
       try {
-        draft.date = relativeVirtualDate(plan.date, input.now, input.timezone);
+        draft.date = relativeVirtualDate(
+          plan.date,
+          referenceTime,
+          input.timezone,
+        );
       } catch {
         return reply("Qual é a data da reserva? Envie dia/mês/ano.");
       }
@@ -528,7 +587,7 @@ export async function runVirtualAgent(
       );
     const date = relativeVirtualDate(
       plan.date ?? "hoje",
-      input.now,
+      referenceTime,
       input.timezone,
     );
     const exception = data.exceptions.find((e) => e.date === date);
@@ -545,6 +604,6 @@ export async function runVirtualAgent(
     );
   }
   return reply(
-    `${knownName ? `Olá, ${knownName}. ` : "Olá! "}Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?`,
+    `${knownName ? `Olá, ${knownName}. ` : ""}${policy ? (/^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!.\s]*$/i.test(joined.trim()) ? policy.greeting : policy.fallbackMessage) || "Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?" : `${knownName ? "" : "Olá! "}Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?`}`,
   );
 }

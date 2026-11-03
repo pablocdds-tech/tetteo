@@ -24,6 +24,7 @@ import { safeVirtualModelStatus } from "./virtual-model";
 const listSchema = z
   .object({
     storeId: z.string().min(1),
+    accountId: z.string().uuid().optional(),
     status: z.enum([...VIRTUAL_STATUSES, "ALL"]).default("ALL"),
     search: z.string().trim().max(100).default(""),
     page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -115,11 +116,15 @@ export async function listVirtualInbox(
   const base: Prisma.AvConversationWhereInput = {
     organizationId: scope.organizationId,
     storeId: data.storeId,
+    ...(data.accountId ? { accountId: data.accountId } : {}),
   };
   if (data.search) {
     const literal = data.search.replace(/[\\%_]/g, "\\$&");
     base.OR = [
       { displayName: { contains: literal, mode: "insensitive" } },
+      ...(data.search.replace(/\D/g, "").length >= 3
+        ? [{ externalCustomerId: { contains: data.search.replace(/\D/g, "") } }]
+        : []),
       {
         messages: {
           some: { text: { contains: literal, mode: "insensitive" } },
@@ -291,7 +296,9 @@ export async function getVirtualConversation(
         c.displayName,
       known: Boolean(contact),
       source: contact
-        ? "Identificador verificado da conta de demonstração"
+        ? c.account.mode === "DEMO"
+          ? "Identificador verificado da conta de demonstração"
+          : "CRM: identificador verificado do canal desta unidade"
         : "Identidade não cadastrada; somente contexto desta conversa",
       updatedAt: contact?.updatedAt.toISOString() ?? null,
       preferences,
@@ -330,12 +337,21 @@ export async function getVirtualConversation(
 export async function getVirtualHealth(
   context: ContextoSessao,
   storeId: string,
+  accountId?: string,
 ): Promise<VirtualHealth> {
   const scope = await authorizeVirtual(context, storeId);
   const account = await db.avChannelAccount.findFirst({
-    where: { organizationId: scope.organizationId, storeId, mode: "DEMO" },
+    where: {
+      organizationId: scope.organizationId,
+      storeId,
+      ...(accountId ? { id: accountId } : { mode: "DEMO" }),
+    },
   });
-  const base = { organizationId: scope.organizationId, storeId };
+  const base = {
+    organizationId: scope.organizationId,
+    storeId,
+    ...(accountId ? { accountId } : {}),
+  };
   const [
     pending,
     oldest,
@@ -359,8 +375,10 @@ export async function getVirtualHealth(
     db.avMessageOutbox.count({
       where: { ...base, state: { in: ["FAILED", "UNCERTAIN", "BLOCKED"] } },
     }),
-    db.avAgentRun.count({ where: { ...base, error: "TURN_LIMIT" } }),
-    db.avAgentRun.count({ where: { ...base, error: "TOOL_LOOP" } }),
+    db.avAgentRun.count({ where: { ...base, error: "EMPTY_RESPONSE" } }),
+    db.avAgentRun.count({
+      where: { ...base, error: { in: ["TOOL_LOOP", "CONVERSATION_LOOP"] } },
+    }),
     db.avEscalation.count({ where: { ...base, status: { not: "RESOLVED" } } }),
     db.avEscalation.count({
       where: { ...base, status: { not: "RESOLVED" }, alertState: "FAILED" },
@@ -370,7 +388,11 @@ export async function getVirtualHealth(
       _sum: { tokens: true, costMicros: true },
     }),
     db.avModelProbe.aggregate({
-      where: { ...base, createdAt: { gte: new Date(Date.now() - 86_400_000) } },
+      where: {
+        organizationId: scope.organizationId,
+        storeId,
+        createdAt: { gte: new Date(Date.now() - 86_400_000) },
+      },
       _sum: { tokens: true, costMicros: true },
     }),
     db.avAgentRun.findFirst({
@@ -380,12 +402,12 @@ export async function getVirtualHealth(
     }),
   ]);
   return {
-    demo: true,
+    demo: account?.mode === "DEMO",
     engine: await safeVirtualModelStatus({
       organizationId: scope.organizationId,
       storeId,
     }),
-    accountName: account?.name ?? "Canal de demonstração não iniciado",
+    accountName: account?.name ?? "Nenhum canal selecionado",
     active: account?.active ?? false,
     lastWebhookAt: account?.lastWebhookAt?.toISOString() ?? null,
     queuePending: pending,
@@ -412,24 +434,22 @@ export async function ensureVirtualDemo(
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`av:init:${storeId}`}))`;
-      const account = await tx.avChannelAccount.upsert({
-        where: {
-          organizationId_storeId_mode: {
+      const existingAccount = await tx.avChannelAccount.findFirst({
+        where: { organizationId: scope.organizationId, storeId, mode: "DEMO" },
+        orderBy: { createdAt: "asc" },
+      });
+      const account =
+        existingAccount ??
+        (await tx.avChannelAccount.create({
+          data: {
             organizationId: scope.organizationId,
             storeId,
+            name: "Kairu · demonstração",
             mode: "DEMO",
+            timezone: scope.unit.fusoHorario,
+            notificationUserId: context.usuario.id,
           },
-        },
-        create: {
-          organizationId: scope.organizationId,
-          storeId,
-          name: "Kairu · demonstração",
-          mode: "DEMO",
-          timezone: scope.unit.fusoHorario,
-          notificationUserId: context.usuario.id,
-        },
-        update: {},
-      });
+        }));
       const full = {
         organizationId: scope.organizationId,
         storeId,

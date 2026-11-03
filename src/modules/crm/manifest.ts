@@ -10,7 +10,6 @@ export const manifestoCrm: ManifestoDoApp = {
   rota: "/crm",
   navegacao: [
     { rota: "/crm", nome: "Contatos" },
-    { rota: "/crm/atendimento", nome: "Atendimento virtual" },
     { rota: "/crm/publicos", nome: "Públicos" },
     { rota: "/crm/campanhas", nome: "Campanhas e resultados" },
   ],

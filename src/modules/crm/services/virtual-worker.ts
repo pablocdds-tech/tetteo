@@ -1,10 +1,16 @@
-import { processVirtualQueue } from "./virtual-runtime";
+import {
+  processVirtualQueue,
+  type VirtualChannelFactory,
+} from "./virtual-runtime";
+import { demoChannel } from "@/server/atendimento-canal";
 import { runVirtualAgent } from "./virtual-agent";
 
 const globalWorker = globalThis as unknown as {
   virtualWorkerTimer?: ReturnType<typeof setInterval>;
 };
-export function startVirtualWorker() {
+export function startVirtualWorker(
+  channelFor: VirtualChannelFactory = demoChannel,
+) {
   if (
     process.env.AV_WORKER_ENABLED === "false" ||
     process.env.NODE_ENV === "test" ||
@@ -16,7 +22,7 @@ export function startVirtualWorker() {
     if (active) return;
     active = true;
     try {
-      await processVirtualQueue(runVirtualAgent, 5);
+      await processVirtualQueue(runVirtualAgent, 5, channelFor);
     } catch {
       console.error(
         "[atendimento-worker] Não foi possível completar a rodada; fila preservada.",

@@ -6,8 +6,10 @@ import {
   demoChannel,
   isDemoRecipient,
   maskVirtualSecrets,
+  type AtendimentoChannelAdapter,
 } from "@/server/atendimento-canal";
 import { db } from "@/server/db";
+import { channelRecipientHash } from "@/server/atendimento-credenciais";
 import { canonicalHash, CrmError, protectIdentity } from "./campaign-domain";
 import {
   type VirtualClaim,
@@ -32,6 +34,81 @@ function scopedVirtual(input: VirtualScope): VirtualScope {
 }
 const LEASE_MS = 60_000;
 const MAX_ATTEMPTS = 3;
+const CHANNEL_MODES = ["DEMO", "EVOLUTION", "META"] as const;
+const canonicalPhone = (value: string) => /^\+[1-9]\d{7,14}$/.test(value);
+export type VirtualChannelFactory = (
+  accountId: string,
+) => AtendimentoChannelAdapter | Promise<AtendimentoChannelAdapter>;
+export type VirtualInboundAttestation = {
+  provider: "EVOLUTION" | "META";
+  revision?: number;
+};
+async function liveConnectionReady(
+  tx: VirtualTx,
+  account: {
+    id: string;
+    organizationId: string;
+    storeId: string;
+    mode: string;
+  },
+) {
+  if (account.mode === "DEMO") return true;
+  if (!CHANNEL_MODES.includes(account.mode as (typeof CHANNEL_MODES)[number]))
+    return false;
+  const connection = await tx.avChannelConnection.findFirst({
+    where: {
+      accountId: account.id,
+      organizationId: account.organizationId,
+      storeId: account.storeId,
+    },
+    select: {
+      connectionState: true,
+      revision: true,
+      verifiedRevision: true,
+      verifiedAt: true,
+    },
+  });
+  return Boolean(
+    connection &&
+    connection.connectionState === "VERIFIED" &&
+    connection.verifiedRevision === connection.revision &&
+    connection.verifiedAt,
+  );
+}
+async function detectVirtualConversationLoop(
+  tx: VirtualTx,
+  conversationId: string,
+  currentText: string,
+) {
+  const since = new Date(Date.now() - 5 * 60_000);
+  const turns = await tx.avAgentRun.count({
+    where: { conversationId, createdAt: { gte: since } },
+  });
+  if (turns >= 30) return "TURN_RATE_LIMIT";
+  const messages = await tx.avMessage.findMany({
+    where: {
+      conversationId,
+      createdAt: { gte: since },
+      author: { in: ["CUSTOMER", "AGENT"] },
+    },
+    orderBy: { sequence: "desc" },
+    take: 100,
+    select: { author: true, text: true },
+  });
+  const normalize = (text: string) =>
+    canonicalHash(text.trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR"));
+  const customerHash = normalize(currentText);
+  const latestAgent = messages.find((m) => m.author === "AGENT");
+  if (!latestAgent) return null;
+  const agentHash = normalize(latestAgent.text);
+  const customerRepeats = messages.filter(
+    (m) => m.author === "CUSTOMER" && normalize(m.text) === customerHash,
+  ).length;
+  const agentRepeats = messages.filter(
+    (m) => m.author === "AGENT" && normalize(m.text) === agentHash,
+  ).length;
+  return customerRepeats >= 5 && agentRepeats >= 5 ? "REPEATED_EXCHANGE" : null;
+}
 export async function authorizeVirtual(
   context: ContextoSessao,
   storeId: string,
@@ -104,12 +181,18 @@ export async function assertVirtualTurn(
       organizationId: input.organizationId,
       storeId: input.storeId,
       active: true,
-      mode: "DEMO",
+      mode: { in: [...CHANNEL_MODES] },
     },
-    select: { id: true },
+    select: { id: true, mode: true },
   });
   if (
     !account ||
+    !(await liveConnectionReady(tx, {
+      id: input.accountId,
+      organizationId: input.organizationId,
+      storeId: input.storeId,
+      mode: account.mode,
+    })) ||
     !run ||
     !conversation ||
     conversation.version !== input.version ||
@@ -257,30 +340,55 @@ export async function createVirtualEscalation(
 }
 const inboundSchema = z
   .object({
-    externalId: z.string().min(1).max(200),
+    externalId: z.string().min(1).max(300),
     senderKey: z.string().max(100),
     type: z.enum(["MESSAGE", "DELIVERY"]),
-    text: z.string().max(4000).default(""),
+    text: z.string().max(16384).default(""),
     kind: z.enum(["TEXT", "AUDIO", "IMAGE"]).default("TEXT"),
     transcriptionCertain: z.boolean().default(true),
     fromSelf: z.boolean().default(false),
     group: z.boolean().default(false),
     providerId: z.string().min(1).max(200).optional(),
-    deliveryState: z.enum(["DELIVERED", "FAILED"]).optional(),
+    deliveryState: z.enum(["DELIVERED", "READ", "FAILED"]).optional(),
+    trustedPhone: z
+      .string()
+      .regex(/^\+[1-9]\d{7,14}$/)
+      .optional(),
+    recipient: z.string().max(160).optional(),
+    occurredAt: z.iso.datetime().optional(),
   })
   .strict();
-export async function receiveVirtualInbound(accountId: string, raw: unknown) {
+export async function receiveVirtualInbound(
+  accountId: string,
+  raw: unknown,
+  attestation?: VirtualInboundAttestation,
+) {
   const data = inboundSchema.parse(raw);
   const account = await db.avChannelAccount.findUnique({
     where: { id: accountId },
   });
-  if (!account || !account.active || account.mode !== "DEMO")
+  if (
+    !account ||
+    !CHANNEL_MODES.includes(account.mode as (typeof CHANNEL_MODES)[number])
+  )
     throw new CrmError(
       "CHANNEL_DISABLED",
-      "Canal de demonstração indisponível.",
+      "Canal de atendimento indisponível.",
       503,
     );
-  if (!isDemoRecipient(data.senderKey))
+  if (account.mode !== "DEMO" && attestation?.provider !== account.mode)
+    throw new CrmError(
+      "CHANNEL_ATTESTATION_REQUIRED",
+      "A entrada deve vir do webhook autenticado do provedor desta conta.",
+      403,
+    );
+  if (account.mode === "DEMO" && attestation)
+    throw new CrmError(
+      "CHANNEL_PROVIDER_MISMATCH",
+      "O provedor recebido não corresponde à conta.",
+      403,
+    );
+  if (account.mode === "DEMO" && !isDemoRecipient(data.senderKey))
     throw new CrmError(
       "REAL_RECIPIENT_DENIED",
       "Modo demonstração recusa destinatários reais.",
@@ -289,6 +397,18 @@ export async function receiveVirtualInbound(accountId: string, raw: unknown) {
   const text = maskVirtualSecrets(data.text);
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`av:account:${account.id}`}))`;
+    if (account.mode !== "DEMO" && attestation?.revision !== undefined) {
+      const currentConnection = await tx.avChannelConnection.findUnique({
+        where: { accountId },
+        select: { revision: true },
+      });
+      if (currentConnection?.revision !== attestation.revision)
+        throw new CrmError(
+          "CHANNEL_REVISION_CHANGED",
+          "A configuração do canal mudou. Repita o evento com a configuração vigente.",
+          503,
+        );
+    }
     const existing = await tx.avInboundEvent.findUnique({
       where: {
         accountId_externalId: { accountId, externalId: data.externalId },
@@ -315,14 +435,31 @@ export async function receiveVirtualInbound(accountId: string, raw: unknown) {
     });
     if (data.type === "DELIVERY" && data.providerId && data.deliveryState) {
       await tx.avMessageOutbox.updateMany({
-        where: { accountId, providerId: data.providerId, state: "ACCEPTED" },
+        where: {
+          accountId,
+          providerId: data.providerId,
+          state: {
+            in:
+              data.deliveryState === "READ"
+                ? ["ACCEPTED", "DELIVERED"]
+                : ["ACCEPTED"],
+          },
+        },
         data:
-          data.deliveryState === "DELIVERED"
-            ? { state: "DELIVERED", deliveredAt: new Date(), error: null }
-            : {
-                state: "FAILED",
-                error: "O canal de demonstração informou falha na entrega.",
-              },
+          data.deliveryState === "READ"
+            ? { state: "READ", error: null }
+            : data.deliveryState === "DELIVERED"
+              ? {
+                  state: "DELIVERED",
+                  deliveredAt: data.occurredAt
+                    ? new Date(data.occurredAt)
+                    : new Date(),
+                  error: null,
+                }
+              : {
+                  state: "FAILED",
+                  error: "O canal informou falha na entrega.",
+                },
       });
       await tx.avInboundEvent.update({
         where: { id: event.id },
@@ -337,16 +474,79 @@ export async function receiveVirtualInbound(accountId: string, raw: unknown) {
       });
       return { duplicate: false, conversationId: null };
     }
+    if (
+      data.occurredAt &&
+      Date.now() - new Date(data.occurredAt).getTime() > 24 * 3600_000
+    ) {
+      await tx.avInboundEvent.update({
+        where: { id: event.id },
+        data: {
+          status: "IGNORED",
+          error: "STALE_EVENT",
+          processedAt: new Date(),
+        },
+      });
+      return { duplicate: false, conversationId: null };
+    }
+    if (account.mode !== "DEMO" && !data.occurredAt) {
+      await tx.avInboundEvent.update({
+        where: { id: event.id },
+        data: {
+          status: "IGNORED",
+          error: "MISSING_EVENT_TIME",
+          processedAt: new Date(),
+        },
+      });
+      return { duplicate: false, conversationId: null };
+    }
+    if (
+      account.mode !== "DEMO" &&
+      (!canonicalPhone(data.senderKey) ||
+        (data.trustedPhone && data.trustedPhone !== data.senderKey) ||
+        (data.recipient && data.recipient !== data.senderKey))
+    ) {
+      await tx.avInboundEvent.update({
+        where: { id: event.id },
+        data: {
+          status: "IGNORED",
+          error: "UNRESOLVED_SENDER",
+          processedAt: new Date(),
+        },
+      });
+      return { duplicate: false, conversationId: null };
+    }
+    if (account.mode !== "DEMO") {
+      const recipientHash = channelRecipientHash(scope, data.senderKey);
+      const observedAt = new Date(
+        Math.min(
+          Date.now(),
+          data.occurredAt ? new Date(data.occurredAt).getTime() : Date.now(),
+        ),
+      );
+      await tx.avChannelWindow.upsert({
+        where: { accountId_recipientHash: { accountId, recipientHash } },
+        create: { ...scope, recipientHash, lastInboundAt: observedAt },
+        update: {},
+      });
+      await tx.avChannelWindow.updateMany({
+        where: { accountId, recipientHash, lastInboundAt: { lt: observedAt } },
+        data: { lastInboundAt: observedAt },
+      });
+    }
+    const identityType =
+      account.mode === "DEMO"
+        ? `AV_DEMO:${accountId}`
+        : `AV_CHANNEL:${accountId}`;
     const identity = protectIdentity(
       account.storeId,
-      `AV_DEMO:${accountId}`,
+      identityType,
       data.senderKey,
     );
-    const known = await tx.crmIdentity.findUnique({
+    let known = await tx.crmIdentity.findUnique({
       where: {
         storeId_type_normalizedHash: {
           storeId: account.storeId,
-          type: `AV_DEMO:${accountId}`,
+          type: identityType,
           normalizedHash: identity.normalizedHash,
         },
       },
@@ -362,8 +562,65 @@ export async function receiveVirtualInbound(accountId: string, raw: unknown) {
         },
       },
     });
+    if (!known && account.mode !== "DEMO") {
+      const phoneIdentity = protectIdentity(
+        account.storeId,
+        "PHONE",
+        data.senderKey,
+      );
+      known = await tx.crmIdentity.findUnique({
+        where: {
+          storeId_type_normalizedHash: {
+            storeId: account.storeId,
+            type: "PHONE",
+            normalizedHash: phoneIdentity.normalizedHash,
+          },
+        },
+        include: {
+          contact: {
+            select: {
+              id: true,
+              name: true,
+              active: true,
+              mergedIntoId: true,
+              store: { select: { organizacaoId: true } },
+            },
+          },
+        },
+      });
+      if (
+        known?.verifiedAt &&
+        known.verifiedAt.getTime() <= Date.now() &&
+        known.verifiedById.trim() &&
+        known.contact.active &&
+        !known.contact.mergedIntoId &&
+        known.contact.store.organizacaoId === account.organizationId
+      ) {
+        await tx.crmIdentity.upsert({
+          where: {
+            storeId_type_normalizedHash: {
+              storeId: account.storeId,
+              type: identityType,
+              normalizedHash: identity.normalizedHash,
+            },
+          },
+          create: {
+            storeId: account.storeId,
+            contactId: known.contactId,
+            type: identityType,
+            ...identity,
+            verifiedAt: new Date(),
+            verifiedById: known.verifiedById,
+          },
+          update: {},
+        });
+      }
+    }
     const contact =
-      known?.contact.active &&
+      known?.verifiedAt &&
+      known.verifiedAt.getTime() <= Date.now() &&
+      known.verifiedById.trim() &&
+      known.contact.active &&
       !known.contact.mergedIntoId &&
       known.contact.store.organizacaoId === account.organizationId
         ? known.contact
@@ -390,7 +647,11 @@ export async function receiveVirtualInbound(accountId: string, raw: unknown) {
         externalCustomerId: data.senderKey,
         contactId: contact?.id,
         displayName:
-          namePreference?.value ?? contact?.name ?? "Visitante · exemplo Kairu",
+          namePreference?.value ??
+          contact?.name ??
+          (account.mode === "DEMO"
+            ? "Visitante · exemplo Kairu"
+            : "Cliente sem cadastro"),
       },
       update: {},
     });
@@ -419,7 +680,14 @@ export async function receiveVirtualInbound(accountId: string, raw: unknown) {
             ? "[Áudio sem transcrição confiável]"
             : "[Imagem recebida; consulta visual indisponível]"),
         kind: data.kind,
-        transcriptionCertain: data.transcriptionCertain,
+        transcriptionCertain:
+          data.transcriptionCertain &&
+          (account.mode === "DEMO" ||
+            Boolean(
+              data.occurredAt &&
+              new Date(data.occurredAt).getTime() <= Date.now() + 5 * 60_000,
+            )),
+        ...(data.occurredAt ? { createdAt: new Date(data.occurredAt) } : {}),
       },
     });
     await tx.avConversation.update({
@@ -502,7 +770,7 @@ function virtualOutboxIsStale(
 
 export async function deliverVirtualOutbox(
   limit = 20,
-  channelFor: typeof demoChannel = demoChannel,
+  channelFor: VirtualChannelFactory = demoChannel,
 ) {
   const now = new Date();
   const entries = await db.avMessageOutbox.findMany({
@@ -512,6 +780,21 @@ export async function deliverVirtualOutbox(
           state: "PENDING",
           attempts: { lt: 4 },
           conversation: {
+            account: {
+              active: true,
+              OR: [
+                { mode: "DEMO" },
+                {
+                  mode: { in: ["EVOLUTION", "META"] },
+                  connection: {
+                    is: {
+                      connectionState: "VERIFIED",
+                      verifiedAt: { not: null },
+                    },
+                  },
+                },
+              ],
+            },
             outbox: { none: { state: { in: ["SENDING", "UNCERTAIN"] } } },
           },
         },
@@ -559,14 +842,19 @@ export async function deliverVirtualOutbox(
         include: { account: true },
       });
       if (
-        conversation.account.mode !== "DEMO" ||
-        !isDemoRecipient(conversation.externalCustomerId)
+        !CHANNEL_MODES.includes(
+          conversation.account.mode as (typeof CHANNEL_MODES)[number],
+        ) ||
+        (conversation.account.mode === "DEMO"
+          ? !isDemoRecipient(conversation.externalCustomerId)
+          : !canonicalPhone(conversation.externalCustomerId))
       )
         throw new CrmError(
           "REAL_RECIPIENT_DENIED",
-          "Canal real não habilitado.",
+          "O destinatário não corresponde ao modo deste canal.",
         );
       if (out.state === "PENDING") {
+        if (!(await liveConnectionReady(tx, conversation.account))) return null;
         if (virtualOutboxIsStale(out, conversation)) {
           await tx.avMessageOutbox.update({
             where: { id: out.id },
@@ -633,9 +921,33 @@ export async function deliverVirtualOutbox(
         out: claimed,
         recipient: conversation.externalCustomerId,
         reconcile,
+        mode: conversation.account.mode,
       };
     });
     if (!claim) continue;
+
+    let adapter: AtendimentoChannelAdapter;
+    try {
+      adapter = await channelFor(claim.out.accountId);
+      const identity = adapter.identify();
+      if (
+        identity.accountKey !== claim.out.accountId ||
+        identity.mode !== claim.mode
+      )
+        throw new Error("CHANNEL_ADAPTER_MISMATCH");
+    } catch {
+      await db.avMessageOutbox.updateMany({
+        where: { id: claim.out.id, leaseOwner: token },
+        data: {
+          state: claim.reconcile ? "UNCERTAIN" : "FAILED",
+          leaseOwner: null,
+          leaseUntil: null,
+          error:
+            "Configure o adaptador e as credenciais desta conta em Conexões.",
+        },
+      });
+      continue;
+    }
 
     if (!claim.reconcile) {
       // This is the dispatch authorization boundary. A takeover committed
@@ -657,7 +969,20 @@ export async function deliverVirtualOutbox(
           where: { id: out.conversationId },
           include: { account: true },
         });
-        if (virtualOutboxIsStale(out, conversation)) {
+        const connection =
+          claim.mode === "DEMO"
+            ? null
+            : await tx.avChannelConnection.findUnique({
+                where: { accountId: out.accountId },
+                select: { revision: true },
+              });
+        if (
+          virtualOutboxIsStale(out, conversation) ||
+          !(await liveConnectionReady(tx, conversation.account)) ||
+          (claim.mode !== "DEMO" &&
+            (adapter.identify().revision === undefined ||
+              adapter.identify().revision !== connection?.revision))
+        ) {
           await tx.avMessageOutbox.update({
             where: { id: out.id },
             data: {
@@ -677,7 +1002,6 @@ export async function deliverVirtualOutbox(
     // No database transaction or conversation lock crosses provider I/O.
     const result = await (async () => {
       try {
-        const adapter = channelFor(claim.out.accountId);
         return claim.reconcile
           ? await adapter.consultStatus(claim.out.id)
           : await adapter.sendText({
@@ -743,16 +1067,30 @@ export async function deliverVirtualOutbox(
         where: {
           accountId: out.accountId,
           type: "DELIVERY",
+          status: "PROCESSED",
           payload: { path: ["providerId"], equals: result.providerId },
         },
         select: { payload: true },
         take: 50,
       });
-      const states = callbacks.map(
-        (c) => (c.payload as { deliveryState?: string }).deliveryState,
-      );
+      const states = callbacks.flatMap((c) => {
+        const receipt = c.payload as {
+          deliveryState?: string;
+          recipient?: string;
+          revision?: number;
+          correlationId?: string | null;
+        };
+        if (
+          claim.mode !== "DEMO" &&
+          (receipt.recipient !== claim.recipient ||
+            receipt.revision !== adapter.identify().revision ||
+            (receipt.correlationId && receipt.correlationId !== out.id))
+        )
+          return [];
+        return [receipt.deliveryState];
+      });
       const state =
-        out.state === "READ"
+        out.state === "READ" || states.includes("READ")
           ? "READ"
           : out.state === "DELIVERED" || states.includes("DELIVERED")
             ? "DELIVERED"
@@ -765,7 +1103,7 @@ export async function deliverVirtualOutbox(
           state,
           providerId: result.providerId,
           acceptedAt: out.acceptedAt ?? new Date(),
-          ...(state === "DELIVERED"
+          ...(["DELIVERED", "READ"].includes(state)
             ? { deliveredAt: out.deliveredAt ?? new Date() }
             : {}),
           leaseOwner: null,
@@ -805,6 +1143,7 @@ export async function deliverVirtualOutbox(
 export async function processVirtualQueue(
   execute: (input: VirtualTurnInput) => Promise<VirtualTurnResult>,
   limit = 5,
+  channelFor: VirtualChannelFactory = demoChannel,
 ) {
   const now = new Date();
   // Expiração é auditada e não libera uma escalação pendente.
@@ -855,7 +1194,18 @@ export async function processVirtualQueue(
       pendingSince: { not: null },
       processAfter: { lte: now },
       OR: [{ leaseUntil: null }, { leaseUntil: { lte: now } }],
-      account: { active: true, mode: "DEMO" },
+      account: {
+        active: true,
+        OR: [
+          { mode: "DEMO" },
+          {
+            mode: { in: ["EVOLUTION", "META"] },
+            connection: {
+              is: { connectionState: "VERIFIED", verifiedAt: { not: null } },
+            },
+          },
+        ],
+      },
     },
     orderBy: { processAfter: "asc" },
     take: limit,
@@ -871,7 +1221,7 @@ export async function processVirtualQueue(
       });
       if (
         !conversation.account.active ||
-        conversation.account.mode !== "DEMO" ||
+        !(await liveConnectionReady(tx, conversation.account)) ||
         !conversation.agentEnabled ||
         conversation.optedOut ||
         !conversation.pendingSince ||
@@ -958,9 +1308,65 @@ export async function processVirtualQueue(
           direction: "INBOUND",
           processedAt: null,
         },
-        orderBy: { sequence: "asc" },
+        orderBy: [{ createdAt: "asc" }, { sequence: "asc" }],
         take: 30,
       });
+      const loop = await detectVirtualConversationLoop(
+        tx,
+        conversation.id,
+        messages[messages.length - 1]?.text ?? "",
+      );
+      if (loop) {
+        await tx.avAgentRun.create({
+          data: {
+            organizationId: conversation.organizationId,
+            storeId: conversation.storeId,
+            accountId: conversation.accountId,
+            conversationId: conversation.id,
+            version: conversation.version,
+            leaseOwner: owner,
+            status: "FAILED",
+            model: "LOOP_GUARD",
+            error: "CONVERSATION_LOOP",
+            completedAt: new Date(),
+          },
+        });
+        await tx.avConversation.update({
+          where: { id: conversation.id },
+          data: {
+            leaseOwner: null,
+            leaseUntil: null,
+            lastError: "CONVERSATION_LOOP",
+          },
+        });
+        await createVirtualEscalation(
+          tx,
+          {
+            organizationId: conversation.organizationId,
+            storeId: conversation.storeId,
+            accountId: conversation.accountId,
+            conversationId: conversation.id,
+          },
+          {
+            key: `loop:${conversation.version}`,
+            reason:
+              "A automação foi interrompida para evitar uma sequência repetitiva de respostas.",
+            excerpt: `Código: ${loop}. A equipe deve conferir a conversa antes de retomar.`,
+          },
+        );
+        await virtualAudit(
+          tx,
+          {
+            organizationId: conversation.organizationId,
+            storeId: conversation.storeId,
+            conversationId: conversation.id,
+          },
+          "system:loop-guard",
+          "CONVERSATION_LOOP_BLOCKED",
+          { reason: loop },
+        );
+        return null;
+      }
       const run = await tx.avAgentRun.create({
         data: {
           organizationId: conversation.organizationId,
@@ -990,6 +1396,7 @@ export async function processVirtualQueue(
           text: m.text,
           kind: m.kind,
           transcriptionCertain: m.transcriptionCertain,
+          occurredAt: m.createdAt.toISOString(),
         })),
         limits: {
           maxTokens: conversation.account.maxTurnTokens,
@@ -1024,7 +1431,7 @@ export async function processVirtualQueue(
         await lockVirtualConversation(tx, input.conversationId);
         const current = await tx.avConversation.findUniqueOrThrow({
           where: { id: input.conversationId },
-          include: { account: { select: { active: true } } },
+          include: { account: { select: { active: true, mode: true } } },
         });
         const runData = {
           tokens: Math.max(0, result.tokens),
@@ -1035,6 +1442,12 @@ export async function processVirtualQueue(
         };
         if (
           !current.account.active ||
+          !(await liveConnectionReady(tx, {
+            id: input.accountId,
+            organizationId: input.organizationId,
+            storeId: input.storeId,
+            mode: current.account.mode,
+          })) ||
           current.version !== input.version ||
           current.leaseOwner !== owner ||
           !current.leaseUntil ||
@@ -1053,8 +1466,12 @@ export async function processVirtualQueue(
           });
           return;
         }
+        if (!result.text.trim())
+          throw new CrmError(
+            "EMPTY_RESPONSE",
+            "O atendimento não gerou uma resposta com texto.",
+          );
         if (
-          !result.text.trim() ||
           result.text.length > 4000 ||
           result.tokens > input.limits.maxTokens ||
           result.costMicros > input.limits.maxCostMicros
@@ -1165,7 +1582,12 @@ export async function processVirtualQueue(
         });
         if (
           attempts >= MAX_ATTEMPTS ||
-          ["TURN_LIMIT", "CLAIM_BLOCKED", "TOOL_LOOP"].includes(code)
+          [
+            "EMPTY_RESPONSE",
+            "TURN_LIMIT",
+            "CLAIM_BLOCKED",
+            "TOOL_LOOP",
+          ].includes(code)
         )
           await createVirtualEscalation(tx, input, {
             key: `failure:${input.version}`,
@@ -1180,7 +1602,7 @@ export async function processVirtualQueue(
       });
     }
   }
-  return { processed, accepted: await deliverVirtualOutbox() };
+  return { processed, accepted: await deliverVirtualOutbox(20, channelFor) };
 }
 
 const actionSchema = z
@@ -1208,6 +1630,7 @@ export async function actOnVirtualConversation(
   context: ContextoSessao,
   id: string,
   raw: unknown,
+  channelFor: VirtualChannelFactory = demoChannel,
 ) {
   const data = actionSchema.parse(raw);
   const scope = await authorizeVirtual(context, data.storeId, true);
@@ -1425,6 +1848,6 @@ export async function actOnVirtualConversation(
     });
     await virtualAudit(tx, full, context.usuario.id, data.action, { version });
   });
-  await deliverVirtualOutbox();
+  await deliverVirtualOutbox(20, channelFor);
   return { success: true };
 }
