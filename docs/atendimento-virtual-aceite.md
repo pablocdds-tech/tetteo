@@ -254,6 +254,27 @@ Essa conferência comprova transporte e a necessidade da reconciliação; não
 comprova saudação automática com nome. A conta continua pausada até completar
 seus requisitos, incluindo dados operacionais reais aprovados.
 
+### Diagnóstico isolado de saudação — 04/11/2026
+
+O usuário autorizou uma saudação entre os dois números próprios, mantendo o
+atendimento geral pausado e adiando a base de horários/cardápio. O diagnóstico
+privado teve 12/12 testes de integração aprovados em PostgreSQL local `_test`,
+com dados fictícios Kairu, além dos testes do prefixo compartilhado.
+
+No ensaio real, uma única entrada “Oi” com protocolo foi enviada do número
+interno para o de atendimento. A intenção foi auditada antes do envio. A
+Evolution remetente registrou aceitação e atualizações `DELIVERY_ACK`/`READ`;
+a busca correlacionada no receptor, por ID e por protocolo na janela de origem,
+não encontrou a mensagem, e o aplicativo não registrou a entrada ao vivo.
+Ambas as conexões estavam abertas. Os registros consultados não mostraram
+erro de rede ou de descriptografia que explicasse essa ausência.
+
+Nenhuma saudação de resposta ou execução `AgentRun` foi criada. A janela de
+cinco minutos expirou sem resposta; não houve repetição do envio, ativação do
+canal ou alteração de pausas dos clientes. A confirmação no aparelho pareado
+foi solicitada para continuar o diagnóstico da sincronização. Esse resultado
+não comprova reconhecimento do nome nem atendimento automático funcionando.
+
 ### Preparação administrativa anterior
 
 A configuração administrativa para preparar conexões de clientes foi salva no
