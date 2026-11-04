@@ -44,7 +44,7 @@ export function AtualizacaoDasVendas({
         onClick={() => iniciar(() => router.refresh())}
       >
         <Icone nome="atualizar" tamanho={16} />
-        Atualizar
+        Atualizar tela
       </Botao>
     </div>
   );

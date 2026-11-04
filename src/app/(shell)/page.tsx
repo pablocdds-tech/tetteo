@@ -77,7 +77,8 @@ export default async function PainelDaOperacao({
         contexto.unidadesVisiveis.length === 1 ? "unidade" : "unidades"
       }`;
 
-  const temVendas = pode(contexto, "pdv.ver");
+  const temVendas =
+    pode(contexto, "pdv.ver") || pode(contexto, "analytics.ver");
   const temFinanceiro = pode(contexto, "financeiro.ver");
   const temPrioridades = pode(contexto, "checklists.ver");
 
@@ -125,7 +126,7 @@ export default async function PainelDaOperacao({
               className="border-line-2 bg-surface hover:bg-surface-2 focus-visible:outline-accent inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-3"
             >
               <Icone nome="grafico" tamanho={16} />
-              Vendas Saipos
+              Histórico Saipos
             </a>
           )}
         </nav>
@@ -172,11 +173,13 @@ export default async function PainelDaOperacao({
         >
           <div>
             <h2 id="titulo-vendas-saipos" className="text-lg font-semibold">
-              Vendas Saipos
+              Histórico Saipos
             </h2>
             <p className="text-ink-3 mt-1 text-sm">
-              Últimos 7 dias encerrados. A importação Saipos é separada dos
-              pedidos ao vivo do PDV.
+              Últimos 7 dias encerrados.{" "}
+              {contexto.unidadeAtiva
+                ? "O turno de hoje aparece junto aos pedidos e ao faturamento acima."
+                : "Selecione uma unidade para acompanhar também o turno de hoje."}
             </p>
           </div>
           <Suspense

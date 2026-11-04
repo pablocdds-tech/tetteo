@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { Cartao } from "@/design-system/cartao";
 import { Etiqueta } from "@/design-system/etiqueta";
 import { Icone } from "@/design-system/icones";
+import { LinhasCarregando } from "@/design-system/esqueleto";
 import { formatarMoeda } from "@/lib/numero";
 import { consultarResumoOperacao } from "@/modules/pdv/services/resumo-operacao";
 import { AtualizacaoDasVendas } from "./vendas-atualizacao";
+import { SaiposHoje } from "./saipos-hoje";
 
 const ETAPAS = [
   { status: "COZINHA", nome: "Na cozinha", icone: "prato" },
@@ -22,23 +25,70 @@ const link =
 
 export async function VendasDaOperacao() {
   const contexto = await obterContexto();
+  if (
+    !contexto?.unidadeAtiva ||
+    (!pode(contexto, "pdv.ver") && !pode(contexto, "analytics.ver"))
+  )
+    return null;
+
+  return (
+    <section
+      aria-label="Pedidos e faturamento da operação"
+      className="flex min-w-0 flex-col gap-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Pedidos e faturamento
+        </h2>
+        <AtualizacaoDasVendas atualizadoEm={new Date().toISOString()} />
+      </div>
+      {pode(contexto, "pdv.ver") && (
+        <Suspense
+          fallback={
+            <Cartao>
+              <LinhasCarregando linhas={3} />
+            </Cartao>
+          }
+        >
+          <VendasDoPdv />
+        </Suspense>
+      )}
+      {pode(contexto, "analytics.ver") && (
+        <Suspense
+          fallback={
+            <Cartao>
+              <LinhasCarregando linhas={3} />
+            </Cartao>
+          }
+        >
+          <SaiposHoje />
+        </Suspense>
+      )}
+      <p className="text-ink-3 text-xs leading-5">
+        A tela consulta os dados do Tetteo a cada 30 s enquanto aberta. PDV e
+        Saipos têm atualizações próprias e não são somados. Horários de
+        Brasília.
+      </p>
+    </section>
+  );
+}
+
+async function VendasDoPdv() {
+  const contexto = await obterContexto();
   if (!contexto?.unidadeAtiva || !pode(contexto, "pdv.ver")) return null;
   let dados;
   try {
     dados = await consultarResumoOperacao(contexto);
   } catch {
     return (
-      <Cartao
-        como="section"
-        className="flex flex-wrap items-center justify-between gap-4 p-5"
-      >
+      <Cartao como="section" className="p-5">
         <div>
-          <h2 className="font-semibold">Pedidos e faturamento</h2>
+          <h3 className="font-semibold">PDV Tetteo</h3>
           <p role="status" className="text-ink-2 mt-1 text-sm">
-            Não foi possível consultar o PDV. Tente atualizar a operação.
+            Não foi possível consultar o PDV. Use Atualizar tela para tentar
+            novamente.
           </p>
         </div>
-        <AtualizacaoDasVendas />
       </Cartao>
     );
   }
@@ -70,15 +120,10 @@ export async function VendasDaOperacao() {
 
   return (
     <section
-      aria-label="Pedidos e faturamento da operação"
+      aria-label="Pedidos e faturamento do PDV Tetteo"
       className="flex min-w-0 flex-col gap-3"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold tracking-tight">
-          Pedidos e faturamento
-        </h2>
-        <AtualizacaoDasVendas atualizadoEm={dados.atualizadoEm} />
-      </div>
+      <h3 className="text-sm font-semibold">PDV Tetteo</h3>
 
       <Cartao className="min-w-0 overflow-hidden">
         <div className="divide-line grid divide-y sm:grid-cols-3 sm:divide-x sm:divide-y-0">
@@ -107,7 +152,7 @@ export async function VendasDaOperacao() {
         <div className="border-line bg-surface-2/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-5">
           <div className="flex items-center gap-2">
             <span className="bg-ok size-2 rounded-full" aria-hidden="true" />
-            <h3 className="text-sm font-semibold">Pedidos ao vivo no PDV</h3>
+            <h4 className="text-sm font-semibold">Pedidos ao vivo no PDV</h4>
             <span className="text-ink-2 text-sm tabular-nums">
               {dados.aoVivo} em andamento
             </span>
@@ -180,10 +225,9 @@ export async function VendasDaOperacao() {
         </div>
       </Cartao>
       <p className="text-ink-3 text-xs leading-5">
-        Atualização a cada 30 s. Faturamento de vendas concluídas no PDV Tetteo,
-        sem pendentes ou canceladas. Pedidos importados e vendas Saipos não
-        entram neste faturamento; os pagamentos são consultados na origem.
-        Horários de Brasília.
+        Faturamento de vendas concluídas no PDV Tetteo, sem pendentes ou
+        canceladas. Pedidos importados e vendas Saipos não entram neste
+        faturamento; os pagamentos são consultados na origem.
       </p>
     </section>
   );
