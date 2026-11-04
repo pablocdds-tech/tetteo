@@ -7,6 +7,7 @@ import {
   impedimentosParaFechar,
   naoConformidades,
   type ItemRespondido,
+  foiRespondido,
 } from "./pontuacao";
 
 /**
@@ -184,4 +185,56 @@ test("só o que está não conforme vira pendência", () => {
   ]);
 
   assert.equal(pendencias.length, 1);
+});
+
+test("N/A obrigatório exige justificativa e não dispensa foto nem vídeo", () => {
+  const base = item({ naoSeAplica: true, exigeFoto: true, exigeVideo: true });
+  assert.equal(impedimentosParaFechar([base]).length, 3);
+  assert.deepEqual(
+    impedimentosParaFechar([
+      {
+        ...base,
+        observacao: "Equipamento desativado; evidência em anexo",
+        fotos: 1,
+        videos: 1,
+      },
+    ]),
+    [],
+  );
+});
+
+test("uma evidência de vídeo não satisfaz requisito de foto", () => {
+  const motivos = impedimentosParaFechar([
+    item({
+      conforme: true,
+      exigeFoto: true,
+      evidencias: [{ tipo: "video/mp4" }],
+    }),
+  ]);
+  assert.match(motivos[0], /Falta foto/);
+});
+
+test("seleções são registro; opções inventadas e duplicadas impedem fechamento", () => {
+  const base = item({
+    tipo: "MULTIPLA_ESCOLHA",
+    opcoes: ["Salão", "Cozinha"],
+    valorSelecao: ["Salão"],
+  });
+  assert.equal(foiRespondido(base), true);
+  assert.equal(calcularNota([base]).pontuacao, null);
+  assert.deepEqual(impedimentosParaFechar([base]), []);
+  assert.match(
+    impedimentosParaFechar([{ ...base, valorSelecao: ["Depósito"] }])[0],
+    /Revise as opções/,
+  );
+  assert.match(
+    impedimentosParaFechar([{ ...base, valorSelecao: ["Salão", "Salão"] }])[0],
+    /Revise as opções/,
+  );
+  assert.match(
+    impedimentosParaFechar([
+      { ...base, tipo: "SELECAO_UNICA", valorSelecao: ["Salão", "Cozinha"] },
+    ])[0],
+    /Revise as opções/,
+  );
 });

@@ -20,6 +20,43 @@ const host = (valor: string, encaminhado?: string) =>
   });
 
 describe("domínios integrados", () => {
+  test("link autenticado conserva a origem pública em instalação com domínio único", () => {
+    assert.equal(
+      urlDaRequisicaoPublica(
+        "http://0.0.0.0:3087/checklists/acessar/execucao",
+        host("localhost:3087"),
+        null,
+        "http://localhost:3087",
+      )?.href,
+      "http://localhost:3087/checklists/acessar/execucao",
+    );
+    assert.equal(
+      urlDaRequisicaoPublica(
+        "http://interno:3000/checklists/execucao",
+        host("app.example.com"),
+        null,
+        "https://app.example.com",
+      )?.origin,
+      "https://app.example.com",
+    );
+  });
+  test("domínio único recusa Host e encaminhamento adulterados", () => {
+    for (const headers of [
+      host("evil.example"),
+      host("app.example.com", "evil.example"),
+      host("app.example.com,evil.example"),
+    ]) {
+      assert.equal(
+        urlDaRequisicaoPublica(
+          "http://0.0.0.0:3000/checklists/execucao",
+          headers,
+          null,
+          "https://app.example.com",
+        ),
+        null,
+      );
+    }
+  });
   test("standalone reconstrói origem pública a partir do Host validado e conserva callback e query", () => {
     const interna =
       "https://0.0.0.0:3000/api/auth/callback/google?code=ficticio&state=estado%2Bteste";

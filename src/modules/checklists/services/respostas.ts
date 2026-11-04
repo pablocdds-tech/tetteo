@@ -1,7 +1,10 @@
-import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import type { Prisma, RespostaDeChecklist } from "@prisma/client";
+
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import { SemPermissao } from "@/lib/erros";
 import { db } from "@/server/db";
 
+import { esquemaAtribuicaoResposta, esquemaValorItem } from "../schemas/modelo";
 import {
   calcularNota,
   conformidadeDoItem,
@@ -10,153 +13,281 @@ import {
   type ItemRespondido,
 } from "../schemas/pontuacao";
 
-import { registrar } from "./auditoria";
 import { exigirUnidade, nomesDeUsuarios } from "./rotinas";
-
-/**
- * AS RESPOSTAS — o que aconteceu num dia.
- *
- * A invariante deste arquivo é a mesma da contagem de estoque: **checklist
- * fechado não muda**. Um checklist é uma afirmação com hora e assinatura — "às
- * 7h03 a câmara fria estava limpa". Se a afirmação puder ser editada depois,
- * ela para de provar qualquer coisa, e o histórico vira ficção.
- *
- * Por isso o texto da pergunta é COPIADO para a resposta na abertura. Corrigir
- * a redação de um item amanhã não pode reescrever o que foi respondido ontem.
- */
 
 export type ValorItem = {
   conforme?: boolean | null;
   naoSeAplica?: boolean;
   valorNumero?: number | null;
   valorTexto?: string | null;
+  valorSelecao?: string[];
   observacao?: string | null;
+  versaoEsperada?: number;
 };
 
-/**
- * Abre o checklist e congela a folha.
- *
- * Os itens são copiados AGORA. Se uma pergunta for acrescentada amanhã, ela
- * não entra no checklist de hoje — senão a folha mudaria debaixo de quem está
- * respondendo.
- */
-export async function abrirResposta(
+/** Todas as mutações da folha usam a mesma trava, inclusive evidência e IA. */
+export async function comRespostaBloqueada<T>(
   contexto: ContextoSessao,
-  dados: { modeloId: string; referencia: Date; rotinaId?: string | null },
-) {
-  if (!pode(contexto, "checklists.responder")) {
-    throw new SemPermissao("responder checklists");
-  }
+  respostaId: string,
+  executar: (
+    tx: Prisma.TransactionClient,
+    resposta: RespostaDeChecklist,
+  ) => Promise<T>,
+): Promise<T> {
+  if (!pode(contexto, "checklists.ver"))
+    throw new SemPermissao("ver os checklists");
   const unidade = exigirUnidade(contexto);
+  return db.$transaction(
+    async (tx) => {
+      const [linha] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT r."id" FROM "resposta_de_checklist" r
+      JOIN "modelo_de_checklist" m ON m."id" = r."modeloId"
+      WHERE r."id" = ${respostaId} AND r."unidadeId" = ${unidade.id}
+        AND m."organizacaoId" = ${contexto.organizacao.id}
+      FOR UPDATE OF r`;
+      if (!linha) throw new Error("Checklist não encontrado.");
+      const resposta = await tx.respostaDeChecklist.findUniqueOrThrow({
+        where: { id: linha.id },
+      });
+      return executar(tx, resposta);
+    },
+    { timeout: 20_000 },
+  );
+}
 
-  const modelo = await db.modeloDeChecklist.findFirst({
+export function exigirPodeResponder(
+  contexto: ContextoSessao,
+  resposta: Pick<RespostaDeChecklist, "responsavelId">,
+) {
+  if (!pode(contexto, "checklists.responder"))
+    throw new SemPermissao("responder checklists");
+  if (
+    resposta.responsavelId &&
+    resposta.responsavelId !== contexto.usuario.id &&
+    !pode(contexto, "checklists.editar")
+  ) {
+    throw new SemPermissao("responder o checklist atribuído a outra pessoa");
+  }
+}
+
+export async function auditarResposta(
+  tx: Prisma.TransactionClient,
+  contexto: ContextoSessao,
+  respostaId: string,
+  antes: unknown,
+  depois: unknown,
+) {
+  await tx.auditoria.create({
+    data: {
+      organizacaoId: contexto.organizacao.id,
+      unidadeId: contexto.unidadeAtiva?.id ?? null,
+      usuarioId: contexto.usuario.id,
+      entidade: "RespostaDeChecklist",
+      entidadeId: respostaId,
+      acao: antes === null ? "CRIOU" : "ALTEROU",
+      valoresAntes:
+        antes == null ? undefined : JSON.parse(JSON.stringify(antes)),
+      valoresDepois:
+        depois == null ? undefined : JSON.parse(JSON.stringify(depois)),
+    },
+  });
+}
+
+function exigirAberta(resposta: Pick<RespostaDeChecklist, "status">) {
+  if (resposta.status !== "ABERTA")
+    throw new Error("Este checklist já foi fechado e não aceita alterações.");
+}
+
+async function validarResponsavel(
+  tx: Prisma.TransactionClient,
+  contexto: ContextoSessao,
+  responsavelId: string | null,
+) {
+  if (!responsavelId) return;
+  const unidade = exigirUnidade(contexto);
+  const acesso = await tx.acesso.findFirst({
+    where: {
+      usuarioId: responsavelId,
+      organizacaoId: contexto.organizacao.id,
+      status: "ATIVO",
+      excluidoEm: null,
+      OR: [{ unidadeId: unidade.id }, { unidadeId: null }],
+    },
+    select: { id: true },
+  });
+  if (!acesso) throw new Error("Esta pessoa não tem acesso a esta loja.");
+}
+
+async function abrirNoBanco(
+  tx: Prisma.TransactionClient,
+  contexto: ContextoSessao,
+  dados: {
+    modeloId: string;
+    referencia: Date;
+    rotinaId?: string | null;
+    responsavelId?: string | null;
+  },
+) {
+  const unidade = exigirUnidade(contexto);
+  if (
+    !(dados.referencia instanceof Date) ||
+    !Number.isFinite(dados.referencia.getTime())
+  )
+    throw new Error("Data inválida.");
+  const modelo = await tx.modeloDeChecklist.findFirst({
     where: {
       id: dados.modeloId,
       organizacaoId: contexto.organizacao.id,
+      ativo: true,
       excluidoEm: null,
     },
     include: { itens: { orderBy: { ordem: "asc" } } },
   });
   if (!modelo) throw new Error("Checklist não encontrado.");
-  if (modelo.itens.length === 0) {
+  if (modelo.itens.length === 0)
     throw new Error(
       "Este checklist ainda não tem nenhuma pergunta. Escreva os itens antes de responder.",
     );
-  }
-
-  const resposta = await db.respostaDeChecklist.create({
+  if (modelo.itens.length > 200)
+    throw new Error(
+      "Um checklist pode ter até 200 perguntas. Divida este modelo em etapas.",
+    );
+  const responsavelId = dados.rotinaId
+    ? (dados.responsavelId ?? null)
+    : contexto.usuario.id;
+  await validarResponsavel(tx, contexto, responsavelId);
+  exigirPodeResponder(contexto, { responsavelId });
+  const resposta = await tx.respostaDeChecklist.create({
     data: {
       unidadeId: unidade.id,
       modeloId: modelo.id,
       rotinaId: dados.rotinaId ?? null,
       referencia: dados.referencia,
       abertaPorId: contexto.usuario.id,
+      responsavelId,
       itens: {
         createMany: {
-          data: modelo.itens.map((item, indice) => ({
+          data: modelo.itens.map((item, ordem) => ({
             itemId: item.id,
             textoItem: item.texto,
             secao: item.secao,
             tipo: item.tipo,
-            ordem: indice,
+            ordem,
+            obrigatorio: item.obrigatorio,
+            exigeObservacaoSeNao: item.exigeObservacaoSeNao,
+            exigeFoto: item.exigeFoto,
+            exigeVideo: item.exigeVideo,
+            rotuloUnidade: item.rotuloUnidade,
+            minimo: item.minimo,
+            maximo: item.maximo,
+            opcoes: item.opcoes,
+            analisarIA: item.analisarIA,
+            criterioIA: item.criterioIA,
           })),
         },
       },
     },
   });
-
-  await registrar(contexto, "RespostaDeChecklist", "CRIOU", resposta.id, null, {
+  await auditarResposta(tx, contexto, resposta.id, null, {
     modelo: modelo.nome,
     referencia: dados.referencia.toISOString(),
     itens: modelo.itens.length,
+    responsavelId,
   });
-
   return resposta;
 }
 
-/**
- * "Responder agora": abre (ou retoma) o checklist da rotina.
- *
- * Se já existe um aberto, devolve ele — apertar o botão duas vezes não pode
- * criar duas folhas pela metade.
- */
-export async function executarRotina(contexto: ContextoSessao, id: string) {
-  if (!pode(contexto, "checklists.responder")) {
+export async function abrirResposta(
+  contexto: ContextoSessao,
+  dados: { modeloId: string; referencia: Date; rotinaId?: string | null },
+) {
+  if (!pode(contexto, "checklists.responder"))
     throw new SemPermissao("responder checklists");
-  }
   const unidade = exigirUnidade(contexto);
-
-  const rotina = await db.rotinaDeChecklist.findFirst({
-    where: { id, unidadeId: unidade.id, ativo: true },
-    include: {
-      respostas: {
-        where: { status: "ABERTA", canceladaEm: null },
-        select: { id: true },
-        take: 1,
-      },
-    },
-  });
-  if (!rotina) throw new Error("Rotina não encontrada.");
-
-  if (rotina.respostas[0]) return { id: rotina.respostas[0].id };
-
-  return abrirResposta(contexto, {
-    modeloId: rotina.modeloId,
-    referencia: new Date(),
-    rotinaId: rotina.id,
+  return db.$transaction(async (tx) => {
+    if (!dados.rotinaId) return abrirNoBanco(tx, contexto, dados);
+    const [linha] = await tx.$queryRaw<
+      { id: string }[]
+    >`SELECT "id" FROM "rotina_de_checklist" WHERE "id" = ${dados.rotinaId} AND "unidadeId" = ${unidade.id} FOR UPDATE`;
+    if (!linha) throw new Error("Rotina não encontrada.");
+    const rotina = await tx.rotinaDeChecklist.findUniqueOrThrow({
+      where: { id: linha.id },
+    });
+    if (!rotina.ativo || rotina.modeloId !== dados.modeloId)
+      throw new Error("Rotina não encontrada.");
+    const existente = await tx.respostaDeChecklist.findFirst({
+      where: { rotinaId: rotina.id, status: "ABERTA", canceladaEm: null },
+    });
+    if (existente) {
+      exigirPodeResponder(contexto, existente);
+      return existente;
+    }
+    return abrirNoBanco(tx, contexto, {
+      ...dados,
+      responsavelId: rotina.responsavelId,
+    });
   });
 }
 
-export async function obterResposta(contexto: ContextoSessao, id: string) {
-  if (!pode(contexto, "checklists.ver")) {
-    throw new SemPermissao("ver os checklists");
-  }
+export async function executarRotina(contexto: ContextoSessao, id: string) {
   const unidade = exigirUnidade(contexto);
+  const rotina = await db.rotinaDeChecklist.findFirst({
+    where: {
+      id,
+      unidadeId: unidade.id,
+      ativo: true,
+      modelo: { organizacaoId: contexto.organizacao.id },
+    },
+    select: { modeloId: true },
+  });
+  if (!rotina) throw new Error("Rotina não encontrada.");
+  return abrirResposta(contexto, {
+    modeloId: rotina.modeloId,
+    referencia: new Date(),
+    rotinaId: id,
+  });
+}
 
-  return db.respostaDeChecklist.findFirst({
-    where: { id, unidadeId: unidade.id },
+const inclusaoDaResposta = {
+  modelo: { select: { id: true, nome: true, descricao: true } },
+  itens: {
+    orderBy: { ordem: "asc" as const },
     include: {
-      modelo: { select: { id: true, nome: true, descricao: true } },
-      itens: {
-        orderBy: { ordem: "asc" },
-        include: {
-          item: {
-            select: {
-              obrigatorio: true,
-              exigeObservacaoSeNao: true,
-              exigeFoto: true,
-              rotuloUnidade: true,
-              minimo: true,
-              maximo: true,
-            },
-          },
+      item: {
+        select: {
+          obrigatorio: true,
+          exigeObservacaoSeNao: true,
+          exigeFoto: true,
+          rotuloUnidade: true,
+          minimo: true,
+          maximo: true,
         },
       },
-      pendencias: {
-        where: { status: { not: "CANCELADA" } },
-        select: { id: true, descricao: true, status: true },
+      evidencias: {
+        where: { excluidoEm: null, arquivo: { excluidoEm: null } },
+        include: {
+          arquivo: { select: { id: true, tipo: true, nomeOriginal: true } },
+        },
       },
     },
+  },
+  pendencias: {
+    where: { status: { not: "CANCELADA" as const } },
+    select: { id: true, descricao: true, status: true },
+  },
+} satisfies Prisma.RespostaDeChecklistInclude;
+
+export async function obterResposta(contexto: ContextoSessao, id: string) {
+  if (!pode(contexto, "checklists.ver"))
+    throw new SemPermissao("ver os checklists");
+  const unidade = exigirUnidade(contexto);
+  return db.respostaDeChecklist.findFirst({
+    where: {
+      id,
+      unidadeId: unidade.id,
+      modelo: { organizacaoId: contexto.organizacao.id },
+    },
+    include: inclusaoDaResposta,
   });
 }
 
@@ -164,117 +295,218 @@ export type RespostaCompleta = NonNullable<
   Awaited<ReturnType<typeof obterResposta>>
 >;
 
-/** Traduz a linha do banco para o formato que a conta da nota entende. */
 export function paraPontuacao(
   item: RespostaCompleta["itens"][number],
 ): ItemRespondido {
   return {
     textoItem: item.textoItem,
     tipo: item.tipo,
-    obrigatorio: item.item.obrigatorio,
+    obrigatorio: item.obrigatorio,
     conforme: item.conforme,
     naoSeAplica: item.naoSeAplica,
     valorNumero: item.valorNumero === null ? null : Number(item.valorNumero),
     valorTexto: item.valorTexto,
-    minimo: item.item.minimo === null ? null : Number(item.item.minimo),
-    maximo: item.item.maximo === null ? null : Number(item.item.maximo),
+    valorSelecao: item.valorSelecao,
+    opcoes: item.opcoes,
+    minimo: item.minimo === null ? null : Number(item.minimo),
+    maximo: item.maximo === null ? null : Number(item.maximo),
     observacao: item.observacao,
-    exigeObservacaoSeNao: item.item.exigeObservacaoSeNao,
+    exigeObservacaoSeNao: item.exigeObservacaoSeNao,
+    exigeFoto: item.exigeFoto,
+    exigeVideo: item.exigeVideo,
+    fotos: item.evidencias.filter((e) => e.arquivo.tipo.startsWith("image/"))
+      .length,
+    videos: item.evidencias.filter((e) => e.arquivo.tipo.startsWith("video/"))
+      .length,
+    evidencias: item.evidencias.map((e) => ({ tipo: e.arquivo.tipo })),
   };
 }
 
-/**
- * Grava o que foi preenchido.
- *
- * Recebe só o que a tela mandou. Chaves ausentes não são tocadas — salvar uma
- * parte da folha não pode apagar o resto.
- */
+async function salvarNoBanco(
+  tx: Prisma.TransactionClient,
+  contexto: ContextoSessao,
+  resposta: RespostaDeChecklist,
+  valores: Map<string, ValorItem>,
+) {
+  exigirPodeResponder(contexto, resposta);
+  exigirAberta(resposta);
+  if (valores.size > 200) throw new Error("Envie até 200 itens por vez.");
+  const linhas = await tx.respostaItem.findMany({
+    where: { respostaId: resposta.id, itemId: { in: [...valores.keys()] } },
+  });
+  if (linhas.length !== valores.size)
+    throw new Error(
+      "A resposta contém um item que não pertence a este checklist.",
+    );
+  const salvas = [];
+  for (const linha of linhas) {
+    const { versaoEsperada, ...bruto } = valores.get(linha.itemId)!;
+    if (
+      versaoEsperada !== undefined &&
+      (!Number.isInteger(versaoEsperada) || versaoEsperada !== linha.versao)
+    )
+      throw new Error(
+        "Este item mudou em outra tela. Recarregue para conferir antes de responder.",
+      );
+    const analise = esquemaValorItem.safeParse(bruto);
+    if (!analise.success)
+      throw new Error("A resposta contém texto, número ou seleção inválidos.");
+    const v = analise.data;
+    const selecao = v.valorSelecao ?? [];
+    const deSelecao =
+      linha.tipo === "SELECAO_UNICA" || linha.tipo === "MULTIPLA_ESCOLHA";
+    if (
+      new Set(selecao).size !== selecao.length ||
+      selecao.some((opcao) => !linha.opcoes.includes(opcao)) ||
+      (!deSelecao && selecao.length > 0) ||
+      (linha.tipo === "SELECAO_UNICA" && selecao.length > 1)
+    )
+      throw new Error(`Revise as opções de: ${linha.textoItem}`);
+    if (
+      (linha.tipo !== "SIM_NAO" && v.conforme != null) ||
+      (linha.tipo !== "NUMERO" && v.valorNumero != null) ||
+      (linha.tipo !== "TEXTO" && (v.valorTexto ?? "").trim())
+    )
+      throw new Error(
+        `A resposta não corresponde ao tipo de: ${linha.textoItem}`,
+      );
+    const dados = {
+      conforme: v.conforme ?? null,
+      naoSeAplica: v.naoSeAplica ?? false,
+      valorNumero: v.valorNumero ?? null,
+      valorTexto: v.valorTexto || null,
+      valorSelecao: selecao,
+      observacao: v.observacao || null,
+    };
+    const anterior = {
+      conforme: linha.conforme,
+      naoSeAplica: linha.naoSeAplica,
+      valorNumero:
+        linha.valorNumero === null ? null : Number(linha.valorNumero),
+      valorTexto: linha.valorTexto,
+      valorSelecao: linha.valorSelecao,
+      observacao: linha.observacao,
+    };
+    if (JSON.stringify(anterior) === JSON.stringify(dados)) {
+      salvas.push(linha);
+      continue;
+    }
+    const respondeu =
+      dados.naoSeAplica ||
+      (linha.tipo === "SIM_NAO"
+        ? dados.conforme !== null
+        : linha.tipo === "NUMERO"
+          ? dados.valorNumero !== null
+          : deSelecao
+            ? selecao.length > 0
+            : !!dados.valorTexto);
+    const salva = await tx.respostaItem.update({
+      where: { id: linha.id },
+      data: {
+        ...dados,
+        respondidoPorId: respondeu ? contexto.usuario.id : null,
+        respondidoEm: respondeu ? new Date() : null,
+        versao: { increment: 1 },
+        resultadoIA: "NAO_SOLICITADA",
+        motivoIA: null,
+        confiancaIA: null,
+        analisadaVersao: null,
+        analiseIniciadaEm: null,
+        revisadoPorId: null,
+        revisadoEm: null,
+      },
+    });
+    await auditarResposta(
+      tx,
+      contexto,
+      resposta.id,
+      { itemId: linha.itemId, versao: linha.versao, ...anterior },
+      { itemId: linha.itemId, versao: salva.versao, ...dados },
+    );
+    salvas.push(salva);
+  }
+  if (salvas.some((linha, i) => linha.versao !== linhas[i].versao))
+    await tx.respostaDeChecklist.update({
+      where: { id: resposta.id },
+      data: { versao: { increment: 1 } },
+    });
+  return salvas;
+}
+
 export async function salvarRespostas(
   contexto: ContextoSessao,
   respostaId: string,
   valores: Map<string, ValorItem>,
 ) {
-  if (!pode(contexto, "checklists.responder")) {
-    throw new SemPermissao("responder checklists");
-  }
-  const unidade = exigirUnidade(contexto);
-
-  const resposta = await db.respostaDeChecklist.findFirst({
-    where: { id: respostaId, unidadeId: unidade.id },
-    select: { id: true, status: true },
+  return comRespostaBloqueada(contexto, respostaId, async (tx, resposta) => {
+    await salvarNoBanco(tx, contexto, resposta, valores);
+    return valores.size;
   });
-  if (!resposta) throw new Error("Checklist não encontrado.");
-  if (resposta.status !== "ABERTA") {
-    throw new Error("Este checklist já foi fechado e não aceita alterações.");
-  }
-
-  const agora = new Date();
-
-  await db.$transaction(
-    [...valores].map(([itemId, valor]) => {
-      const respondeu =
-        valor.naoSeAplica === true ||
-        valor.conforme != null ||
-        valor.valorNumero != null ||
-        (valor.valorTexto ?? "").trim() !== "";
-
-      return db.respostaItem.update({
-        where: { respostaId_itemId: { respostaId, itemId } },
-        data: {
-          conforme: valor.conforme ?? null,
-          naoSeAplica: valor.naoSeAplica ?? false,
-          valorNumero: valor.valorNumero ?? null,
-          valorTexto: valor.valorTexto ?? null,
-          observacao: valor.observacao ?? null,
-          respondidoPorId: respondeu ? contexto.usuario.id : null,
-          respondidoEm: respondeu ? agora : null,
-        },
-      });
-    }),
-  );
-
-  return valores.size;
 }
 
-/**
- * GRAVA UM ITEM SÓ.
- *
- * A folha salva item a item, no instante em que a pessoa marca — não num
- * botão "Salvar" no fim da página. A troca é deliberada e tem um preço que
- * precisa ser pago na tela, não escondido:
- *
- *   O QUE SE GANHA  ninguém mais perde meia hora de checklist porque o
- *                   celular travou, a bateria acabou ou a aba fechou.
- *
- *   O QUE SE PAGA   a cozinha tem internet ruim. Uma gravação que falha
- *                   PRECISA aparecer como falha: o item volta ao que estava,
- *                   com o aviso do lado. Marcar na tela e não gravar no banco
- *                   é a única coisa que este módulo não pode fazer — um
- *                   checklist que mente é pior do que checklist nenhum.
- *
- * Devolve o instante gravado pelo servidor, e não o do relógio do celular:
- * é ele que a tela mostra em "salvo às 07:12", e é ele que vale.
- */
 export async function salvarItem(
   contexto: ContextoSessao,
   respostaId: string,
   itemId: string,
   valor: ValorItem,
+  versaoEsperada?: number,
 ) {
-  await salvarRespostas(contexto, respostaId, new Map([[itemId, valor]]));
-
-  const linha = await db.respostaItem.findUnique({
-    where: { respostaId_itemId: { respostaId, itemId } },
-    select: { respondidoEm: true, respondidoPorId: true },
+  return comRespostaBloqueada(contexto, respostaId, async (tx, resposta) => {
+    const [linha] = await salvarNoBanco(
+      tx,
+      contexto,
+      resposta,
+      new Map([
+        [
+          itemId,
+          { ...valor, versaoEsperada: versaoEsperada ?? valor.versaoEsperada },
+        ],
+      ]),
+    );
+    return {
+      respondidoEm: linha.respondidoEm,
+      respondidoPor: linha.respondidoPorId
+        ? linha.respondidoPorId === contexto.usuario.id
+          ? contexto.usuario.nome
+          : ((
+              await tx.usuario.findUnique({
+                where: { id: linha.respondidoPorId },
+                select: { nome: true },
+              })
+            )?.nome ?? null)
+        : null,
+      versao: linha.versao,
+    };
   });
+}
 
-  return {
-    respondidoEm: linha?.respondidoEm ?? null,
-    // Quem gravou é sempre quem está na sessão — `salvarRespostas` acabou de
-    // carimbar isso. Buscar o nome no banco seria uma consulta a mais para
-    // saber o que já se sabe.
-    respondidoPor: linha?.respondidoPorId ? contexto.usuario.nome : null,
-  };
+export async function atribuirResposta(
+  contexto: ContextoSessao,
+  id: string,
+  dados: { responsavelId: string | null; prazoEm: Date | null },
+) {
+  if (!pode(contexto, "checklists.editar"))
+    throw new SemPermissao("atribuir checklists");
+  const analise = esquemaAtribuicaoResposta.safeParse(dados);
+  if (!analise.success)
+    throw new Error("Informe um responsável e um prazo válidos.");
+  return comRespostaBloqueada(contexto, id, async (tx, resposta) => {
+    exigirPodeResponder(contexto, resposta);
+    exigirAberta(resposta);
+    await validarResponsavel(tx, contexto, analise.data.responsavelId);
+    const atualizada = await tx.respostaDeChecklist.update({
+      where: { id },
+      data: { ...analise.data, versao: { increment: 1 } },
+    });
+    await auditarResposta(
+      tx,
+      contexto,
+      id,
+      { responsavelId: resposta.responsavelId, prazoEm: resposta.prazoEm },
+      analise.data,
+    );
+    return atualizada;
+  });
 }
 
 /**
@@ -337,167 +569,108 @@ export type LinhaDoHistorico = Awaited<
   ReturnType<typeof historicoDaRotina>
 >[number];
 
-/**
- * Fecha o checklist.
- *
- * Três coisas acontecem aqui, e a terceira é a razão de o módulo existir:
- *
- *   1. a conformidade de cada item é CONGELADA na linha
- *   2. a nota é calculada e guardada
- *   3. cada não conformidade vira uma PENDÊNCIA
- *
- * Sem o passo 3, o checklist é ritual: todo dia se anota que a coifa está suja
- * e todo dia ela continua suja. A pendência é o que obriga alguém a dizer o
- * que foi feito.
- *
- * A pendência nasce SEM responsável de propósito. O natural seria atribuir a
- * quem respondeu, mas quem encontra o problema quase nunca é quem conserta —
- * dar ao pizzaiolo a tarefa de trocar o compressor treina a equipe a ignorar a
- * lista. Sem dono, ela aparece no topo da tela do gerente até alguém assumir.
- */
-export async function fecharResposta(contexto: ContextoSessao, id: string) {
-  if (!pode(contexto, "checklists.responder")) {
-    throw new SemPermissao("fechar checklists");
-  }
-  const unidade = exigirUnidade(contexto);
-
-  const resposta = await obterResposta(contexto, id);
-  if (!resposta) throw new Error("Checklist não encontrado.");
-  if (resposta.status !== "ABERTA") {
-    throw new Error("Este checklist já foi fechado.");
-  }
-
-  const itens = resposta.itens.map(paraPontuacao);
-
-  const impedimentos = impedimentosParaFechar(itens);
-  if (impedimentos.length > 0) {
-    // Uma frase por linha: quem lê está de pé, com o celular na mão.
-    throw new Error(impedimentos.join("\n"));
-  }
-
-  const nota = calcularNota(itens);
-  const agora = new Date();
-
-  // Casa a linha do banco com o item já traduzido pelo ÍNDICE, não pelo texto:
-  // dois itens podem ter a mesma pergunta em seções diferentes ("Piso limpo?"
-  // na cozinha e no salão), e casar por texto prenderia a pendência na linha
-  // errada.
-  const problemas = resposta.itens
-    .map((linha, indice) => ({ linha, item: itens[indice] }))
-    .filter(({ item }) => conformidadeDoItem(item) === false)
-    .map(({ linha, item }) => ({
-      respostaItemId: linha.id,
-      descricao: descricaoDaPendencia(item),
-    }));
-
-  await db.$transaction([
-    // Congela a conformidade item a item. O "sim/não" já está na linha; o que
-    // se congela aqui é o veredito do NÚMERO, que hoje depende da faixa
-    // cadastrada no modelo — e a faixa pode mudar amanhã.
-    ...resposta.itens.map((linha, indice) =>
-      db.respostaItem.update({
-        where: { id: linha.id },
-        data: {
-          conforme: linha.naoSeAplica
-            ? null
-            : (conformidadeCongelada(itens[indice]) ?? linha.conforme),
-        },
-      }),
-    ),
-
-    db.respostaDeChecklist.update({
+/** Fecha, calcula e cria pendências sob a mesma trava da edição. */
+export async function fecharResposta(
+  contexto: ContextoSessao,
+  id: string,
+  versaoEsperada?: number,
+) {
+  return comRespostaBloqueada(contexto, id, async (tx, resposta) => {
+    exigirPodeResponder(contexto, resposta);
+    if (resposta.status === "FECHADA")
+      return {
+        pontuacao:
+          resposta.pontuacao === null ? null : Number(resposta.pontuacao),
+        pendencias: await tx.pendencia.count({ where: { respostaId: id } }),
+      };
+    exigirAberta(resposta);
+    if (
+      versaoEsperada !== undefined &&
+      (!Number.isInteger(versaoEsperada) || versaoEsperada !== resposta.versao)
+    )
+      throw new Error(
+        "O checklist mudou em outra tela. Recarregue e confira antes de concluir.",
+      );
+    const completa = await tx.respostaDeChecklist.findUniqueOrThrow({
+      where: { id },
+      include: inclusaoDaResposta,
+    });
+    const itens = completa.itens.map(paraPontuacao);
+    const impedimentos = impedimentosParaFechar(itens);
+    if (impedimentos.length > 0) throw new Error(impedimentos.join("\n"));
+    const nota = calcularNota(itens);
+    let problemas = 0;
+    for (const [indice, linha] of completa.itens.entries()) {
+      const conformidade = conformidadeDoItem(itens[indice]);
+      if (linha.tipo === "NUMERO")
+        await tx.respostaItem.update({
+          where: { id: linha.id },
+          data: { conforme: conformidade },
+        });
+      if (conformidade === false) {
+        await tx.pendencia.create({
+          data: {
+            unidadeId: resposta.unidadeId,
+            respostaId: id,
+            respostaItemId: linha.id,
+            descricao: descricaoDaPendencia(itens[indice]),
+            criadaPorId: contexto.usuario.id,
+          },
+        });
+        problemas += 1;
+      }
+    }
+    await tx.respostaDeChecklist.update({
       where: { id },
       data: {
         status: "FECHADA",
-        fechadaEm: agora,
+        fechadaEm: new Date(),
         fechadaPorId: contexto.usuario.id,
         itensConformes: nota.conformes,
         itensNaoConformes: nota.naoConformes,
         pontuacao: nota.pontuacao,
+        versao: { increment: 1 },
       },
-    }),
-
-    ...problemas.map((problema) =>
-      db.pendencia.create({
-        data: {
-          unidadeId: unidade.id,
-          respostaId: id,
-          respostaItemId: problema.respostaItemId,
-          descricao: problema.descricao,
-          criadaPorId: contexto.usuario.id,
-        },
-      }),
-    ),
-  ]);
-
-  await registrar(
-    contexto,
-    "RespostaDeChecklist",
-    "ALTEROU",
-    id,
-    { status: "ABERTA" },
-    {
-      status: "FECHADA",
-      pontuacao: nota.pontuacao,
-      conformes: nota.conformes,
-      naoConformes: nota.naoConformes,
-      pendenciasAbertas: problemas.length,
-    },
-  );
-
-  return { pontuacao: nota.pontuacao, pendencias: problemas.length };
-}
-
-/** O veredito congelado: só interessa quando ele foi DERIVADO de uma faixa. */
-function conformidadeCongelada(item: ItemRespondido): boolean | null {
-  if (item.tipo !== "NUMERO") return null;
-  if (item.minimo === null && item.maximo === null) return null;
-  if (item.valorNumero === null) return null;
-  if (item.minimo !== null && item.valorNumero < item.minimo) return false;
-  if (item.maximo !== null && item.valorNumero > item.maximo) return false;
-  return true;
-}
-
-/**
- * Cancela o checklist.
- *
- * Não existe reabrir: um checklist fechado já pode ter gerado pendência que
- * alguém está resolvendo. Cancelar é explícito, o registro continua no banco e
- * deixa rastro.
- */
-export async function cancelarResposta(contexto: ContextoSessao, id: string) {
-  if (!pode(contexto, "checklists.responder")) {
-    throw new SemPermissao("cancelar checklists");
-  }
-  const unidade = exigirUnidade(contexto);
-
-  const resposta = await db.respostaDeChecklist.findFirst({
-    where: { id, unidadeId: unidade.id, canceladaEm: null },
-    select: { id: true, status: true },
+    });
+    await auditarResposta(
+      tx,
+      contexto,
+      id,
+      { status: "ABERTA" },
+      {
+        status: "FECHADA",
+        pontuacao: nota.pontuacao,
+        pendenciasAbertas: problemas,
+      },
+    );
+    return { pontuacao: nota.pontuacao, pendencias: problemas };
   });
-  if (!resposta) throw new Error("Checklist não encontrado.");
+}
 
-  await db.$transaction([
-    db.respostaDeChecklist.update({
+export async function cancelarResposta(contexto: ContextoSessao, id: string) {
+  return comRespostaBloqueada(contexto, id, async (tx, resposta) => {
+    exigirPodeResponder(contexto, resposta);
+    if (resposta.status === "CANCELADA") return;
+    await tx.respostaDeChecklist.update({
       where: { id },
-      data: { status: "CANCELADA", canceladaEm: new Date() },
-    }),
-    // As pendências que ele gerou vão junto: cobrar conserto de um checklist
-    // que foi anulado é cobrar por engano.
-    db.pendencia.updateMany({
+      data: {
+        status: "CANCELADA",
+        canceladaEm: new Date(),
+        versao: { increment: 1 },
+      },
+    });
+    await tx.pendencia.updateMany({
       where: { respostaId: id, status: "ABERTA" },
       data: { status: "CANCELADA" },
-    }),
-  ]);
-
-  await registrar(
-    contexto,
-    "RespostaDeChecklist",
-    "EXCLUIU",
-    id,
-    { status: resposta.status },
-    null,
-  );
+    });
+    await auditarResposta(
+      tx,
+      contexto,
+      id,
+      { status: resposta.status },
+      { status: "CANCELADA" },
+    );
+  });
 }
 
 /** O histórico: o que já foi respondido nesta loja. */

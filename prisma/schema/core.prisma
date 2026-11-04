@@ -493,6 +493,7 @@ model Arquivo {
 
   criadoEm   DateTime  @default(now())
   excluidoEm DateTime?
+  evidenciasChecklist ChecklistEvidencia[]
 
   @@index([entidade, entidadeId])
   @@index([organizacaoId, criadoEm])

@@ -7,6 +7,7 @@ import { Campo } from "@/design-system/campo";
 
 import {
   adicionarItemAcao,
+  atualizarItemAcao,
   moverItemAcao,
   removerItemAcao,
   type EstadoChecklist,
@@ -19,10 +20,14 @@ export type ItemDoModelo = {
   id: string;
   texto: string;
   secao: string | null;
-  tipo: "SIM_NAO" | "NUMERO" | "TEXTO";
+  tipo: "SIM_NAO" | "NUMERO" | "TEXTO" | "SELECAO_UNICA" | "MULTIPLA_ESCOLHA";
   obrigatorio: boolean;
   exigeObservacaoSeNao: boolean;
   exigeFoto: boolean;
+  exigeVideo: boolean;
+  analisarIA: boolean;
+  criterioIA: string | null;
+  opcoes: string[];
   rotuloUnidade: string | null;
   minimo: string | null;
   maximo: string | null;
@@ -32,6 +37,8 @@ const NOME_DO_TIPO = {
   SIM_NAO: "Sim / Não",
   NUMERO: "Número",
   TEXTO: "Texto livre",
+  SELECAO_UNICA: "Seleção única",
+  MULTIPLA_ESCOLHA: "Caixas de seleção",
 } as const;
 
 /**
@@ -53,12 +60,26 @@ export function EditorDeItens({
   modeloId: string;
   itens: ItemDoModelo[];
 }) {
+  const [tipo, setTipo] = useState<ItemDoModelo["tipo"]>("SIM_NAO");
+  const [analisarIA, setAnalisarIA] = useState(false);
+  const [editando, setEditando] = useState<ItemDoModelo | null>(null);
+  const [versaoFormulario, setVersaoFormulario] = useState(0);
+  const formulario = useRef<HTMLFormElement>(null);
   const [estado, acao, enviando] = useActionState<EstadoChecklist, FormData>(
-    adicionarItemAcao,
+    async (anterior, dados) => {
+      const resultado = await (dados.get("itemId")
+        ? atualizarItemAcao(anterior, dados)
+        : adicionarItemAcao(anterior, dados));
+      if (resultado.ok) {
+        setEditando(null);
+        setTipo("SIM_NAO");
+        setAnalisarIA(false);
+        setVersaoFormulario((versao) => versao + 1);
+      }
+      return resultado;
+    },
     {},
   );
-  const [tipo, setTipo] = useState<ItemDoModelo["tipo"]>("SIM_NAO");
-  const formulario = useRef<HTMLFormElement>(null);
 
   // Sugere o bloco do último item: quem escreve a seção "Cozinha" costuma
   // escrever mais cinco perguntas de cozinha em seguida.
@@ -106,10 +127,31 @@ export function EditorDeItens({
                       (item.minimo || item.maximo) &&
                       ` · aceitável ${faixaEmTexto(item)}`}
                     {item.exigeFoto && " · pede foto"}
+                    {item.exigeVideo && " · pede vídeo"}
+                    {item.analisarIA && " · conferência por IA"}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-0.5">
+                  <Botao
+                    type="button"
+                    peso="fantasma"
+                    tamanho="pequeno"
+                    onClick={() => {
+                      setEditando(item);
+                      setTipo(item.tipo);
+                      setAnalisarIA(item.analisarIA);
+                      requestAnimationFrame(() =>
+                        formulario.current
+                          ?.querySelector<HTMLInputElement>(
+                            'input[name="texto"]',
+                          )
+                          ?.focus(),
+                      );
+                    }}
+                  >
+                    Configurar
+                  </Botao>
                   <form action={moverItemAcao}>
                     <input type="hidden" name="modeloId" value={modeloId} />
                     <input type="hidden" name="itemId" value={item.id} />
@@ -152,21 +194,32 @@ export function EditorDeItens({
         )}
       </section>
 
+      {estado.ok && (
+        <p
+          role="status"
+          className="bg-ok-sub text-ok rounded-md px-3 py-2 text-sm"
+        >
+          {estado.ok}
+        </p>
+      )}
       <form
+        key={`${editando?.id ?? "novo"}:${versaoFormulario}`}
         ref={formulario}
-        action={(dados) => {
-          acao(dados);
-          formulario.current?.reset();
-        }}
+        onReset={(evento) => evento.preventDefault()}
+        action={acao}
         className="border-line bg-surface-2 flex flex-col gap-4 rounded-xl border p-4"
       >
         <input type="hidden" name="modeloId" value={modeloId} />
+        {editando && <input type="hidden" name="itemId" value={editando.id} />}
 
-        <h3 className="font-semibold">Nova pergunta</h3>
+        <h3 className="font-semibold">
+          {editando ? "Configurar pergunta" : "Nova pergunta"}
+        </h3>
 
         <Campo
           rotulo="A pergunta"
           name="texto"
+          defaultValue={editando?.texto ?? ""}
           placeholder="Ex.: A câmara fria está limpa e organizada?"
           erro={estado.erros?.texto}
           required
@@ -176,7 +229,7 @@ export function EditorDeItens({
           <Campo
             rotulo="Bloco"
             name="secao"
-            defaultValue={ultimaSecao}
+            defaultValue={editando?.secao ?? ultimaSecao}
             placeholder="Ex.: Cozinha"
             erro={estado.erros?.secao}
             ajuda="Opcional. Agrupa as perguntas na tela."
@@ -196,27 +249,60 @@ export function EditorDeItens({
               <option value="SIM_NAO">Sim / Não</option>
               <option value="NUMERO">Número (temperatura, peso…)</option>
               <option value="TEXTO">Texto livre</option>
+              <option value="SELECAO_UNICA">Escolher uma opção</option>
+              <option value="MULTIPLA_ESCOLHA">
+                Caixas de seleção (várias opções)
+              </option>
             </select>
           </div>
         </div>
+
+        {(tipo === "SELECAO_UNICA" || tipo === "MULTIPLA_ESCOLHA") && (
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="opcoes"
+              className="text-ink-2 text-sm font-semibold"
+            >
+              Opções, uma por linha
+            </label>
+            <textarea
+              id="opcoes"
+              name="opcoes"
+              required
+              rows={4}
+              maxLength={3100}
+              defaultValue={editando?.opcoes.join("\n") ?? ""}
+              placeholder={"Bancadas\nEquipamentos\nPiso"}
+              className={`${ESTILO_SELECT} h-auto py-2`}
+            />
+            {estado.erros?.opcoes && (
+              <p role="alert" className="text-bad text-sm">
+                {estado.erros.opcoes}
+              </p>
+            )}
+          </div>
+        )}
 
         {tipo === "NUMERO" && (
           <div className="grid gap-4 sm:grid-cols-3">
             <Campo
               rotulo="Unidade"
               name="rotuloUnidade"
+              defaultValue={editando?.rotuloUnidade ?? ""}
               placeholder="°C"
               erro={estado.erros?.rotuloUnidade}
             />
             <Campo
               rotulo="Mínimo aceitável"
               name="minimo"
+              defaultValue={editando?.minimo ?? ""}
               inputMode="decimal"
               erro={estado.erros?.minimo}
             />
             <Campo
               rotulo="Máximo aceitável"
               name="maximo"
+              defaultValue={editando?.maximo ?? ""}
               inputMode="decimal"
               erro={estado.erros?.maximo}
               ajuda="Fora da faixa vira não conformidade sozinho."
@@ -229,21 +315,23 @@ export function EditorDeItens({
             <input
               type="checkbox"
               name="obrigatorio"
-              defaultChecked
+              defaultChecked={editando?.obrigatorio ?? true}
               className="accent-accent size-4"
             />
             Obrigatório — não deixa fechar o checklist em branco
           </label>
 
-          {tipo === "SIM_NAO" && (
+          {(tipo === "SIM_NAO" || tipo === "NUMERO") && (
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 name="exigeObservacaoSeNao"
-                defaultChecked
+                defaultChecked={editando?.exigeObservacaoSeNao ?? true}
                 className="accent-accent size-4"
               />
-              Responder &quot;Não&quot; exige escrever o que houve
+              {tipo === "NUMERO"
+                ? "Leitura fora da faixa exige escrever o que houve"
+                : "Responder “Não” exige escrever o que houve"}
             </label>
           )}
 
@@ -251,15 +339,61 @@ export function EditorDeItens({
             <input
               type="checkbox"
               name="exigeFoto"
+              defaultChecked={editando?.exigeFoto ?? false}
               className="accent-accent size-4"
             />
-            Pede foto como prova
-            <span className="text-ink-3">
-              (marcado aparece na folha; o envio de imagem ainda não está
-              ligado)
-            </span>
+            Exigir foto para concluir
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="exigeVideo"
+              defaultChecked={editando?.exigeVideo ?? false}
+              className="accent-accent size-4"
+            />
+            Exigir vídeo para concluir
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="analisarIA"
+              checked={analisarIA}
+              onChange={(e) => setAnalisarIA(e.target.checked)}
+              className="accent-accent size-4"
+            />
+            Conferir resposta e evidências com IA
           </label>
         </div>
+
+        {analisarIA && (
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="criterioIA"
+              className="text-ink-2 text-sm font-semibold"
+            >
+              O que a IA deve conferir?
+            </label>
+            <textarea
+              id="criterioIA"
+              name="criterioIA"
+              required
+              rows={3}
+              maxLength={2000}
+              defaultValue={editando?.criterioIA ?? ""}
+              placeholder="Ex.: Verificar se a foto mostra a bancada sem resíduos e se a descrição explica a limpeza realizada."
+              className={`${ESTILO_SELECT} h-auto py-2`}
+            />
+            <p className="text-ink-3 text-sm">
+              Descreva critérios observáveis. Evidência insuficiente fica para
+              revisão do gestor.
+            </p>
+            {estado.erros?.criterioIA && (
+              <p role="alert" className="text-bad text-sm">
+                {estado.erros.criterioIA}
+              </p>
+            )}
+          </div>
+        )}
 
         {estado.erro && (
           <p
@@ -270,10 +404,23 @@ export function EditorDeItens({
           </p>
         )}
 
-        <div>
+        <div className="flex flex-wrap gap-2">
           <Botao type="submit" peso="secundario" carregando={enviando}>
-            Adicionar pergunta
+            {editando ? "Salvar configuração" : "Adicionar pergunta"}
           </Botao>
+          {editando && (
+            <Botao
+              type="button"
+              peso="fantasma"
+              onClick={() => {
+                setEditando(null);
+                setTipo("SIM_NAO");
+                setAnalisarIA(false);
+              }}
+            >
+              Cancelar edição
+            </Botao>
+          )}
         </div>
       </form>
     </div>

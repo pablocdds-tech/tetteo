@@ -25,7 +25,12 @@ export const esquemaNumeroChecklist = z
   .string()
   .optional()
   .superRefine((bruto, ctx) => {
-    if (lerNumeroBr(bruto ?? "") === undefined) {
+    const numero = lerNumeroBr(bruto ?? "");
+    if (
+      numero === undefined ||
+      (numero !== null &&
+        (!Number.isFinite(numero) || Math.abs(numero) > 99_999_999_999))
+    ) {
       ctx.addIssue({
         code: "custom",
         message:
@@ -62,12 +67,33 @@ export const esquemaItemModelo = z
       .max(40, "O nome do bloco está longo demais.")
       .optional()
       .transform((v) => v || null),
-    tipo: z.enum(["SIM_NAO", "NUMERO", "TEXTO"], {
-      message: "Escolha o tipo de resposta.",
-    }),
+    tipo: z.enum(
+      ["SIM_NAO", "NUMERO", "TEXTO", "SELECAO_UNICA", "MULTIPLA_ESCOLHA"],
+      {
+        message: "Escolha o tipo de resposta.",
+      },
+    ),
     obrigatorio: z.boolean().default(true),
     exigeObservacaoSeNao: z.boolean().default(true),
     exigeFoto: z.boolean().default(false),
+    exigeVideo: z.boolean().default(false),
+    opcoes: z
+      .array(
+        z
+          .string()
+          .trim()
+          .min(1, "Escreva cada opção.")
+          .max(100, "Use até 100 caracteres por opção."),
+      )
+      .max(30, "Cadastre no máximo 30 opções.")
+      .default([]),
+    analisarIA: z.boolean().default(false),
+    criterioIA: z
+      .string()
+      .trim()
+      .max(2000, "Use até 2.000 caracteres para o critério da IA.")
+      .optional()
+      .transform((v) => v || null),
     rotuloUnidade: z
       .string()
       .trim()
@@ -78,6 +104,26 @@ export const esquemaItemModelo = z
     maximo: esquemaNumeroChecklist,
   })
   .superRefine((dados, ctx) => {
+    const selecao =
+      dados.tipo === "SELECAO_UNICA" || dados.tipo === "MULTIPLA_ESCOLHA";
+    if (
+      selecao &&
+      (dados.opcoes.length < 2 ||
+        new Set(dados.opcoes).size !== dados.opcoes.length)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["opcoes"],
+        message: "Cadastre de 2 a 30 opções diferentes, uma por linha.",
+      });
+    }
+    if (dados.analisarIA && !dados.criterioIA) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["criterioIA"],
+        message: "Descreva o que a IA deve conferir neste item.",
+      });
+    }
     // Faixa invertida passa despercebida e transforma TODA leitura em erro:
     // o checklist da loja passaria a acusar não conformidade todo santo dia.
     if (
@@ -94,6 +140,45 @@ export const esquemaItemModelo = z
   });
 
 export type DadosItemModelo = z.infer<typeof esquemaItemModelo>;
+
+/** O servidor não aceita campos de outro tipo, infinito nem textos sem teto. */
+export const esquemaValorItem = z
+  .object({
+    conforme: z.boolean().nullish(),
+    naoSeAplica: z.boolean().optional(),
+    valorNumero: z
+      .number()
+      .finite()
+      .min(-99_999_999_999)
+      .max(99_999_999_999)
+      .nullish(),
+    valorTexto: z.string().trim().max(5000).nullish(),
+    observacao: z.string().trim().max(2000).nullish(),
+    valorSelecao: z.array(z.string().trim().min(1).max(100)).max(30).optional(),
+  })
+  .strict();
+
+export const esquemaAtribuicaoResposta = z
+  .object({
+    responsavelId: z.string().trim().min(1).max(200).nullable(),
+    prazoEm: z.date().nullable(),
+  })
+  .strict();
+
+export const esquemaPrazoResposta = z.iso.datetime({ offset: true });
+
+export const esquemaEntradaItem = z
+  .object({
+    respostaId: z.string().min(1).max(200),
+    itemId: z.string().min(1).max(200),
+    marcada: z.enum(["sim", "nao", "na", ""]),
+    numero: z.string().max(100),
+    texto: z.string().max(5000),
+    observacao: z.string().max(2000),
+    selecao: z.array(z.string().trim().min(1).max(100)).max(30).optional(),
+    versaoEsperada: z.number().int().nonnegative().optional(),
+  })
+  .strict();
 
 /** A leitura digitada na folha — mesma regra da faixa. */
 export const esquemaLeituraNumero = esquemaNumeroChecklist;

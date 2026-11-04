@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type { LinhaDaFolha } from "./folha-de-checklist";
+import { EvidenciasDoItem } from "./evidencias-do-item";
 
 /**
  * O checklist FECHADO.
@@ -66,12 +67,30 @@ export function ResumoChecklist({
                       {linha.valorTexto}
                     </span>
                   )}
+                  {linha.valorSelecao.length > 0 && (
+                    <p className="text-ink-2 text-sm">
+                      {linha.valorSelecao.join(", ")}
+                    </p>
+                  )}
 
                   {linha.observacao && (
                     <span className="text-ink-3 mt-0.5 block text-sm">
                       {linha.observacao}
                     </span>
                   )}
+                  <p className="text-ink-3 mt-1 text-xs">
+                    {linha.respondidoEm
+                      ? `Respondido às ${linha.respondidoEm}${linha.respondidoPor ? ` por ${linha.respondidoPor}` : ""}`
+                      : "Sem resposta"}
+                  </p>
+                  <div className="mt-2">
+                    <EvidenciasDoItem
+                      id={linha.id}
+                      evidencias={linha.evidencias}
+                      exigeFoto={linha.exigeFoto}
+                      exigeVideo={linha.exigeVideo}
+                    />
+                  </div>
                 </div>
 
                 <Veredito linha={linha} />

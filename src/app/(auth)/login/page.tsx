@@ -1,4 +1,5 @@
 import { googleConfigurado } from "@/core/auth/politicas";
+import { destinoAposLogin } from "@/core/auth/destino-login";
 import { FormularioLogin } from "./formulario";
 import { superficiePublica } from "@/core/superficie";
 import aparenciaPdv from "@/modules/pdv/components/pdv-aparencia.module.css";
@@ -15,7 +16,11 @@ export async function generateMetadata() {
 export default async function PaginaLogin({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; senha?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    senha?: string;
+    callbackUrl?: string;
+  }>;
 }) {
   const parametros = await searchParams;
   const superficie = await superficiePublica();
@@ -32,6 +37,7 @@ export default async function PaginaLogin({
         googleDisponivel={googleConfigurado()}
         erroGoogle={Boolean(parametros.error)}
         senhaRedefinida={parametros.senha === "redefinida"}
+        destino={destinoAposLogin(parametros.callbackUrl)}
       />
     </div>
   );

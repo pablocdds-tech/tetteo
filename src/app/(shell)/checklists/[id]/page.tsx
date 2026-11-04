@@ -14,6 +14,9 @@ import {
   type RespostaCompleta,
 } from "@/modules/checklists/services/respostas";
 import { nomesDeUsuarios } from "@/modules/checklists/services/rotinas";
+import { listarResponsaveis } from "@/modules/checklists/services/rotinas";
+import { CompartilharChecklist } from "@/modules/checklists/components/compartilhar-checklist";
+import { ConferenciaChecklist } from "@/modules/checklists/components/conferencia-checklist";
 
 const data = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -67,7 +70,15 @@ export default async function PaginaResposta({
   );
 
   const aberta = resposta.status === "ABERTA";
-  const podeResponder = aberta && pode(contexto, "checklists.responder");
+  const podeEditar = pode(contexto, "checklists.editar");
+  const podeResponder =
+    aberta &&
+    pode(contexto, "checklists.responder") &&
+    (!resposta.responsavelId ||
+      resposta.responsavelId === contexto.usuario.id ||
+      podeEditar);
+  const pessoas =
+    aberta && podeEditar ? await listarResponsaveis(contexto) : [];
 
   return (
     <div className="mx-auto w-full max-w-[var(--width-reading)]">
@@ -99,10 +110,26 @@ export default async function PaginaResposta({
           depois disso, não dá para editar.
         </p>
       )}
+      {aberta && !podeResponder && (
+        <p className="bg-warn-sub text-warn mt-3 rounded-md p-3 text-sm">
+          Este checklist está atribuído a outro funcionário, ou seu perfil não
+          pode responder. Peça ao gestor para conferir a atribuição.
+        </p>
+      )}
+      {aberta && podeEditar && (
+        <CompartilharChecklist
+          respostaId={id}
+          nome={resposta.modelo.nome}
+          pessoas={pessoas}
+          responsavelId={resposta.responsavelId}
+          prazoEm={resposta.prazoEm?.toISOString() ?? null}
+        />
+      )}
 
       <div className="mt-6">
         {aberta ? (
           <FolhaDeChecklist
+            key={resposta.id}
             respostaId={resposta.id}
             rotinaId={resposta.rotinaId}
             periodo="hoje"
@@ -113,8 +140,15 @@ export default async function PaginaResposta({
           <ResumoChecklist linhas={linhas} pendencias={resposta.pendencias} />
         )}
       </div>
+      {resposta.status === "FECHADA" && (
+        <ConferenciaChecklist
+          respostaId={id}
+          linhas={linhas}
+          podeRevisar={podeEditar}
+        />
+      )}
 
-      {aberta && pode(contexto, "checklists.responder") && (
+      {aberta && podeResponder && (
         <form action={cancelarRespostaAcao} className="mt-8">
           <input type="hidden" name="respostaId" value={resposta.id} />
           <Botao peso="fantasma" tamanho="pequeno" type="submit">
