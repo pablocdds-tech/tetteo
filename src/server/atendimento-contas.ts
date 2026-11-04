@@ -84,12 +84,14 @@ export async function recordedChannelReceipt(
   accountId: string,
   correlationId: string,
 ) {
+  // A provider ID still proves transport acceptance when its later delivery
+  // failed. Delivery status remains authoritative in the test/outbox row.
   if (correlationId.startsWith("test:")) {
     const row = await db.avChannelTest.findFirst({
       where: { id: correlationId.slice(5), accountId },
     });
     return row?.providerId &&
-      ["ACCEPTED", "DELIVERED", "READ"].includes(row.state)
+      ["ACCEPTED", "DELIVERED", "READ", "FAILED"].includes(row.state)
       ? { state: "ACCEPTED" as const, providerId: row.providerId }
       : null;
   }
@@ -97,7 +99,7 @@ export async function recordedChannelReceipt(
     where: { id: correlationId, accountId },
   });
   return row?.providerId &&
-    ["ACCEPTED", "DELIVERED", "READ"].includes(row.state)
+    ["ACCEPTED", "DELIVERED", "READ", "FAILED"].includes(row.state)
     ? { state: "ACCEPTED" as const, providerId: row.providerId }
     : null;
 }
@@ -113,18 +115,21 @@ const receiptDigest = (delivery: ChannelDelivery, revision: number) =>
       ]),
     )
     .digest("hex");
+export type ChannelDeliverySource = "WEBHOOK" | "PROVIDER_QUERY";
 async function receiptConflict(
   tx: Prisma.TransactionClient,
   config: LiveChannelConfig,
   externalId: string,
+  source: ChannelDeliverySource,
 ) {
   await tx.avAuditEvent.create({
     data: {
       organizationId: config.organizationId,
       storeId: config.storeId,
-      actorId: "CHANNEL_WEBHOOK",
+      actorId:
+        source === "WEBHOOK" ? "CHANNEL_WEBHOOK" : "CHANNEL_PROVIDER_QUERY",
       action: "CHANNEL_DELIVERY_CONFLICT",
-      data: { accountId: config.accountId, externalId },
+      data: { accountId: config.accountId, externalId, source },
     },
   });
 }
@@ -140,6 +145,7 @@ async function applyStoredDelivery(
   tx: Prisma.TransactionClient,
   config: LiveChannelConfig,
   delivery: ChannelDelivery,
+  source: ChannelDeliverySource,
 ) {
   const scope = {
     organizationId: config.organizationId,
@@ -172,7 +178,7 @@ async function applyStoredDelivery(
         (test.providerId && test.providerId !== delivery.providerId) ||
         (linked && linked.id !== test.id)
       ) {
-        await receiptConflict(tx, config, delivery.externalId);
+        await receiptConflict(tx, config, delivery.externalId, source);
         return;
       }
       const next = nextReceiptState(test.state, delivery.state);
@@ -219,7 +225,7 @@ async function applyStoredDelivery(
     (outbox.providerId && outbox.providerId !== delivery.providerId) ||
     (linked && linked.id !== outbox.id)
   ) {
-    await receiptConflict(tx, config, delivery.externalId);
+    await receiptConflict(tx, config, delivery.externalId, source);
     return;
   }
   const next = nextReceiptState(outbox.state, delivery.state);
@@ -238,10 +244,11 @@ async function applyStoredDelivery(
     },
   });
 }
-/** Só é chamada após autenticação do provedor e vínculo da conta no app. */
+/** Authenticated webhook or response to a server query bound to this account. */
 export async function recordChannelDelivery(
   config: LiveChannelConfig,
   delivery: ChannelDelivery,
+  source: ChannelDeliverySource = "WEBHOOK",
 ) {
   const scope = {
     organizationId: config.organizationId,
@@ -254,10 +261,11 @@ export async function recordChannelDelivery(
       where: { ...scope, account: { mode: config.provider } },
     });
     if (connection?.revision !== config.revision) return;
-    await tx.avChannelConnection.update({
-      where: { accountId: config.accountId },
-      data: { webhookSeenAt: new Date() },
-    });
+    if (source === "WEBHOOK")
+      await tx.avChannelConnection.update({
+        where: { accountId: config.accountId },
+        data: { webhookSeenAt: new Date() },
+      });
     const previous = await tx.avInboundEvent.findUnique({
       where: {
         accountId_externalId: {
@@ -269,7 +277,7 @@ export async function recordChannelDelivery(
     const digest = receiptDigest(delivery, config.revision);
     if (previous) {
       if ((previous.payload as { digest?: string }).digest !== digest)
-        await receiptConflict(tx, config, delivery.externalId);
+        await receiptConflict(tx, config, delivery.externalId, source);
       return;
     }
     await tx.avInboundEvent.create({
@@ -285,12 +293,30 @@ export async function recordChannelDelivery(
           recipient: delivery.recipient,
           revision: config.revision,
           digest,
+          source,
         },
         status: "PROCESSED",
         processedAt: new Date(),
       },
     });
-    await applyStoredDelivery(tx, config, delivery);
+    if (source === "PROVIDER_QUERY")
+      await tx.avAuditEvent.create({
+        data: {
+          organizationId: config.organizationId,
+          storeId: config.storeId,
+          actorId: "CHANNEL_PROVIDER_QUERY",
+          action: "CHANNEL_DELIVERY_QUERY_RECORDED",
+          data: {
+            accountId: config.accountId,
+            externalId: delivery.externalId,
+            providerId: delivery.providerId,
+            revision: config.revision,
+            reportedState: delivery.state,
+            source,
+          },
+        },
+      });
+    await applyStoredDelivery(tx, config, delivery, source);
   });
 }
 
@@ -328,6 +354,7 @@ export async function reconcileStoredChannelDeliveries(
         recipient?: string;
         deliveryState?: ChannelDelivery["state"];
         digest?: string;
+        source?: ChannelDeliverySource;
       };
       if (
         payload.revision !== config.revision ||
@@ -349,7 +376,12 @@ export async function reconcileStoredChannelDeliveries(
           : {}),
       };
       if (payload.digest !== receiptDigest(delivery, config.revision)) continue;
-      await applyStoredDelivery(tx, config, delivery);
+      await applyStoredDelivery(
+        tx,
+        config,
+        delivery,
+        payload.source === "PROVIDER_QUERY" ? "PROVIDER_QUERY" : "WEBHOOK",
+      );
     }
   });
 }

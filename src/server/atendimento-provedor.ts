@@ -67,6 +67,7 @@ export interface ChannelManagement extends AtendimentoChannelAdapter {
   lookupContactNames?(
     query: ChannelContactNamesQuery,
   ): Promise<ChannelContactNamesResult>;
+  consultDelivery?(correlationId: string): Promise<ChannelDelivery | null>;
 }
 export type ChannelManagementFactory = (
   accountId: string,

@@ -1,14 +1,20 @@
 import type {
+  ChannelDelivery,
   ChannelManagement,
   LiveChannelConfig,
 } from "@/server/atendimento-provedor";
+import { createHash } from "node:crypto";
 import type { ChannelSendResult } from "@/server/atendimento-canal";
 import { channelHttp, record, string } from "./atendimento-http";
 import { readEvolutionHistoryPage } from "./atendimento-evolution-historico";
 import { lookupEvolutionContactNames } from "./atendimento-evolution-contatos";
 export function evolutionAttendance(
   config: Extract<LiveChannelConfig, { provider: "EVOLUTION" }>,
-  lookup?: (id: string) => Promise<{ recipient: string; sentAt: Date } | null>,
+  lookup?: (id: string) => Promise<{
+    recipient: string;
+    sentAt: Date;
+    providerId?: string;
+  } | null>,
 ): ChannelManagement {
   const { settings, secrets } = config,
     instance = encodeURIComponent(settings.instance);
@@ -18,7 +24,96 @@ export function evolutionAttendance(
       headers: { apikey: secrets.apiKey!, "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-  const recent = new Map<string, { recipient: string; sentAt: Date }>();
+  const recent = new Map<
+    string,
+    { recipient: string; sentAt: Date; providerId?: string }
+  >();
+  type FoundReceipt = {
+    item: Record<string, unknown>;
+    providerId: string;
+    recipient: string;
+  };
+  type ReceiptLookup =
+    { found: FoundReceipt; error?: never } | { found: null; error: string };
+  const pendingQueries = new Map<string, Promise<ReceiptLookup>>();
+  const findOutgoing = async (
+    correlationId: string,
+  ): Promise<ReceiptLookup> => {
+    const pending = pendingQueries.get(correlationId);
+    if (pending) return pending;
+    const query = (async (): Promise<ReceiptLookup> => {
+      try {
+        const context =
+          recent.get(correlationId) ?? (await lookup?.(correlationId));
+        if (
+          !context ||
+          !/^\+[1-9]\d{7,14}$/.test(context.recipient) ||
+          !Number.isFinite(context.sentAt.getTime()) ||
+          !/^(?:test:)?[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
+            correlationId,
+          )
+        )
+          return { found: null, error: "RECONCILIATION_CONTEXT_REQUIRED" };
+        const result = record(
+          await api("chat/findMessages", {
+            where: {
+              key: {
+                fromMe: true,
+                remoteJid: `${context.recipient.slice(1)}@s.whatsapp.net`,
+                ...(context.providerId ? { id: context.providerId } : {}),
+              },
+              messageTimestamp: {
+                gte: new Date(context.sentAt.getTime() - 60000).toISOString(),
+                lte: new Date(context.sentAt.getTime() + 600000).toISOString(),
+              },
+            },
+            page: 1,
+            offset: 50,
+          }),
+        );
+        const records = record(result.messages).records;
+        if (!Array.isArray(records) || records.length > 50)
+          return { found: null, error: "RECEIPT_NOT_FOUND" };
+        const found = records.map(record).filter((item) => {
+          const key = record(item.key),
+            message = record(item.message),
+            timestamp = Number(item.messageTimestamp) * 1000,
+            providerId = string(key.id);
+          return (
+            Number.isFinite(timestamp) &&
+            timestamp >= context.sentAt.getTime() - 60000 &&
+            timestamp <= context.sentAt.getTime() + 600000 &&
+            key.fromMe === true &&
+            key.remoteJid === `${context.recipient.slice(1)}@s.whatsapp.net` &&
+            /^[^\s\x00-\x1f\x7f]{1,200}$/.test(providerId) &&
+            (!context.providerId || providerId === context.providerId) &&
+            (
+              string(message.conversation) ||
+              string(record(message.extendedTextMessage).text)
+            ).endsWith(`Protocolo: SV-${correlationId}`)
+          );
+        });
+        return found.length === 1
+          ? {
+              found: {
+                item: found[0],
+                providerId: string(record(found[0].key).id),
+                recipient: context.recipient,
+              },
+            }
+          : { found: null, error: "RECEIPT_NOT_FOUND" };
+      } catch {
+        return { found: null, error: "STATUS_UNAVAILABLE" };
+      }
+    })();
+    pendingQueries.set(correlationId, query);
+    try {
+      return await query;
+    } finally {
+      if (pendingQueries.get(correlationId) === query)
+        pendingQueries.delete(correlationId);
+    }
+  };
   const createInstance = async () => {
     const response = record(
       await channelHttp(`${settings.url}/instance/create`, {
@@ -156,6 +251,7 @@ export function evolutionAttendance(
           }),
         );
         const id = string(record(result.key).id);
+        if (id) recent.get(input.correlationId)!.providerId = id;
         return id
           ? { state: "ACCEPTED", providerId: id }
           : { state: "UNCERTAIN", error: "PROVIDER_ID_MISSING" };
@@ -170,56 +266,48 @@ export function evolutionAttendance(
       return { state: "FAILED", error: "MEDIA_NOT_ENABLED" };
     },
     async consultStatus(correlationId) {
-      const context =
-        recent.get(correlationId) ?? (await lookup?.(correlationId));
-      if (!context)
-        return { state: "UNCERTAIN", error: "RECONCILIATION_CONTEXT_REQUIRED" };
-      try {
-        const result = record(
-          await api("chat/findMessages", {
-            where: {
-              key: {
-                fromMe: true,
-                remoteJid: `${context.recipient.slice(1)}@s.whatsapp.net`,
-              },
-              messageTimestamp: {
-                gte: new Date(context.sentAt.getTime() - 60000).toISOString(),
-                lte: new Date(context.sentAt.getTime() + 600000).toISOString(),
-              },
-            },
-            page: 1,
-            offset: 50,
-          }),
-        );
-        const records = record(result.messages).records;
-        if (!Array.isArray(records))
-          return { state: "UNCERTAIN", error: "RECEIPT_NOT_FOUND" };
-        const found = records.filter((raw) => {
-          const item = record(raw),
-            key = record(item.key),
-            message = record(item.message),
-            timestamp = Number(item.messageTimestamp) * 1000;
-          return (
-            Number.isFinite(timestamp) &&
-            timestamp >= context.sentAt.getTime() - 60000 &&
-            timestamp <= context.sentAt.getTime() + 600000 &&
-            key.fromMe === true &&
-            key.remoteJid === `${context.recipient.slice(1)}@s.whatsapp.net` &&
-            (
-              string(message.conversation) ||
-              string(record(message.extendedTextMessage).text)
-            ).endsWith(`Protocolo: SV-${correlationId}`)
-          );
-        });
-        return found.length === 1 && string(record(record(found[0]).key).id)
-          ? {
-              state: "ACCEPTED",
-              providerId: string(record(record(found[0]).key).id),
-            }
-          : { state: "UNCERTAIN", error: "RECEIPT_NOT_FOUND" };
-      } catch {
-        return { state: "UNCERTAIN", error: "STATUS_UNAVAILABLE" };
-      }
+      const result = await findOutgoing(correlationId);
+      return result.found
+        ? { state: "ACCEPTED", providerId: result.found.providerId }
+        : { state: "UNCERTAIN", error: result.error };
+    },
+    async consultDelivery(correlationId): Promise<ChannelDelivery | null> {
+      const result = await findOutgoing(correlationId);
+      if (!result.found) return null;
+      const { item, providerId, recipient } = result.found;
+      // MessageUpdate belongs to this exact outgoing message. Its remoteJid may
+      // be a LID; phone attribution comes only from the validated parent PN.
+      const statuses = new Set(
+        (Array.isArray(item.MessageUpdate) ? item.MessageUpdate : []).map(
+          (update) => record(update).status,
+        ),
+      );
+      const state: ChannelDelivery["state"] =
+        statuses.has("READ") || statuses.has("PLAYED")
+          ? "READ"
+          : statuses.has("DELIVERY_ACK")
+            ? "DELIVERED"
+            : statuses.has("ERROR")
+              ? "FAILED"
+              : "ACCEPTED";
+      const digest = createHash("sha256")
+        .update(
+          JSON.stringify([
+            config.revision,
+            correlationId,
+            providerId,
+            recipient,
+            state,
+          ]),
+        )
+        .digest("hex");
+      return {
+        externalId: `query:${digest}`,
+        providerId,
+        correlationId,
+        recipient,
+        state,
+      };
     },
   };
 }

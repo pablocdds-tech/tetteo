@@ -240,6 +240,20 @@ Essa homologação comprova leitura e persistência do histórico disponibilizad
 pelo provedor. Não comprova que o WhatsApp tenha fornecido todo o conteúdo do
 celular nem homologação de envio automático ou de um modelo pago.
 
+### Conferência controlada de transporte — 04/11/2026
+
+Uma única mensagem fixa do formulário de teste foi enviada entre duas instâncias
+próprias da mesma organização. A recepção foi conferida por ID, texto e protocolo
+no receptor; o remetente tinha `DELIVERY_ACK` em `MessageUpdate`, com recibos LID.
+A investigação identificou que o aplicativo mantinha `ACCEPTED` e que a consulta
+parava nesse estado. Os casos de reconciliação cobrem prova correlacionada,
+recibos fora de ordem, duplicata, revisão antiga e identificação divergente, sem
+converter LID em telefone ou marcar observação humana automaticamente.
+
+Essa conferência comprova transporte e a necessidade da reconciliação; não
+comprova saudação automática com nome. A conta continua pausada até completar
+seus requisitos, incluindo dados operacionais reais aprovados.
+
 ### Preparação administrativa anterior
 
 A configuração administrativa para preparar conexões de clientes foi salva no

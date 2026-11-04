@@ -247,6 +247,16 @@ O servidor permite apenas `EVOLUTION_URL` e a lista administrativa `AV_EVOLUTION
 
 Contrato consultado: Evolution/Baileys **2.3.7**, [DTO de envio](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/dto/sendMessage.dto.ts), [webhook](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/event/webhook/webhook.controller.ts). O JWT HS256 autentica a chamada, mas não assina o corpo; exige TLS e segredo privado forte. Eventos são vinculados à instância. LID sem telefone alternativo autenticado não é convertido em número. Não existe idempotência nativa de envio: a outbox persiste a intenção e usa um protocolo visível único para reconciliar por destinatário, período e mensagem. Se faltar prova, mantém incerteza e pede conferência humana.
 
+**Consultar estado do teste** também consulta os recibos persistidos pelo
+Evolution quando a aceitação já é conhecida. A consulta exige mensagem única da
+instância, telefone PN do destinatário, `fromMe`, janela temporal, protocolo e ID
+conhecido quando disponível. Somente os estados de `MessageUpdate` da mensagem
+correlacionada comprovam entrega ou leitura; `SERVER_ACK` continua sendo apenas
+aceitação. A ordem dos recibos não pode rebaixar uma entrega confirmada. Recibos
+com LID não são convertidos em telefone: a consulta usa o PN da mensagem de envio.
+O resultado fica registrado como `PROVIDER_QUERY`, sem renovar a evidência de
+webhook autenticado nem reconhecer observação humana. Reconsultar não reenvia.
+
 Evolution não é API oficial nem aprovação da Meta. Seus requisitos, estabilidade e riscos são diferentes. Os avisos internos continuam usando seu conector/webhook anterior; veja `src/connectors/whatsapp/README.md`.
 
 ### Meta WhatsApp Business Platform

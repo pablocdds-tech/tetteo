@@ -249,6 +249,15 @@ Capacidade de reserva real é compartilhada entre contas Meta e Evolution da mes
 - Meta usa origem Graph fixa e versão explícita. Verificação do desafio de inscrição não substitui autenticar cada POST sobre os bytes originais com o App Secret. O callback precisa corresponder a WABA, phoneNumberId, conta, destinatário e mensagem esperados; o campo opaco de correlação sozinho não autoriza nada. Tarifas e políticas de conversa devem ser verificadas no contrato vigente da conta antes de ativar.
 - Mensagem já aceita pelo provedor não pode ser retirada por takeover. O sistema cerca geração/saída pendente, registra aceitação tardia e mantém recuperação sem reenvio. É um limite real do transporte.
 
+A consulta de entrega Evolution usa apenas a mensagem de saída correlacionada da
+própria instância: PN, `fromMe`, janela, protocolo e ID conhecido. Recibos
+`MessageUpdate` com LID não autorizam deduzir outro telefone. Prova de entrega ou
+leitura é aplicada pelo mesmo fluxo durável e monotônico dos recibos, com origem
+`PROVIDER_QUERY`, revisão e escopo validados. A consulta não renova
+`webhookSeenAt`, não preenche `observedAt` e não envia mensagem. Um registro
+`ACCEPTED` anterior não impede consultar a prova posterior; falha de consulta não
+apaga a aceitação que já foi comprovada.
+
 ### Política e métricas
 
 Orientação de estilo é versionada por unidade, com rascunho imutável, aprovação de gestor e auditoria contendo somente ID/versão/hash. Links, telefones e credenciais não entram nesses campos. Saudação/fallback estáticos não podem afirmar reserva ou contato humano; tais alegações dependem do renderizador associado ao efeito real. Instruções personalizadas ficam abaixo das invariantes de permissão, confirmação e base aprovada.

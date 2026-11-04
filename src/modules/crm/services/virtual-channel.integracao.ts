@@ -8,6 +8,7 @@ import { channelRecipientHash } from "@/server/atendimento-credenciais";
 import {
   liveChannelConfiguration,
   recordChannelDelivery,
+  recordedChannelReceipt,
   channelServiceWindow,
   reconcileStoredChannelDeliveries,
 } from "@/server/atendimento-contas";
@@ -1030,6 +1031,361 @@ test("recibos não trocam objeto/providerId nem regridem falha ou entrega; dupli
     await db.avMessage.count({ where: { accountId: account.id } }),
     0,
   );
+});
+
+test("consulta de DELIVERY_ACK normalizado confirma entrega sem webhook ou observação e mantém replay monotônico", async () => {
+  const f = await fixture();
+  const account = await f.save("EVOLUTION");
+  await verified(f, account);
+  await f.op(account, {
+    action: "sendTest",
+    recipient: phone,
+    confirmedTestNumber: true,
+    requestId: randomUUID(),
+  });
+  const original = await db.avChannelTest.findFirstOrThrow({
+    where: { accountId: account.id },
+  });
+  assert.equal(original.state, "ACCEPTED");
+  const config = await liveChannelConfiguration(account.id);
+  // The provider adapter maps DELIVERY_ACK to ChannelDelivery.DELIVERED.
+  const delivered = {
+    externalId: `query:${randomUUID()}`,
+    providerId: original.providerId!,
+    recipient: phone,
+    correlationId: `test:${original.id}`,
+    state: "DELIVERED" as const,
+  };
+  let queries = 0;
+  const queryFactory: ChannelManagementFactory = async (id) => ({
+    ...(await f.management(id)),
+    async consultStatus(correlationId) {
+      queries++;
+      assert.equal(correlationId, `test:${original.id}`);
+      await recordChannelDelivery(
+        await liveChannelConfiguration(id),
+        delivered,
+        "PROVIDER_QUERY",
+      );
+      return (
+        (await recordedChannelReceipt(id, correlationId)) ?? {
+          state: "UNCERTAIN",
+          error: "NO_RECEIPT",
+        }
+      );
+    },
+  });
+  const reconciled = await changeVirtualChannel(
+    f.context,
+    {
+      storeId: f.unit.id,
+      accountId: account.id,
+      revision: account.revision,
+      action: "reconcileTest",
+    },
+    queryFactory,
+  );
+  assert.equal(queries, 1);
+  assert.ok("accounts" in reconciled);
+  assert.equal(
+    reconciled.accounts.find((item) => item.id === account.id)?.latestTest
+      ?.state,
+    "DELIVERED",
+  );
+  assert.equal(
+    reconciled.accounts.find((item) => item.id === account.id)?.latestTest
+      ?.observedAt,
+    null,
+  );
+  await Promise.all([
+    recordChannelDelivery(config, delivered, "PROVIDER_QUERY"),
+    recordChannelDelivery(config, delivered, "PROVIDER_QUERY"),
+  ]);
+  const result = await db.avChannelTest.findUniqueOrThrow({
+    where: { id: original.id },
+  });
+  assert.equal(result.state, "DELIVERED");
+  assert.equal(result.providerId, original.providerId);
+  assert.equal(result.acceptedAt?.getTime(), original.acceptedAt?.getTime());
+  assert.ok(result.deliveredAt);
+  assert.equal(result.observedAt, null);
+  assert.equal(result.observedById, null);
+  assert.equal(
+    (
+      await db.avChannelConnection.findUniqueOrThrow({
+        where: { accountId: account.id },
+      })
+    ).webhookSeenAt,
+    null,
+  );
+  const receipts = await db.avInboundEvent.findMany({
+    where: { accountId: account.id, externalId: delivered.externalId },
+  });
+  assert.equal(receipts.length, 1);
+  assert.equal(receipts[0].type, "DELIVERY");
+  assert.equal(receipts[0].status, "PROCESSED");
+  assert.equal(
+    (receipts[0].payload as { source: string }).source,
+    "PROVIDER_QUERY",
+  );
+  assert.equal(
+    (receipts[0].payload as { revision: number }).revision,
+    config.revision,
+  );
+  assert.equal(
+    await db.avAuditEvent.count({
+      where: {
+        organizationId: f.organization.id,
+        action: "CHANNEL_DELIVERY_QUERY_RECORDED",
+      },
+    }),
+    1,
+  );
+
+  await recordChannelDelivery(
+    config,
+    { ...delivered, externalId: `query:${randomUUID()}`, state: "ACCEPTED" },
+    "PROVIDER_QUERY",
+  );
+  const late = await db.avChannelTest.findUniqueOrThrow({
+    where: { id: original.id },
+  });
+  assert.equal(late.state, "DELIVERED");
+  assert.equal(late.deliveredAt?.getTime(), result.deliveredAt?.getTime());
+  assert.equal(late.observedAt, null);
+  assert.equal(
+    (
+      await db.avChannelConnection.findUniqueOrThrow({
+        where: { accountId: account.id },
+      })
+    ).webhookSeenAt,
+    null,
+  );
+  assert.equal(
+    await db.avMessage.count({ where: { accountId: account.id } }),
+    0,
+  );
+  assert.equal(f.sends(), 1);
+
+  // Provenance does not alter the digest: a real replayed webhook can attest
+  // its own reception without duplicating or downgrading the query receipt.
+  await recordChannelDelivery(config, delivered);
+  assert.ok(
+    (
+      await db.avChannelConnection.findUniqueOrThrow({
+        where: { accountId: account.id },
+      })
+    ).webhookSeenAt,
+  );
+  assert.equal(
+    await db.avInboundEvent.count({
+      where: { accountId: account.id, externalId: delivered.externalId },
+    }),
+    1,
+  );
+});
+
+test("consulta não promove teste com revisão antiga, outro providerId ou outro destinatário", async () => {
+  const f = await fixture();
+  const account = await f.save("EVOLUTION");
+  await verified(f, account);
+  await f.op(account, {
+    action: "sendTest",
+    recipient: phone,
+    confirmedTestNumber: true,
+    requestId: randomUUID(),
+  });
+  const row = await db.avChannelTest.findFirstOrThrow({
+    where: { accountId: account.id },
+  });
+  const config = await liveChannelConfiguration(account.id);
+  const receipt = {
+    externalId: `query:${randomUUID()}`,
+    providerId: row.providerId!,
+    recipient: phone,
+    correlationId: `test:${row.id}`,
+    state: "DELIVERED" as const,
+  };
+  for (const extra of [
+    { providerId: `unrelated:${randomUUID()}` },
+    { recipient: "+12025550124" },
+  ]) {
+    await recordChannelDelivery(
+      config,
+      { ...receipt, ...extra, externalId: `query:${randomUUID()}` },
+      "PROVIDER_QUERY",
+    );
+    const current = await db.avChannelTest.findUniqueOrThrow({
+      where: { id: row.id },
+    });
+    assert.equal(current.state, "ACCEPTED");
+    assert.equal(current.providerId, row.providerId);
+    assert.equal(current.deliveredAt, null);
+    assert.equal(current.observedAt, null);
+  }
+  const conflict = await db.avAuditEvent.findFirstOrThrow({
+    where: {
+      organizationId: f.organization.id,
+      action: "CHANNEL_DELIVERY_CONFLICT",
+    },
+  });
+  assert.equal(conflict.actorId, "CHANNEL_PROVIDER_QUERY");
+  assert.equal((conflict.data as { source: string }).source, "PROVIDER_QUERY");
+  const rotated = await f.save("EVOLUTION", {
+    accountId: account.id,
+    ...(account.settings as object),
+  });
+  assert.equal(rotated.revision, config.revision + 1);
+  const oldId = `query:${randomUUID()}`;
+  await recordChannelDelivery(
+    config,
+    { ...receipt, externalId: oldId },
+    "PROVIDER_QUERY",
+  );
+  assert.equal(
+    await db.avInboundEvent.count({
+      where: { accountId: account.id, externalId: oldId },
+    }),
+    0,
+  );
+  await recordChannelDelivery(
+    await liveChannelConfiguration(account.id),
+    { ...receipt, externalId: `query:${randomUUID()}` },
+    "PROVIDER_QUERY",
+  );
+  const unchanged = await db.avChannelTest.findUniqueOrThrow({
+    where: { id: row.id },
+  });
+  assert.equal(unchanged.state, "ACCEPTED");
+  assert.equal(unchanged.deliveredAt, null);
+  assert.equal(unchanged.observedAt, null);
+  assert.equal(
+    (
+      await db.avChannelConnection.findUniqueOrThrow({
+        where: { accountId: account.id },
+      })
+    ).webhookSeenAt,
+    null,
+  );
+  assert.equal(f.sends(), 1);
+});
+
+test("serviço reconcilia query ERROR sem perder providerId nem converter falha de entrega em sucesso", async () => {
+  const f = await fixture();
+  const account = await f.save("EVOLUTION");
+  await verified(f, account);
+  await f.op(account, {
+    action: "sendTest",
+    recipient: phone,
+    confirmedTestNumber: true,
+    requestId: randomUUID(),
+  });
+  const row = await db.avChannelTest.findFirstOrThrow({
+    where: { accountId: account.id },
+  });
+  assert.equal(row.state, "ACCEPTED");
+  let queries = 0;
+  const queryFactory: ChannelManagementFactory = async (id) => ({
+    ...(await f.management(id)),
+    async consultStatus(correlationId) {
+      queries++;
+      assert.equal(correlationId, `test:${row.id}`);
+      await recordChannelDelivery(
+        await liveChannelConfiguration(id),
+        {
+          externalId: `query-error:${randomUUID()}`,
+          providerId: row.providerId!,
+          recipient: phone,
+          correlationId,
+          state: "FAILED",
+        },
+        "PROVIDER_QUERY",
+      );
+      return (
+        (await recordedChannelReceipt(id, correlationId)) ?? {
+          state: "UNCERTAIN",
+          error: "NO_RECEIPT",
+        }
+      );
+    },
+  });
+  const result = await changeVirtualChannel(
+    f.context,
+    {
+      storeId: f.unit.id,
+      accountId: account.id,
+      revision: account.revision,
+      action: "reconcileTest",
+    },
+    queryFactory,
+  );
+  assert.equal(queries, 1);
+  assert.ok("accounts" in result);
+  assert.equal(
+    result.accounts.find((item) => item.id === account.id)?.latestTest?.state,
+    "FAILED",
+  );
+  assert.deepEqual(await recordedChannelReceipt(account.id, `test:${row.id}`), {
+    state: "ACCEPTED",
+    providerId: row.providerId,
+  });
+  const failure = await db.avChannelTest.findUniqueOrThrow({
+    where: { id: row.id },
+  });
+  assert.equal(failure.state, "FAILED");
+  assert.equal(failure.providerId, row.providerId);
+  assert.equal(failure.error, "PROVIDER_DELIVERY_FAILED");
+  assert.equal(failure.deliveredAt, null);
+  assert.equal(failure.observedAt, null);
+  const connection = await db.avChannelConnection.findUniqueOrThrow({
+    where: { accountId: account.id },
+  });
+  assert.equal(connection.webhookSeenAt, null);
+  assert.equal(connection.connectLeaseOwner, null);
+  assert.equal(connection.connectLeaseUntil, null);
+  const unaccepted = await db.avChannelTest.create({
+    data: {
+      ...scopeOf(f, account.id),
+      revision: account.revision,
+      actorId: f.actor.id,
+      requestId: randomUUID(),
+      encryptedRecipient: row.encryptedRecipient,
+      recipientHash: row.recipientHash,
+      state: "FAILED",
+      error: "PROVIDER_HTTP_400",
+    },
+  });
+  assert.equal(
+    await recordedChannelReceipt(account.id, `test:${unaccepted.id}`),
+    null,
+  );
+  const conversation = await db.avConversation.create({
+    data: {
+      ...scopeOf(f, account.id),
+      externalCustomerId: phone,
+      displayName: "Pessoa fictícia Kairu",
+      agentEnabled: false,
+    },
+  });
+  for (const providerId of [`outbox:${randomUUID()}`, null]) {
+    const outbox = await db.avMessageOutbox.create({
+      data: {
+        ...scopeOf(f, account.id),
+        conversationId: conversation.id,
+        version: conversation.version,
+        requestId: randomUUID(),
+        author: "HUMAN",
+        text: "Mensagem fictícia",
+        state: "FAILED",
+        providerId,
+      },
+    });
+    assert.deepEqual(
+      await recordedChannelReceipt(account.id, outbox.id),
+      providerId ? { state: "ACCEPTED", providerId } : null,
+    );
+  }
+  assert.equal(f.sends(), 1);
 });
 
 test("limite de turnos entre execuções interrompe bot-bot com pendência rastreável", async () => {

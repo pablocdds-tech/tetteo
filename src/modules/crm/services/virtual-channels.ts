@@ -13,7 +13,6 @@ import {
 } from "@/server/atendimento-credenciais";
 import {
   channelServiceWindow,
-  recordedChannelReceipt,
   reconcileStoredChannelDeliveries,
 } from "@/server/atendimento-contas";
 import type { ChannelManagementFactory } from "@/server/atendimento-provedor";
@@ -890,9 +889,7 @@ export async function changeVirtualChannel(
         });
         if (!test)
           fail("TEST_MISSING", "Nenhum teste encontrado nesta revisão.");
-        const result =
-          (await recordedChannelReceipt(row.id, `test:${test.id}`)) ??
-          (await adapter.consultStatus(`test:${test.id}`));
+        const result = await adapter.consultStatus(`test:${test.id}`);
         if (result.state === "ACCEPTED")
           await db.avChannelTest.updateMany({
             where: { id: test.id, state: { in: ["SENDING", "UNCERTAIN"] } },

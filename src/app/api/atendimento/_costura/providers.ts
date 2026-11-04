@@ -7,6 +7,7 @@ import {
   liveChannelConfiguration,
   recordedChannelReceipt,
   channelServiceWindow,
+  recordChannelDelivery,
 } from "@/server/atendimento-contas";
 import {
   decryptChannelValue,
@@ -43,6 +44,7 @@ export const managementFor: ChannelManagementFactory = async (accountId) => {
                     test.encryptedRecipient,
                   ),
                   sentAt: test.createdAt,
+                  ...(test.providerId ? { providerId: test.providerId } : {}),
                 }
               : null;
           }
@@ -54,6 +56,7 @@ export const managementFor: ChannelManagementFactory = async (accountId) => {
             ? {
                 recipient: out.conversation.externalCustomerId,
                 sentAt: out.createdAt,
+                ...(out.providerId ? { providerId: out.providerId } : {}),
               }
             : null;
         });
@@ -71,10 +74,32 @@ export const managementFor: ChannelManagementFactory = async (accountId) => {
       return adapter.sendText(input);
     },
     async consultStatus(id) {
-      return (
-        (await recordedChannelReceipt(accountId, id)) ??
-        adapter.consultStatus(id)
-      );
+      const recorded = await recordedChannelReceipt(accountId, id);
+      if (!(await guard()))
+        return { state: "UNCERTAIN", error: "CHANNEL_CONFIGURATION_CHANGED" };
+      if (adapter.consultDelivery) {
+        try {
+          const delivery = await adapter.consultDelivery(id);
+          if (!(await guard()))
+            return {
+              state: "UNCERTAIN",
+              error: "CHANNEL_CONFIGURATION_CHANGED",
+            };
+          if (delivery) {
+            await recordChannelDelivery(config, delivery, "PROVIDER_QUERY");
+            return (
+              (await recordedChannelReceipt(accountId, id)) ?? {
+                state: "UNCERTAIN",
+                error: "RECEIPT_NOT_CORRELATED",
+              }
+            );
+          }
+        } catch {
+          // A failed lookup does not erase an already accepted transmission.
+        }
+        return recorded ?? { state: "UNCERTAIN", error: "STATUS_UNAVAILABLE" };
+      }
+      return recorded ?? adapter.consultStatus(id);
     },
   };
 };
