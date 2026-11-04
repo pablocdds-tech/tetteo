@@ -37,11 +37,13 @@ export function FormularioLogin({
   erroGoogle,
   senhaRedefinida,
   operacional = false,
+  destino = "/",
 }: {
   googleDisponivel: boolean;
   erroGoogle: boolean;
   senhaRedefinida: boolean;
   operacional?: boolean;
+  destino?: string;
 }) {
   const [estado, acao, enviando] = useActionState<EstadoLogin, FormData>(
     entrar,
@@ -76,6 +78,7 @@ export function FormularioLogin({
         </p>
       )}
       <form action={acao} className="mt-6 flex flex-col gap-4">
+        <input type="hidden" name="destino" value={destino} />
         <Campo
           className="min-h-11"
           rotulo="E-mail"
@@ -122,6 +125,11 @@ export function FormularioLogin({
         <span className="bg-line h-px flex-1" />
       </div>
       <form action={entrarComGoogle}>
+        <input
+          type="hidden"
+          name="destino"
+          value={destino === "/" ? "/conta" : destino}
+        />
         <BotaoGoogle disponivel={googleDisponivel} />
       </form>
       <p className="text-ink-2 mt-3 text-sm">

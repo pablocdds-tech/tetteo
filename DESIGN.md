@@ -1,5 +1,18 @@
 # Design do Tetteo
 
+## Checklists com evidências — 04/11/2026
+
+A folha conserva a Aurora: superfície `#fdfdfe`, fundo `#f2f3f5`, texto
+`#202124`, apoio `#646870` e ação `#0066cc`, com as variantes escuras existentes
+e a tipografia do sistema. A progressão segue a caminhada da equipe: pergunta,
+resposta, evidência e identificação de quem gravou. A barra conta itens com
+resposta e provas exigidas; a conferência por IA aparece separada após concluir.
+Fotos e vídeos ficam junto da pergunta. No celular, os alvos têm pelo menos
+44 px e a ação de concluir continua acessível no rodapé. A atribuição e o link
+ficam em um bloco próprio, com funcionário e prazo antes de compartilhar.
+O histórico apresenta o documento respondido e a revisão do gestor sem
+transformar a nota original em aprovação automática da IA.
+
 ## Severina — conexão e navegação em 03/11/2026
 
 A Severina mantém a fonte do sistema e os tokens Aurora. A revisão de uso reduz

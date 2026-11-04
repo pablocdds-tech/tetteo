@@ -5,13 +5,16 @@ import { superficiePublica } from "@/core/superficie";
 
 import { signIn } from "@/core/auth";
 import { googleConfigurado } from "@/core/auth/politicas";
+import { destinoAposLogin } from "@/core/auth/destino-login";
 
 export type EstadoLogin = { erro?: string };
 
-export async function entrarComGoogle(): Promise<void> {
+export async function entrarComGoogle(dados: FormData): Promise<void> {
   if (!(await superficiePublica()).reconhecida) return;
   if (!googleConfigurado()) return;
-  await signIn("google", { redirectTo: "/conta" });
+  await signIn("google", {
+    redirectTo: destinoAposLogin(dados.get("destino"), "/conta"),
+  });
 }
 
 export async function entrar(
@@ -24,7 +27,7 @@ export async function entrar(
     await signIn("credentials", {
       email: String(dados.get("email") ?? ""),
       senha: String(dados.get("senha") ?? ""),
-      redirectTo: "/",
+      redirectTo: destinoAposLogin(dados.get("destino")),
     });
     return {};
   } catch (erro) {

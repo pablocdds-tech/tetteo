@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { obterContexto } from "@/core/sessao/contexto";
 import { lerDataLocal } from "@/lib/data";
@@ -9,6 +10,8 @@ import { ExigeUnidade, SemPermissao } from "@/lib/erros";
 
 import {
   esquemaItemModelo,
+  esquemaEntradaItem,
+  esquemaPrazoResposta,
   esquemaLeituraNumero,
   esquemaModelo,
   esquemaNovaResposta,
@@ -19,6 +22,7 @@ import {
 import {
   adicionarItem,
   atualizarModelo,
+  atualizarItemModelo,
   alternarModelo,
   criarModelo,
   moverItem,
@@ -32,6 +36,7 @@ import {
 } from "./services/pendencias";
 import {
   abrirResposta,
+  atribuirResposta,
   cancelarResposta,
   executarRotina,
   fecharResposta,
@@ -39,6 +44,7 @@ import {
   salvarRespostas,
   type ValorItem,
 } from "./services/respostas";
+import { conferirRespostaAutomatica } from "./services/conferencia";
 import {
   alterarResponsavel,
   criarRotina,
@@ -120,6 +126,47 @@ export async function alternarModeloAcao(dados: FormData) {
   revalidatePath("/checklists/modelos");
 }
 
+function dadosDoItemModelo(dados: FormData) {
+  return {
+    texto: dados.get("texto") ?? "",
+    secao: dados.get("secao") ?? "",
+    tipo: dados.get("tipo") ?? "SIM_NAO",
+    obrigatorio: dados.get("obrigatorio") === "on",
+    exigeObservacaoSeNao: dados.get("exigeObservacaoSeNao") === "on",
+    exigeFoto: dados.get("exigeFoto") === "on",
+    exigeVideo: dados.get("exigeVideo") === "on",
+    opcoes: String(dados.get("opcoes") ?? "")
+      .split(/\r?\n/)
+      .map((v) => v.trim())
+      .filter(Boolean),
+    analisarIA: dados.get("analisarIA") === "on",
+    criterioIA: dados.get("criterioIA") ?? "",
+    rotuloUnidade: dados.get("rotuloUnidade") ?? "",
+    minimo: dados.get("minimo") ?? "",
+    maximo: dados.get("maximo") ?? "",
+  };
+}
+
+export async function atualizarItemAcao(
+  _anterior: EstadoChecklist,
+  dados: FormData,
+): Promise<EstadoChecklist> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+  const modeloId = String(dados.get("modeloId") ?? "");
+  const itemId = String(dados.get("itemId") ?? "");
+  if (!modeloId || !itemId) return { erro: "Item não informado." };
+  const analise = esquemaItemModelo.safeParse(dadosDoItemModelo(dados));
+  if (!analise.success) return { erros: coletarErros(analise.error.issues) };
+  try {
+    await atualizarItemModelo(contexto, modeloId, itemId, analise.data);
+  } catch (erro) {
+    return comoErro(erro);
+  }
+  revalidatePath(`/checklists/modelos/${modeloId}`);
+  return { ok: "Item atualizado. A mudança vale para os próximos checklists." };
+}
+
 export async function adicionarItemAcao(
   _anterior: EstadoChecklist,
   dados: FormData,
@@ -130,17 +177,7 @@ export async function adicionarItemAcao(
   const modeloId = String(dados.get("modeloId") ?? "");
   if (!modeloId) return { erro: "Checklist não informado." };
 
-  const analise = esquemaItemModelo.safeParse({
-    texto: dados.get("texto") ?? "",
-    secao: dados.get("secao") ?? "",
-    tipo: dados.get("tipo") ?? "SIM_NAO",
-    obrigatorio: dados.get("obrigatorio") === "on",
-    exigeObservacaoSeNao: dados.get("exigeObservacaoSeNao") === "on",
-    exigeFoto: dados.get("exigeFoto") === "on",
-    rotuloUnidade: dados.get("rotuloUnidade") ?? "",
-    minimo: dados.get("minimo") ?? "",
-    maximo: dados.get("maximo") ?? "",
-  });
+  const analise = esquemaItemModelo.safeParse(dadosDoItemModelo(dados));
   if (!analise.success) return { erros: coletarErros(analise.error.issues) };
 
   try {
@@ -376,6 +413,10 @@ function lerFolha(dados: FormData) {
       valorNumero: leitura.data,
       valorTexto: texto || null,
       observacao: observacao || null,
+      valorSelecao: dados.getAll(`sel:${itemId}`).map(String),
+      versaoEsperada: dados.has(`versao:${itemId}`)
+        ? Number(dados.get(`versao:${itemId}`))
+        : undefined,
     });
   }
 
@@ -390,8 +431,22 @@ function lerFolha(dados: FormData) {
  * 07:12 em São Paulo apareceria como 10:12 para quem viajou.
  */
 export type ResultadoDoItem =
-  | { ok: true; quando: string; quem: string | null }
-  | { ok: false; erro: string };
+  | {
+      ok: true;
+      quando: string;
+      quem: string | null;
+      erro?: never;
+      respondidoEm: string | null;
+      respondidoPor: string | null;
+      versao: number;
+    }
+  | {
+      ok: false;
+      erro: string;
+      respondidoEm: null;
+      respondidoPor: null;
+      versao: number;
+    };
 
 const HORA_DA_OPERACAO = new Intl.DateTimeFormat("pt-BR", {
   hour: "2-digit",
@@ -416,20 +471,28 @@ export async function salvarItemAcao(entrada: {
   numero: string;
   texto: string;
   observacao: string;
+  selecao?: string[];
+  versaoEsperada?: number;
 }): Promise<ResultadoDoItem> {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
 
-  if (!entrada.respostaId || !entrada.itemId) {
-    return { ok: false, erro: "Item não informado." };
-  }
+  const invalido = (erro: string): ResultadoDoItem => ({
+    ok: false,
+    erro,
+    respondidoEm: null,
+    respondidoPor: null,
+    versao: entrada?.versaoEsperada ?? 0,
+  });
+  const validacao = esquemaEntradaItem.safeParse(entrada);
+  if (!validacao.success)
+    return invalido(
+      "A resposta contém campos inválidos ou texto longo demais.",
+    );
 
   const leitura = esquemaLeituraNumero.safeParse(entrada.numero);
   if (!leitura.success) {
-    return {
-      ok: false,
-      erro: leitura.error.issues[0]?.message ?? "Número inválido.",
-    };
+    return invalido(leitura.error.issues[0]?.message ?? "Número inválido.");
   }
 
   try {
@@ -448,7 +511,9 @@ export async function salvarItemAcao(entrada: {
         valorNumero: leitura.data,
         valorTexto: entrada.texto.trim() || null,
         observacao: entrada.observacao.trim() || null,
+        valorSelecao: entrada.selecao ?? [],
       },
+      entrada.versaoEsperada,
     );
 
     return {
@@ -457,10 +522,15 @@ export async function salvarItemAcao(entrada: {
         ? HORA_DA_OPERACAO.format(salvo.respondidoEm)
         : "",
       quem: salvo.respondidoPor,
+      respondidoEm: salvo.respondidoEm
+        ? HORA_DA_OPERACAO.format(salvo.respondidoEm)
+        : null,
+      respondidoPor: salvo.respondidoPor,
+      versao: salvo.versao,
     };
   } catch (erro) {
     const estado = comoErro(erro);
-    return { ok: false, erro: estado.erro ?? "Não deu para gravar." };
+    return invalido(estado.erro ?? "Não deu para gravar.");
   }
 }
 
@@ -489,52 +559,69 @@ export async function salvarFolhaAcao(
   return { salvos: valores.size, ok: "Respostas salvas." };
 }
 
-/**
- * Fecha o checklist — mas grava o que está na tela ANTES.
- *
- * Os itens já foram gravados um a um enquanto a pessoa respondia. Este
- * `salvarRespostas` continua aqui como rede de segurança para o campo que
- * ficou com o cursor dentro: a folha esvazia a fila de gravações pendentes
- * antes de enviar, e o que ainda assim escapar entra por aqui.
- *
- * Depois de fechar, volta para a MESMA lista com a rotina selecionada — o
- * checklist agora aparece somado no histórico, logo abaixo. Antes isto levava
- * para uma página separada e o contexto se perdia.
- */
+/** Conclui apenas os valores confirmados pelo servidor, sob uma única trava. */
 export async function fecharFolhaAcao(
   _anterior: EstadoChecklist,
   dados: FormData,
 ): Promise<EstadoChecklist> {
   const contexto = await obterContexto();
   if (!contexto) redirect("/login");
-
   const id = String(dados.get("respostaId") ?? "");
   if (!id) return { erro: "Checklist não informado." };
-
-  const { valores, erros } = lerFolha(dados);
-  if (Object.keys(erros).length > 0) {
-    return {
-      erro: "Há números que o sistema não entendeu. Corrija antes de fechar.",
-      erros,
-    };
-  }
-
   try {
-    if (valores.size > 0) await salvarRespostas(contexto, id, valores);
-    await fecharResposta(contexto, id);
+    await fecharResposta(
+      contexto,
+      id,
+      dados.has("versaoEsperada")
+        ? Number(dados.get("versaoEsperada"))
+        : undefined,
+    );
   } catch (erro) {
     return comoErro(erro);
   }
-
+  after(async () => {
+    try {
+      await conferirRespostaAutomatica(contexto, id);
+    } catch {
+      console.error("Conferência automática do checklist não concluída.");
+    }
+  });
   revalidatePath("/checklists");
+  revalidatePath(`/checklists/${id}`);
   revalidatePath("/checklists/pendencias");
-
   const rotinaId = String(dados.get("rotinaId") ?? "");
   redirect(
     rotinaId
       ? `/checklists?${paramsDaLista(dados, rotinaId)}`
       : `/checklists/${id}`,
   );
+}
+
+export async function atribuirRespostaAcao(
+  _anterior: EstadoChecklist,
+  dados: FormData,
+): Promise<EstadoChecklist> {
+  const contexto = await obterContexto();
+  if (!contexto) redirect("/login");
+  const id = String(dados.get("respostaId") ?? "");
+  if (!id) return { erro: "Checklist não informado." };
+  const responsavelId = String(dados.get("responsavelId") ?? "").trim() || null;
+  const prazo = String(dados.get("prazoEm") ?? "").trim();
+  if (prazo && !esquemaPrazoResposta.safeParse(prazo).success)
+    return { erro: "Informe o prazo com data, horário e fuso válidos." };
+  const prazoEm = prazo ? new Date(prazo) : null;
+  try {
+    await atribuirResposta(contexto, id, { responsavelId, prazoEm });
+  } catch (erro) {
+    return comoErro(erro);
+  }
+  revalidatePath("/checklists");
+  revalidatePath(`/checklists/${id}`);
+  return {
+    ok: responsavelId
+      ? "Responsável e prazo salvos. O link exige login do funcionário."
+      : "Checklist disponível para a equipe da loja.",
+  };
 }
 
 export async function cancelarRespostaAcao(dados: FormData) {

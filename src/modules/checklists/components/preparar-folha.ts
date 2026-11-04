@@ -26,11 +26,11 @@ const HORA_DA_OPERACAO = new Intl.DateTimeFormat("pt-BR", {
  * número sem faixa é REGISTRO, não conformidade, e não entra na nota.
  */
 export function faixaEmTexto(item: RespostaCompleta["itens"][number]) {
-  const minimo = item.item.minimo;
-  const maximo = item.item.maximo;
+  const minimo = item.minimo;
+  const maximo = item.maximo;
   if (minimo === null && maximo === null) return null;
 
-  const unidade = item.item.rotuloUnidade ? ` ${item.item.rotuloUnidade}` : "";
+  const unidade = item.rotuloUnidade ? ` ${item.rotuloUnidade}` : "";
   if (minimo !== null && maximo !== null) {
     return `${paraCampo(minimo.toString())} a ${paraCampo(maximo.toString())}${unidade}`;
   }
@@ -51,19 +51,36 @@ export function paraLinha(
 ): LinhaDaFolha {
   return {
     id: item.itemId,
+    respostaItemId: item.id,
     textoItem: item.textoItem,
     secao: item.secao,
     tipo: item.tipo,
-    obrigatorio: item.item.obrigatorio,
-    exigeObservacaoSeNao: item.item.exigeObservacaoSeNao,
-    exigeFoto: item.item.exigeFoto,
-    rotuloUnidade: item.item.rotuloUnidade,
+    obrigatorio: item.obrigatorio,
+    exigeObservacaoSeNao: item.exigeObservacaoSeNao,
+    exigeFoto: item.exigeFoto,
+    exigeVideo: item.exigeVideo,
+    opcoes: item.opcoes,
+    valorSelecao: item.valorSelecao,
+    versao: item.versao,
+    analisarIA: item.analisarIA,
+    criterioIA: item.criterioIA,
+    resultadoIA: item.resultadoIA,
+    motivoIA: item.motivoIA,
+    confiancaIA: item.confiancaIA,
+    revisadoPorId: item.revisadoPorId,
+    evidencias: item.evidencias.map((e) => ({
+      id: e.id,
+      tipo: e.arquivo.tipo,
+      nome: e.arquivo.nomeOriginal,
+      url: `/api/checklists/${item.respostaId}/evidencias/${e.id}`,
+    })),
+    rotuloUnidade: item.rotuloUnidade,
     faixa: faixaEmTexto(item),
     // Os limites em número vão junto com a faixa em texto: a tela precisa dos
     // dois. O texto é para LER; os números são para a folha julgar a leitura
     // ao vivo, com a mesma regra que o servidor usa ao fechar.
-    minimo: item.item.minimo === null ? null : Number(item.item.minimo),
-    maximo: item.item.maximo === null ? null : Number(item.item.maximo),
+    minimo: item.minimo === null ? null : Number(item.minimo),
+    maximo: item.maximo === null ? null : Number(item.maximo),
     conforme: item.conforme,
     naoSeAplica: item.naoSeAplica,
     // `paraCampo` e não `.toString()`: o Decimal devolve "38.9", e o ponto

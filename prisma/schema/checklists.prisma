@@ -29,6 +29,8 @@ enum TipoDeResposta {
   SIM_NAO
   NUMERO
   TEXTO
+  SELECAO_UNICA
+  MULTIPLA_ESCOLHA
 }
 
 /// Um modelo de checklist: a lista de perguntas, sem data e sem dono.
@@ -100,9 +102,12 @@ model ItemDeModelo {
   /// que estava quebrado.
   exigeObservacaoSeNao Boolean @default(true)
 
-  /// Pede foto como prova. O banco já guarda a intenção e a resposta guarda a
-  /// URL; o envio de arquivo entra quando houver onde armazenar.
+  /// Exige uma imagem privada como prova antes de concluir a resposta.
   exigeFoto Boolean @default(false)
+  exigeVideo Boolean @default(false)
+  opcoes String[] @default([])
+  analisarIA Boolean @default(false)
+  criterioIA String?
 
   respostas RespostaItem[]
 
@@ -184,6 +189,9 @@ model RespostaDeChecklist {
   referencia DateTime
 
   status StatusResposta @default(ABERTA)
+  responsavelId String?
+  prazoEm DateTime?
+  versao Int @default(0)
 
   /// Congelados no fechamento.
   itensConformes    Int @default(0)
@@ -230,6 +238,16 @@ model RespostaItem {
   secao     String?
   tipo      TipoDeResposta @default(SIM_NAO)
   ordem     Int            @default(0)
+  obrigatorio Boolean @default(true)
+  exigeObservacaoSeNao Boolean @default(true)
+  exigeFoto Boolean @default(false)
+  exigeVideo Boolean @default(false)
+  rotuloUnidade String?
+  minimo Decimal? @db.Decimal(14, 3)
+  maximo Decimal? @db.Decimal(14, 3)
+  opcoes String[] @default([])
+  analisarIA Boolean @default(false)
+  criterioIA String?
 
   /// SIM_NAO: nulo = ninguém respondeu, true = conforme, false = não conforme.
   /// Diferente de "não se aplica", que é o campo abaixo — e a diferença muda a
@@ -241,18 +259,46 @@ model RespostaItem {
   /// NUMERO: o valor lido. TEXTO: o texto escrito.
   valorNumero Decimal? @db.Decimal(14, 3)
   valorTexto  String?
+  valorSelecao String[] @default([])
+  versao Int @default(0)
+
+  /// Parecer auxiliar: nunca altera sozinho a conformidade declarada.
+  resultadoIA String @default("NAO_SOLICITADA")
+  motivoIA String?
+  confiancaIA Float?
+  analisadaVersao Int?
+  analiseIniciadaEm DateTime?
+  revisadoPorId String?
+  revisadoEm DateTime?
 
   observacao String?
+  /// Legado preservado. Novos anexos usam ChecklistEvidencia.
   fotoUrl    String?
 
   respondidoPorId String?
   respondidoEm    DateTime?
 
   pendencias Pendencia[]
+  evidencias ChecklistEvidencia[]
 
   @@unique([respostaId, itemId])
   @@index([itemId])
   @@map("resposta_item")
+}
+
+/// Evidência privada de uma pergunta. A exclusão é lógica e mantém o rastro.
+model ChecklistEvidencia {
+  id String @id @default(cuid())
+  respostaItemId String
+  respostaItem RespostaItem @relation(fields: [respostaItemId], references: [id])
+  arquivoId String @unique
+  arquivo Arquivo @relation(fields: [arquivoId], references: [id])
+  sha256 String
+  criadoEm DateTime @default(now())
+  excluidoEm DateTime?
+
+  @@index([respostaItemId, excluidoEm])
+  @@map("checklist_evidencia")
 }
 
 enum StatusPendencia {

@@ -24,6 +24,8 @@ export async function GET(
     registro.unidadeId === null ||
     ctx.unidadesVisiveis.some((u) => u.id === registro.unidadeId);
   if (
+    // Evidências de checklist exigem a rota que valida vínculo e unidade ativa.
+    registro.entidade === "RespostaItem" ||
     registro.organizacaoId !== ctx.organizacao.id ||
     !lojaVisivel ||
     !pode(ctx, registro.permissaoLeitura)

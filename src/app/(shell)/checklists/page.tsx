@@ -10,6 +10,7 @@ import { AvisoUnidade } from "@/modules/checklists/components/aviso-unidade";
 import { DetalheDaRotina } from "@/modules/checklists/components/detalhe-da-rotina";
 import { PainelDeRotinas } from "@/modules/checklists/components/painel-de-rotinas";
 import { contarPendenciasAbertas } from "@/modules/checklists/services/pendencias";
+import { listarAvisosDosChecklists } from "@/modules/checklists/assistente";
 import {
   ehPeriodo,
   listarRotinas,
@@ -64,9 +65,10 @@ export default async function PaginaChecklists({
   const { periodo: pedido, rotina: rotinaPedida } = await searchParams;
   const periodo = ehPeriodo(pedido) ? pedido : "hoje";
 
-  const [rotinas, pendencias] = await Promise.all([
+  const [rotinas, pendencias, avisos] = await Promise.all([
     listarRotinas(contexto, periodo),
     contarPendenciasAbertas(contexto),
+    listarAvisosDosChecklists(contexto, new Date()),
   ]);
 
   // A seleção pode apontar para uma rotina que não está NESTE período — é o
@@ -80,6 +82,25 @@ export default async function PaginaChecklists({
 
   return (
     <div className="mx-auto flex w-full max-w-[var(--width-data)] flex-col gap-4">
+      {avisos.length > 0 && (
+        <section
+          aria-label="Avisos dos checklists"
+          className="border-line bg-warn-sub rounded-lg border px-4 py-3"
+        >
+          <h2 className="text-warn font-semibold">Avisos dos checklists</h2>
+          <ul className="text-ink-2 mt-1 flex list-disc flex-col gap-1 pl-5 text-sm">
+            {avisos.slice(0, 5).map((aviso) => (
+              <li key={aviso.chave}>{aviso.assunto}</li>
+            ))}
+          </ul>
+          {avisos.length > 5 && (
+            <p className="text-ink-3 mt-2 text-sm">
+              Mais {avisos.length - 5} avisos. Confira suas rotinas e
+              pendências.
+            </p>
+          )}
+        </section>
+      )}
       <CabecalhoDePagina
         titulo="Checklists"
         contexto={`O que precisa ser feito · ${contexto.unidadeAtiva.nome}`}

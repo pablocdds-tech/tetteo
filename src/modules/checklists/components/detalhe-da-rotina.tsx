@@ -26,6 +26,7 @@ import { AcaoComConfirmacao } from "./acao-com-confirmacao";
 import { FolhaDeChecklist } from "./folha-de-checklist";
 import { paraLinha } from "./preparar-folha";
 import { ResponsavelEmPainel } from "./responsavel-em-painel";
+import { CompartilharChecklist } from "./compartilhar-checklist";
 
 const DIAS = [
   "domingo",
@@ -115,6 +116,11 @@ export async function DetalheDaRotina({
         paraLinha(item, new Map([...nomes].map(([id, u]) => [id, u.nome]))),
       )
     : [];
+  const podePreencher =
+    podeResponder &&
+    (!resposta?.responsavelId ||
+      resposta.responsavelId === contexto.usuario.id ||
+      podeEditar);
 
   const tomDoStatus = {
     atrasada: "ruim",
@@ -192,15 +198,25 @@ export async function DetalheDaRotina({
       {/* ---------------- A folha, ou o convite para abrir uma ---------------- */}
       {resposta ? (
         <div className="flex flex-col gap-3">
+          {podeEditar && (
+            <CompartilharChecklist
+              respostaId={resposta.id}
+              nome={rotina.nome}
+              pessoas={pessoas}
+              responsavelId={resposta.responsavelId}
+              prazoEm={resposta.prazoEm?.toISOString() ?? null}
+            />
+          )}
           <FolhaDeChecklist
+            key={resposta.id}
             respostaId={resposta.id}
             rotinaId={rotina.id}
             periodo={periodo}
             linhas={linhas}
-            podeResponder={podeResponder}
+            podeResponder={podePreencher}
           />
 
-          {podeResponder && (
+          {podePreencher && (
             <div>
               <AcaoComConfirmacao
                 acao={cancelarRespostaAcao}

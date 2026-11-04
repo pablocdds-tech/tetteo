@@ -24,7 +24,8 @@
  * ---------------------------------------------------------------------------
  */
 
-export type TipoDeResposta = "SIM_NAO" | "NUMERO" | "TEXTO";
+export type TipoDeResposta =
+  "SIM_NAO" | "NUMERO" | "TEXTO" | "SELECAO_UNICA" | "MULTIPLA_ESCOLHA";
 
 export type ItemRespondido = {
   textoItem: string;
@@ -37,6 +38,13 @@ export type ItemRespondido = {
 
   valorNumero: number | null;
   valorTexto: string | null;
+  valorSelecao?: string[];
+  opcoes?: string[];
+  exigeFoto?: boolean;
+  exigeVideo?: boolean;
+  fotos?: number;
+  videos?: number;
+  evidencias?: { tipo: string }[];
 
   /** Faixa aceitável do NUMERO. Sem faixa, o número é só registro. */
   minimo: number | null;
@@ -89,6 +97,9 @@ export function foiRespondido(item: ItemRespondido): boolean {
   if (item.naoSeAplica) return true;
   if (item.tipo === "SIM_NAO") return item.conforme !== null;
   if (item.tipo === "NUMERO") return item.valorNumero !== null;
+  if (item.tipo === "SELECAO_UNICA" || item.tipo === "MULTIPLA_ESCOLHA") {
+    return (item.valorSelecao?.length ?? 0) > 0;
+  }
   return (item.valorTexto ?? "").trim() !== "";
 }
 
@@ -147,6 +158,47 @@ export function impedimentosParaFechar(itens: ItemRespondido[]): string[] {
     if (item.obrigatorio && !foiRespondido(item)) {
       motivos.push(`Falta responder: ${item.textoItem}`);
       continue;
+    }
+
+    if (
+      item.naoSeAplica &&
+      item.obrigatorio &&
+      !(item.observacao ?? "").trim()
+    ) {
+      motivos.push(`Justifique por que não se aplica: ${item.textoItem}`);
+    }
+    if (
+      item.exigeFoto &&
+      !(
+        item.fotos ??
+        item.evidencias?.filter((e) => e.tipo.startsWith("image/")).length ??
+        0
+      )
+    ) {
+      motivos.push(`Falta foto: ${item.textoItem}`);
+    }
+    if (
+      item.exigeVideo &&
+      !(
+        item.videos ??
+        item.evidencias?.filter((e) => e.tipo.startsWith("video/")).length ??
+        0
+      )
+    ) {
+      motivos.push(`Falta vídeo: ${item.textoItem}`);
+    }
+    const selecoes = item.valorSelecao ?? [];
+    if (
+      !item.naoSeAplica &&
+      (item.tipo === "SELECAO_UNICA" || item.tipo === "MULTIPLA_ESCOLHA")
+    ) {
+      if (
+        selecoes.some((v) => !item.opcoes?.includes(v)) ||
+        new Set(selecoes).size !== selecoes.length ||
+        (item.tipo === "SELECAO_UNICA" && selecoes.length > 1)
+      ) {
+        motivos.push(`Revise as opções selecionadas: ${item.textoItem}`);
+      }
     }
 
     const naoConforme = conformidadeDoItem(item) === false;

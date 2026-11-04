@@ -22,19 +22,33 @@ import {
 } from "../acoes";
 import {
   impedimentosParaFechar,
+  foiRespondido,
   type ItemRespondido,
 } from "../schemas/pontuacao";
 
 import { useInformarProgresso } from "./progresso-ao-vivo";
+import { EvidenciasDoItem, type EvidenciaDaFolha } from "./evidencias-do-item";
 
 export type LinhaDaFolha = {
   id: string;
+  respostaItemId: string;
   textoItem: string;
   secao: string | null;
-  tipo: "SIM_NAO" | "NUMERO" | "TEXTO";
+  tipo: "SIM_NAO" | "NUMERO" | "TEXTO" | "SELECAO_UNICA" | "MULTIPLA_ESCOLHA";
   obrigatorio: boolean;
   exigeObservacaoSeNao: boolean;
   exigeFoto: boolean;
+  exigeVideo: boolean;
+  opcoes: string[];
+  valorSelecao: string[];
+  versao: number;
+  analisarIA: boolean;
+  criterioIA: string | null;
+  resultadoIA: string;
+  motivoIA: string | null;
+  confiancaIA: number | null;
+  revisadoPorId: string | null;
+  evidencias: EvidenciaDaFolha[];
   rotuloUnidade: string | null;
   /** A faixa em texto, do jeito que se lê em voz alta: "-18 a -12 °C". */
   faixa: string | null;
@@ -59,11 +73,13 @@ type Valores = {
   numero: string;
   texto: string;
   observacao: string;
+  selecao: string[];
 };
 
 type Situacao = "parado" | "salvando" | "salvo" | "falhou";
 
 type EstadoDaLinha = {
+  evidencias: EvidenciaDaFolha[];
   /** O que está na tela agora. */
   visivel: Valores;
   /** O que o servidor confirmou. É para cá que a tela volta se falhar. */
@@ -89,6 +105,7 @@ function valoresIniciais(linha: LinhaDaFolha): Valores {
     numero: linha.valorNumero,
     texto: linha.valorTexto,
     observacao: linha.observacao,
+    selecao: linha.valorSelecao,
   };
 }
 
@@ -97,7 +114,8 @@ function iguais(a: Valores, b: Valores) {
     a.marcada === b.marcada &&
     a.numero.trim() === b.numero.trim() &&
     a.texto.trim() === b.texto.trim() &&
-    a.observacao.trim() === b.observacao.trim()
+    a.observacao.trim() === b.observacao.trim() &&
+    JSON.stringify(a.selecao) === JSON.stringify(b.selecao)
   );
 }
 
@@ -110,6 +128,7 @@ function iguais(a: Valores, b: Valores) {
 function precisaObservar(linha: LinhaDaFolha, marcada: Marcacao) {
   if (linha.observacao) return true;
   if (marcada === "nao") return true;
+  if (marcada === "na") return true;
   return linha.tipo === "NUMERO" && linha.faixa !== null;
 }
 
@@ -121,7 +140,11 @@ function precisaObservar(linha: LinhaDaFolha, marcada: Marcacao) {
  * ainda falta — e diz exatamente o que o servidor diria, porque é a mesma
  * regra e não uma segunda cópia dela.
  */
-function paraRegra(linha: LinhaDaFolha, valores: Valores): ItemRespondido {
+function paraRegra(
+  linha: LinhaDaFolha,
+  valores: Valores,
+  evidencias = linha.evidencias,
+): ItemRespondido {
   const numero = lerNumeroBr(valores.numero);
 
   return {
@@ -141,6 +164,12 @@ function paraRegra(linha: LinhaDaFolha, valores: Valores): ItemRespondido {
     maximo: linha.maximo,
     observacao: valores.observacao.trim() || null,
     exigeObservacaoSeNao: linha.exigeObservacaoSeNao,
+    valorSelecao: valores.selecao,
+    opcoes: linha.opcoes,
+    exigeFoto: linha.exigeFoto,
+    exigeVideo: linha.exigeVideo,
+    fotos: evidencias.filter((e) => e.tipo.startsWith("image/")).length,
+    videos: evidencias.filter((e) => e.tipo.startsWith("video/")).length,
   };
 }
 
@@ -197,6 +226,7 @@ export function FolhaDeChecklist({
             quando: linha.respondidoEm,
             quem: linha.respondidoPor,
             erro: null,
+            evidencias: linha.evidencias,
           },
         ];
       }),
@@ -221,9 +251,15 @@ export function FolhaDeChecklist({
    * "não". Encadear por item custa nada e fecha essa porta.
    */
   const filas = useRef(new Map<string, Promise<unknown>>());
+  const versoes = useRef(
+    new Map(linhas.map((linha) => [linha.id, linha.versao])),
+  );
 
   /** O que a pessoa TENTOU gravar por último, item a item. */
   const tentativas = useRef(new Map<string, Valores>());
+  const tentativasDeMidia = useRef(
+    new Map<string, { arquivo?: File; evidenciaId?: string }>(),
+  );
 
   /** Entre o clique em Concluir e o pedido sair: esperando a fila esvaziar. */
   const [preparando, iniciarPreparo] = useTransition();
@@ -232,6 +268,8 @@ export function FolhaDeChecklist({
   const concluindo = useRef(false);
 
   function gravar(linha: LinhaDaFolha, proximos: Valores) {
+    if (concluindo.current) return Promise.resolve();
+    tentativasDeMidia.current.delete(linha.id);
     // Guardado ANTES de enviar. Se a gravação falhar, a tela volta ao que
     // estava gravado — mas "Tentar de novo" precisa reenviar o que a pessoa
     // QUIS marcar, e não o valor antigo para o qual a tela voltou. A primeira
@@ -260,7 +298,10 @@ export function FolhaDeChecklist({
           numero: proximos.numero,
           texto: proximos.texto,
           observacao: proximos.observacao,
+          selecao: proximos.selecao,
+          versaoEsperada: versoes.current.get(linha.id) ?? linha.versao,
         });
+        if (resultado.ok) versoes.current.set(linha.id, resultado.versao);
 
         setEstados((antes) => {
           const atual = antes[linha.id];
@@ -285,8 +326,8 @@ export function FolhaDeChecklist({
               ...atual,
               confirmado: proximos,
               situacao: "salvo",
-              quando: resultado.quando || atual.quando,
-              quem: resultado.quem ?? atual.quem,
+              quando: resultado.quando || null,
+              quem: resultado.quem,
               erro: null,
             },
           };
@@ -318,6 +359,11 @@ export function FolhaDeChecklist({
 
   /** Reenvia o que a pessoa quis marcar da última vez — não o que voltou. */
   function tentarDeNovo(linha: LinhaDaFolha) {
+    const midia = tentativasDeMidia.current.get(linha.id);
+    if (midia) {
+      void alterarEvidencia(linha, midia.arquivo, midia.evidenciaId);
+      return;
+    }
     void gravar(
       linha,
       tentativas.current.get(linha.id) ?? estados[linha.id].visivel,
@@ -345,6 +391,79 @@ export function FolhaDeChecklist({
     }));
   }
 
+  function alterarEvidencia(
+    linha: LinhaDaFolha,
+    arquivo?: File,
+    evidenciaId?: string,
+  ) {
+    if (concluindo.current) return Promise.resolve();
+    tentativasDeMidia.current.set(linha.id, { arquivo, evidenciaId });
+    setEstados((antes) => ({
+      ...antes,
+      [linha.id]: { ...antes[linha.id], situacao: "salvando", erro: null },
+    }));
+    const tarefa = (filas.current.get(linha.id) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const versao = versoes.current.get(linha.id) ?? linha.versao;
+          const dados = new FormData();
+          dados.set("itemId", linha.respostaItemId);
+          dados.set("versaoEsperada", String(versao));
+          if (arquivo) dados.set("arquivo", arquivo);
+          const resposta = await fetch(
+            `/api/checklists/${respostaId}/evidencias${evidenciaId ? `/${evidenciaId}` : ""}`,
+            {
+              method: evidenciaId ? "DELETE" : "POST",
+              body: evidenciaId
+                ? JSON.stringify({ versaoEsperada: versao })
+                : dados,
+              headers: evidenciaId
+                ? { "Content-Type": "application/json" }
+                : undefined,
+            },
+          );
+          const salvo = await resposta.json();
+          if (!resposta.ok)
+            throw new Error(
+              salvo.erro ?? "Não foi possível guardar a evidência.",
+            );
+          versoes.current.set(linha.id, salvo.versao);
+          tentativasDeMidia.current.delete(linha.id);
+          setEstados((antes) => ({
+            ...antes,
+            [linha.id]: {
+              ...antes[linha.id],
+              situacao: "salvo",
+              erro: null,
+              evidencias: evidenciaId
+                ? antes[linha.id].evidencias.filter((e) => e.id !== evidenciaId)
+                : [
+                    ...antes[linha.id].evidencias.filter(
+                      (e) => e.id !== salvo.evidencia.id,
+                    ),
+                    salvo.evidencia,
+                  ],
+            },
+          }));
+        } catch (erro) {
+          setEstados((antes) => ({
+            ...antes,
+            [linha.id]: {
+              ...antes[linha.id],
+              situacao: "falhou",
+              erro:
+                erro instanceof Error
+                  ? erro.message
+                  : "Sem conexão. Tente enviar novamente.",
+            },
+          }));
+        }
+      });
+    filas.current.set(linha.id, tarefa);
+    return tarefa;
+  }
+
   const secoes = useMemo(() => {
     const mapa = new Map<string, LinhaDaFolha[]>();
     for (const linha of linhas) {
@@ -367,14 +486,33 @@ export function FolhaDeChecklist({
   const impedimentos = useMemo(
     () =>
       impedimentosParaFechar(
-        linhas.map((linha) => paraRegra(linha, estados[linha.id].confirmado)),
+        linhas.map((linha) =>
+          paraRegra(
+            linha,
+            estados[linha.id].confirmado,
+            estados[linha.id].evidencias,
+          ),
+        ),
       ),
     [linhas, estados],
   );
 
   const respondidos = linhas.filter((linha) => {
     const v = estados[linha.id].confirmado;
-    return v.marcada !== "" || v.numero.trim() !== "" || v.texto.trim() !== "";
+    return (
+      v.marcada !== "" ||
+      v.numero.trim() !== "" ||
+      v.texto.trim() !== "" ||
+      v.selecao.length > 0
+    );
+  }).length;
+  const completos = linhas.filter((linha) => {
+    const regra = paraRegra(
+      linha,
+      estados[linha.id].confirmado,
+      estados[linha.id].evidencias,
+    );
+    return foiRespondido(regra) && impedimentosParaFechar([regra]).length === 0;
   }).length;
 
   /**
@@ -452,11 +590,15 @@ export function FolhaDeChecklist({
       </p>
 
       <Progresso
-        respondidos={respondidos}
+        respondidos={completos}
         total={linhas.length}
         gravando={gravando}
         falhas={falhas}
       />
+      <p className="text-ink-3 text-sm">
+        {respondidos} respondidos. A barra conta respostas com as evidências
+        exigidas. A conferência da IA acontece após concluir.
+      </p>
 
       {secoes.map(([secao, itens]) => (
         <section key={secao || "geral"}>
@@ -472,13 +614,20 @@ export function FolhaDeChecklist({
                 key={linha.id}
                 linha={linha}
                 estado={estados[linha.id]}
-                podeResponder={podeResponder}
+                podeResponder={podeResponder && !preparando && !fechando}
                 aoMarcar={(marcada) =>
                   gravar(linha, { ...estados[linha.id].visivel, marcada })
                 }
                 aoDigitar={(parcial) => digitar(linha.id, parcial)}
                 aoSair={() => gravarSeMudou(linha, estados[linha.id].visivel)}
                 aoTentarDeNovo={() => tentarDeNovo(linha)}
+                aoSelecionar={(selecao) =>
+                  gravar(linha, { ...estados[linha.id].visivel, selecao })
+                }
+                aoAnexar={(arquivo) => alterarEvidencia(linha, arquivo)}
+                aoRemoverEvidencia={(id) =>
+                  alterarEvidencia(linha, undefined, id)
+                }
               />
             ))}
           </div>
@@ -525,7 +674,7 @@ export function FolhaDeChecklist({
             <Botao
               type="submit"
               carregando={fechando || preparando}
-              disabled={impedimentos.length > 0 || gravando}
+              disabled={impedimentos.length > 0 || gravando || falhas > 0}
             >
               Concluir checklist
             </Botao>
@@ -585,7 +734,7 @@ function Progresso({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="text-base font-semibold tabular-nums">
-          {respondidos} de {total} itens gravados
+          {respondidos} de {total} itens completos
         </p>
 
         <p className="text-ink-3 flex items-center gap-1.5 text-sm">
@@ -676,6 +825,9 @@ function ItemDaFolha({
   aoDigitar,
   aoSair,
   aoTentarDeNovo,
+  aoSelecionar,
+  aoAnexar,
+  aoRemoverEvidencia,
 }: {
   linha: LinhaDaFolha;
   estado: EstadoDaLinha;
@@ -684,6 +836,9 @@ function ItemDaFolha({
   aoDigitar: (parcial: Partial<Valores>) => void;
   aoSair: () => void;
   aoTentarDeNovo: () => void;
+  aoSelecionar: (selecao: string[]) => void;
+  aoAnexar: (arquivo: File) => Promise<unknown>;
+  aoRemoverEvidencia: (id: string) => Promise<unknown>;
 }) {
   const { visivel } = estado;
   const idObservacao = `obs-${linha.id}`;
@@ -700,11 +855,11 @@ function ItemDaFolha({
 
         {linha.exigeFoto && (
           <span
-            title="Este item pede foto. O envio de imagem ainda não está ligado no sistema."
+            title="Anexe uma foto para concluir este item."
             className="bg-surface-3 text-ink-2 inline-flex flex-none items-center gap-1 rounded-sm px-1.5 py-0.5 text-xs font-semibold"
           >
             <Icone nome="olho" tamanho={12} />
-            pede foto
+            foto obrigatória
           </span>
         )}
       </div>
@@ -795,6 +950,43 @@ function ItemDaFolha({
         </>
       )}
 
+      {(linha.tipo === "SELECAO_UNICA" ||
+        linha.tipo === "MULTIPLA_ESCOLHA") && (
+        <fieldset
+          disabled={!podeResponder || estado.situacao === "salvando"}
+          className="flex flex-col gap-1"
+        >
+          <legend className="text-ink-3 mb-1 text-sm">
+            {linha.tipo === "SELECAO_UNICA"
+              ? "Escolha uma opção"
+              : "Marque as opções que se aplicam"}
+          </legend>
+          {linha.opcoes.map((opcao) => (
+            <label
+              key={opcao}
+              className="border-line flex min-h-12 cursor-pointer items-center gap-3 rounded-md border px-3 py-2 text-base"
+            >
+              <input
+                type={linha.tipo === "SELECAO_UNICA" ? "radio" : "checkbox"}
+                name={`selecao:${linha.id}`}
+                checked={visivel.selecao.includes(opcao)}
+                className="accent-accent size-5"
+                onChange={(e) =>
+                  aoSelecionar(
+                    linha.tipo === "SELECAO_UNICA"
+                      ? [opcao]
+                      : e.target.checked
+                        ? [...visivel.selecao, opcao]
+                        : visivel.selecao.filter((v) => v !== opcao),
+                  )
+                }
+              />
+              {opcao}
+            </label>
+          ))}
+        </fieldset>
+      )}
+
       {/* A explicação aparece junto da resposta, no instante em que ela passa
           a ser exigida — nunca num campo solto no fim da página, que é o mesmo
           que não pedir. */}
@@ -804,11 +996,13 @@ function ItemDaFolha({
             htmlFor={idObservacao}
             className="text-ink-2 text-sm font-semibold"
           >
-            {visivel.marcada === "nao" && linha.exigeObservacaoSeNao
-              ? "O que houve? (obrigatório)"
-              : linha.tipo === "NUMERO" && linha.faixa
-                ? "Observação (obrigatória se a leitura sair da faixa)"
-                : "Observação"}
+            {visivel.marcada === "na"
+              ? "Por que não se aplica? (obrigatório)"
+              : visivel.marcada === "nao" && linha.exigeObservacaoSeNao
+                ? "O que houve? (obrigatório)"
+                : linha.tipo === "NUMERO" && linha.faixa
+                  ? "Observação (obrigatória se a leitura sair da faixa)"
+                  : "Observação"}
           </label>
           <textarea
             id={idObservacao}
@@ -821,6 +1015,21 @@ function ItemDaFolha({
             className={ESTILO_CAMPO}
           />
         </div>
+      )}
+
+      <EvidenciasDoItem
+        id={linha.id}
+        evidencias={estado.evidencias}
+        exigeFoto={linha.exigeFoto}
+        exigeVideo={linha.exigeVideo}
+        podeEnviar={podeResponder && estado.situacao !== "salvando"}
+        aoAnexar={aoAnexar}
+        aoRemover={aoRemoverEvidencia}
+      />
+      {linha.analisarIA && (
+        <p className="text-ink-3 text-sm">
+          Conferência por IA: {linha.criterioIA}
+        </p>
       )}
 
       <SituacaoDoItem estado={estado} aoTentarDeNovo={aoTentarDeNovo} />

@@ -1,4 +1,4 @@
-import { pode, type ContextoSessao } from "@/core/sessao/contexto";
+import { pode, type ContextoSessao } from "@/core/sessao/nucleo";
 import {
   prazoAtual,
   proximaCobranca,
