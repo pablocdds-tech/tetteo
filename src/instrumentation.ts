@@ -19,6 +19,9 @@ export async function register() {
     iniciarRelogioPedidosRecebidos();
     const { channelFor, managementFor } =
       await import("./app/api/atendimento/_costura/providers");
+    const { startVirtualNameWorker } =
+      await import("./modules/crm/services/virtual-name-worker");
+    startVirtualNameWorker(managementFor);
     startVirtualWorker(channelFor);
     const { startVirtualHistoryWorker } =
       await import("./modules/crm/services/virtual-history-worker");

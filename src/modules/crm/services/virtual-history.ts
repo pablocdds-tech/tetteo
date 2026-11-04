@@ -6,6 +6,7 @@ import { db } from "@/server/db";
 import { maskVirtualSecrets } from "@/server/atendimento-canal";
 import type { ChannelManagementFactory } from "@/server/atendimento-provedor";
 import { canonicalHash, CrmError } from "./campaign-domain";
+import { applyVirtualCustomerName } from "./virtual-name-state";
 import {
   authorizeVirtual,
   lockVirtualConversation,
@@ -513,6 +514,10 @@ export async function processVirtualHistoryQueue(
               importedMessages++;
               if (occurredAt > latest) latest = occurredAt;
             }
+            const nameCurrent = await tx.avConversation.findUniqueOrThrow({
+              where: { id: conversation.id },
+            });
+            await applyVirtualCustomerName(tx, nameCurrent);
             if (latest > conversation.lastMessageAt)
               await tx.avConversation.updateMany({
                 where: {

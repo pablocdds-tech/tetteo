@@ -60,6 +60,18 @@ model AvConversation {
   externalCustomerId String
   contactId String?
   displayName String
+  nameSource String @default("UNKNOWN")
+  nameUpdatedAt DateTime?
+  nameNeedsConfirmation Boolean @default(true)
+  nameUsableForReservation Boolean @default(false)
+  channelNames Json @default("{}")
+  nameLookupRevision Int?
+  nameLookupAfter DateTime?
+  nameLookupLeaseOwner String?
+  nameLookupLeaseUntil DateTime?
+  nameLookupAttempts Int @default(0)
+  nameLookupLastAt DateTime?
+  nameLookupError String?
   status String @default("OPEN")
   version Int @default(1)
   assignedToId String?
@@ -87,6 +99,7 @@ model AvConversation {
   @@unique([organizationId, storeId, accountId, id])
   @@index([organizationId, storeId, status, lastMessageAt])
   @@index([agentEnabled, processAfter, leaseUntil])
+  @@index([nameLookupAfter, nameLookupLeaseUntil])
 }
 
 model AvMessage {

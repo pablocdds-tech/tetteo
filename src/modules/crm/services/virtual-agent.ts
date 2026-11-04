@@ -1,4 +1,5 @@
 import { db } from "@/server/db";
+import { safeVirtualCustomerName } from "@/server/atendimento-nome";
 import { maskVirtualSecrets } from "@/server/atendimento-canal";
 import {
   extractVirtualModelIntent,
@@ -31,6 +32,8 @@ import {
 
 type CustomerData = {
   name: string;
+  nameSource: string;
+  nameUsableForReservation: boolean;
   known: boolean;
   preferences: { key: string; value: string }[];
   reservations: {
@@ -277,12 +280,31 @@ export async function runVirtualAgent(
     );
   const customerResult = await tool("buscar_cliente");
   const customer = customerResult.data as unknown as CustomerData;
-  const namePreference = customer.preferences.find(
-    (p) => p.key === "name",
-  )?.value;
-  const knownName =
-    namePreference ?? (customer.known ? customer.name : undefined);
+  const knownName = customer.nameUsableForReservation
+    ? (safeVirtualCustomerName(customer.name) ?? undefined)
+    : undefined;
+  const explicitName = plan.name ? safeVirtualCustomerName(plan.name) : null;
+  const invalidExplicitName = Boolean(
+    plan.name && (!explicitName || explicitName.length < 2),
+  );
+  if (plan.name && !invalidExplicitName)
+    plan = { ...plan, name: explicitName! };
   if (plan.intent === "name" && plan.name) {
+    if (nextState.pending) {
+      const p = nextState.pending;
+      const prior = await db.avToolExecution.findUnique({
+        where: {
+          conversationId_key: {
+            conversationId: input.conversationId,
+            key: `${p.type}:${p.token}`,
+          },
+        },
+      });
+      if (prior?.success)
+        return escalate(
+          "A ação anterior da reserva precisa de conciliação antes de corrigir o nome e gerar outro resumo.",
+        );
+    }
     const r = await tool("registrar_preferencia", {
       key: "name",
       value: plan.name,
@@ -307,6 +329,22 @@ export async function runVirtualAgent(
       } else if (nextState.draft) {
         nextState = { draft: { ...nextState.draft, guestName: plan.name } };
       }
+    } else if (nextState.pending || nextState.draft) {
+      const p = nextState.pending;
+      nextState = p
+        ? p.type === "cancel"
+          ? {}
+          : {
+              draft: {
+                date: p.date,
+                time: p.time,
+                partySize: p.partySize,
+                ...(p.type === "update"
+                  ? { operation: "update", reservationId: p.reservationId }
+                  : {}),
+              },
+            }
+        : { draft: { ...nextState.draft, guestName: undefined } };
     }
     return reply(
       r.success
@@ -324,6 +362,45 @@ export async function runVirtualAgent(
         ? "Registrei essa preferência para os próximos atendimentos neste canal."
         : (r.error ?? "Não consegui registrar a preferência."),
     );
+  }
+  if (nextState.pending) {
+    const p = nextState.pending;
+    const name = safeVirtualCustomerName(p.guestName);
+    if (!name || name.length < 2) {
+      const prior = await db.avToolExecution.findUnique({
+        where: {
+          conversationId_key: {
+            conversationId: input.conversationId,
+            key: `${p.type}:${p.token}`,
+          },
+        },
+      });
+      if (prior?.success)
+        return escalate(
+          "A ação anterior da reserva precisa de conciliação antes de corrigir o nome e gerar outro resumo.",
+        );
+      if (p.type === "cancel")
+        return escalate(
+          "O nome da reserva anterior precisa de conferência antes do cancelamento.",
+        );
+      nextState = {
+        draft: {
+          date: p.date,
+          time: p.time,
+          partySize: p.partySize,
+          ...(p.type === "update"
+            ? { operation: "update", reservationId: p.reservationId }
+            : {}),
+        },
+      };
+      if (
+        (!explicitName || invalidExplicitName) &&
+        ["confirm", "reserve", "update", "unknown"].includes(plan.intent)
+      )
+        return reply(
+          "Em qual nome devo fazer a reserva? O resumo anterior precisa ser confirmado novamente.",
+        );
+    } else nextState = { ...nextState, pending: { ...p, guestName: name } };
   }
   const explicit = isExplicitVirtualConfirmation(joined);
   if (nextState.pending && !explicit) {
@@ -440,6 +517,11 @@ export async function runVirtualAgent(
       );
     }
     if (plan.intent === "cancel") {
+      const guestName = safeVirtualCustomerName(selected.guestName);
+      if (!guestName || guestName.length < 2)
+        return escalate(
+          "O nome da reserva selecionada precisa de conferência antes do cancelamento.",
+        );
       nextState = {
         pending: newPendingReservation({
           type: "cancel",
@@ -447,7 +529,7 @@ export async function runVirtualAgent(
           date: selected.date,
           time: selected.time,
           partySize: selected.partySize,
-          guestName: selected.guestName,
+          guestName,
         }),
       };
       return reply(
@@ -471,6 +553,14 @@ export async function runVirtualAgent(
     (nextState.draft && plan.intent === "unknown")
   ) {
     const draft = { ...nextState.draft };
+    const savedName = draft.guestName
+      ? safeVirtualCustomerName(draft.guestName)
+      : null;
+    const invalidSavedName = Boolean(
+      draft.guestName && (!savedName || savedName.length < 2),
+    );
+    if (draft.guestName)
+      draft.guestName = invalidSavedName ? undefined : savedName!;
     if (draft.date && !draft.time && /^(?:[01]?\d|2[0-3])$/.test(joined.trim()))
       plan = { ...plan, time: `${joined.trim().padStart(2, "0")}:00` };
     else if (
@@ -495,17 +585,31 @@ export async function runVirtualAgent(
     }
     if (plan.time) draft.time = plan.time;
     if (plan.partySize) draft.partySize = plan.partySize;
-    if (plan.name) draft.guestName = plan.name;
-    if (!draft.guestName && knownName) draft.guestName = knownName;
+    if (invalidExplicitName) {
+      nextState = { draft: { ...draft, guestName: undefined } };
+      return reply(
+        "Não consegui usar esse nome. Em qual nome devo fazer a reserva?",
+      );
+    }
+    if (explicitName) draft.guestName = explicitName;
     // A short answer to the explicit name question is kept as conversational alias.
     if (
       !draft.guestName &&
       nextState.draft?.date &&
       nextState.draft?.time &&
       nextState.draft?.partySize &&
+      plan.intent === "unknown" &&
+      !plan.date &&
+      !plan.time &&
+      !plan.partySize &&
       /^[\p{L}][\p{L} '-]{1,100}$/u.test(joined.trim())
     )
-      draft.guestName = joined.trim();
+      draft.guestName = safeVirtualCustomerName(joined.trim()) ?? undefined;
+    if (invalidSavedName && !draft.guestName) {
+      nextState = { draft };
+      return reply("Em qual nome devo fazer a reserva?");
+    }
+    if (!draft.guestName && knownName) draft.guestName = knownName;
     nextState = { draft };
     if (!draft.date) return reply("Para qual data você quer reservar?");
     if (!draft.time) return reply("Qual horário você prefere para a reserva?");

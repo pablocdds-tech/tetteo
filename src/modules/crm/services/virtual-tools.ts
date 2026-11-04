@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/server/db";
+import { safeVirtualCustomerName } from "@/server/atendimento-nome";
 import {
   bookingCapacityLock,
   bookedPartySize,
@@ -173,6 +174,11 @@ async function reserve(
     return fail(
       "A ação precisa de uma confirmação explícita do resumo atual. Nenhuma reserva foi alterada.",
     );
+  const guestName = safeVirtualCustomerName(pending.guestName);
+  if (!guestName || guestName.length < 2)
+    return fail(
+      "O nome do resumo precisa ser conferido. Informe um nome válido antes de confirmar; a equipe pode ajudar.",
+    );
   const summaryCreatedAt = pending.createdAt
     ? new Date(pending.createdAt).getTime()
     : new Date(pending.expiresAt).getTime() - 10 * 60_000;
@@ -278,7 +284,7 @@ async function reserve(
   const values = {
     slotId: available.id!,
     partySize: pending.partySize,
-    guestName: pending.guestName,
+    guestName,
   };
   const row = old
     ? await tx.avReservation.update({
@@ -364,7 +370,7 @@ export async function executeVirtualTool(
         const [preferences, reservations] = await Promise.all([
           tx.avCustomerPreference.findMany({
             where: { ...scope, externalCustomerId: input.senderKey },
-            select: { key: true, value: true, updatedAt: true },
+            select: { key: true, value: true, source: true, updatedAt: true },
           }),
           tx.avReservation.findMany({
             where: {
@@ -393,15 +399,42 @@ export async function executeVirtualTool(
             orderBy: { createdAt: "desc" },
           }),
         ]);
+        const correction = preferences.find(
+          (p) => p.key === "name" && p.source === "CUSTOMER",
+        );
+        const correctedName = safeVirtualCustomerName(correction?.value);
+        const crmName = safeVirtualCustomerName(customer?.name);
+        const channelName = safeVirtualCustomerName(conversation.displayName);
+        const displayName = correctedName ?? crmName ?? channelName;
+        const nameSource = correctedName
+          ? "CUSTOMER_CORRECTION"
+          : crmName
+            ? "CRM_VERIFIED"
+            : conversation.nameSource;
+        const nameUpdatedAt = correctedName
+          ? correction!.updatedAt
+          : crmName
+            ? customer!.updatedAt
+            : conversation.nameUpdatedAt;
         result = {
           success: true,
           id: customer?.id,
           state: customer ? "KNOWN" : "UNKNOWN",
           data: {
-            name:
-              preferences.find((p) => p.key === "name")?.value ??
-              customer?.name ??
-              conversation.displayName,
+            name: displayName ?? "Cliente sem nome informado",
+            nameSource,
+            nameUpdatedAt: nameUpdatedAt?.toISOString() ?? null,
+            nameUsableForReservation: Boolean(
+              displayName &&
+              displayName.length >= 2 &&
+              (correctedName ||
+                crmName ||
+                conversation.nameUsableForReservation),
+            ),
+            nameNeedsConfirmation:
+              correctedName || crmName
+                ? false
+                : conversation.nameNeedsConfirmation,
             known: !!customer,
             source: customer
               ? "CRM: identificador verificado por conta"
@@ -499,37 +532,53 @@ export async function executeVirtualTool(
         );
       } else if (name === "registrar_preferencia") {
         const a = virtualToolSchemas.registrar_preferencia.parse(args);
-        const pref = await tx.avCustomerPreference.upsert({
-          where: {
-            accountId_externalCustomerId_key: {
-              accountId: input.accountId,
-              externalCustomerId: input.senderKey,
-              key: a.key,
+        const value =
+          a.key === "name" ? safeVirtualCustomerName(a.value) : a.value;
+        if (!value || (a.key === "name" && value.length < 2)) {
+          result = fail(
+            "Não consegui usar esse nome. Como você prefere ser chamado neste atendimento?",
+          );
+        } else {
+          const pref = await tx.avCustomerPreference.upsert({
+            where: {
+              accountId_externalCustomerId_key: {
+                accountId: input.accountId,
+                externalCustomerId: input.senderKey,
+                key: a.key,
+              },
             },
-          },
-          create: {
-            ...scope,
-            externalCustomerId: input.senderKey,
-            contactId: input.contactId,
-            ...a,
-          },
-          update: { value: a.value },
-        });
-        if (a.key === "name")
-          await tx.avConversation.update({
-            where: { id: input.conversationId },
-            data: { displayName: a.value },
+            create: {
+              ...scope,
+              externalCustomerId: input.senderKey,
+              contactId: input.contactId,
+              key: a.key,
+              value,
+              source: "CUSTOMER",
+            },
+            update: { value, source: "CUSTOMER" },
           });
-        result = {
-          success: true,
-          id: pref.id,
-          state: "RECORDED",
-          data: {
-            key: a.key,
-            value: a.value,
-            source: "Correção informada pelo cliente neste canal",
-          },
-        };
+          if (a.key === "name")
+            await tx.avConversation.update({
+              where: { id: input.conversationId },
+              data: {
+                displayName: value,
+                nameSource: "CUSTOMER_CORRECTION",
+                nameUpdatedAt: pref.updatedAt,
+                nameNeedsConfirmation: false,
+                nameUsableForReservation: true,
+              },
+            });
+          result = {
+            success: true,
+            id: pref.id,
+            state: "RECORDED",
+            data: {
+              key: a.key,
+              value,
+              source: "Correção informada pelo cliente neste canal",
+            },
+          };
+        }
       } else {
         const a = virtualToolSchemas.escalar_para_humano.parse(args);
         const escalation = await createVirtualEscalation(

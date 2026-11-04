@@ -44,6 +44,30 @@ ausência, sem depender de idempotência oferecida pelo Evolution.
 
 ## System model
 
+### Resolução do nome sem promoção de identidade
+
+`virtual-customer-name.ts` separa nome e vínculo: somente identidades CRM
+verificadas, ativas e não ambíguas podem produzir `contactId`/`known`. Contato do
+WhatsApp, perfil e nome histórico fornecem apenas rótulos. A consulta usa
+organização, unidade, conta e telefone atestado; nome ou telefone escritos no
+texto não são um seletor de identidade. Preferência corrigida pelo cliente tem
+prioridade. Dois cadastros conflitantes não são fundidos nem escolhidos ao acaso.
+
+`virtual-name-worker.ts` consulta somente a instância e o telefone da conversa,
+com HTTP fora da transação, lease recuperável, limite de tentativas e revisão
+conferida antes da gravação. Cache de perfil conserva o horário de origem e não
+regride por evento antigo. Uma correção durante HTTP é relida sob lock e vence o
+retorno. A mudança de `contactId` invalida versão/lease de geração; ferramentas
+também recusam snapshot de contato divergente. O worker preserva pausa, takeover,
+estado, fila de mensagens e autorização de envio.
+
+Nome segue saneamento antes de persistir cache, preencher rascunho ou mostrar
+origem. Auditoria registra fonte e flags, sem nomes, telefones ou credenciais.
+`PROVIDER_CONTACT` não afirma que um `pushName` ambíguo veio da agenda. Sugestão
+CRM não verificada não permite prefill de reserva, enquanto perfil válido pode
+ser usado somente para o nome no resumo que exige confirmação. A resolução não
+cria contatos, identidades verificadas, reservas, saídas ou chamadas pagas.
+
 ### Importação histórica de WhatsApp
 
 O gestor solicita uma importação apenas da conta Evolution verificada da unidade

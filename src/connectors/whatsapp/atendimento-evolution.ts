@@ -5,6 +5,7 @@ import type {
 import type { ChannelSendResult } from "@/server/atendimento-canal";
 import { channelHttp, record, string } from "./atendimento-http";
 import { readEvolutionHistoryPage } from "./atendimento-evolution-historico";
+import { lookupEvolutionContactNames } from "./atendimento-evolution-contatos";
 export function evolutionAttendance(
   config: Extract<LiveChannelConfig, { provider: "EVOLUTION" }>,
   lookup?: (id: string) => Promise<{ recipient: string; sentAt: Date } | null>,
@@ -44,6 +45,7 @@ export function evolutionAttendance(
     }),
     createInstance,
     readHistoryPage: (query) => readEvolutionHistoryPage(config, query),
+    lookupContactNames: (query) => lookupEvolutionContactNames(config, query),
     async ensureInstance() {
       try {
         const response = record(await api("instance/connectionState"));

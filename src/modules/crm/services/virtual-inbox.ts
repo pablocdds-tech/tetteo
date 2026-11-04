@@ -301,6 +301,12 @@ export async function getVirtualConversation(
         })),
     ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     customer: {
+      nameSource: c.nameSource as NonNullable<
+        VirtualConversationDetail["customer"]["nameSource"]
+      >,
+      nameUpdatedAt: c.nameUpdatedAt?.toISOString() ?? null,
+      nameUsableForReservation: c.nameUsableForReservation,
+      nameNeedsConfirmation: c.nameNeedsConfirmation,
       id: contact?.id ?? null,
       name:
         preferences.find((p) => p.key === "name")?.value ??
