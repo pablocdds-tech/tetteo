@@ -63,8 +63,19 @@ test("estado: calculado, interrompido, cancelado, concluído", async () => {
 test("trava: a segunda simultânea recusa; depois libera; trava vencida é trocada", async () => {
   const p = await pasta();
   let liberar;
-  const primeira = comTrava(p, "k2", () => new Promise((r) => (liberar = r)));
-  await new Promise((r) => setTimeout(r, 30));
+  let avisarInicio;
+  const iniciada = new Promise((r) => (avisarInicio = r));
+  const primeira = comTrava(
+    p,
+    "k2",
+    () =>
+      new Promise((r) => {
+        liberar = r;
+        avisarInicio();
+      }),
+  );
+  // Espera a operação adquirir a trava; carga da máquina não é sincronização.
+  await Promise.race([iniciada, primeira]);
   await assert.rejects(
     comTrava(p, "k2", async () => "não devia rodar"),
     EmAndamento,
