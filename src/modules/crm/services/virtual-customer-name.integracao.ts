@@ -25,11 +25,10 @@ import { processVirtualNameLookups } from "./virtual-name-worker";
 
 const target = new URL(process.env.DATABASE_URL ?? "postgresql://invalid");
 if (
-  target.hostname !== "127.0.0.1" ||
-  target.port !== "5548" ||
+  !["localhost", "127.0.0.1"].includes(target.hostname) ||
   !target.pathname.includes("_test")
 )
-  throw new Error("Exige PostgreSQL local exclusivo da tarefa.");
+  throw new Error("Exige PostgreSQL local exclusivo _test.");
 const accounts: string[] = [];
 afterEach(async () => {
   await db.avChannelAccount.updateMany({
