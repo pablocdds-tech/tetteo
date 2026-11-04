@@ -100,6 +100,20 @@ O volume persistente foi confirmado na inspeção de produção de 04/11/2026. E
 procedimento está em
 [Onde os arquivos moram](superpowers/specs/2026-08-04-onde-os-arquivos-moram.md).
 
+O volume também precisa permitir escrita pelo usuário da aplicação (UID/GID
+`1001:1001`). Em 04/11/2026, o primeiro teste real identificou o volume existente
+com dono `root` e modo `0755`; o dono da raiz de `tetteo_arquivos` foi corrigido
+para `1001:1001`, sem alteração recursiva dos documentos ou liberação global de
+escrita. A verificação foi feita no contêiner como usuário da aplicação. A imagem
+prepara `/app/arquivos` com esse dono para montagens novas; volumes já existentes
+precisam ter sua propriedade conferida separadamente.
+
+O esquema enviado ao Gemini conserva tipos, estrutura, campos obrigatórios e
+objetos fechados, mas omite limites e expressões que, combinados, excediam a
+complexidade aceita pelo provedor. O contrato Zod completo continua validando a
+resposta, inclusive limites, datas, documentos e campos desconhecidos, antes da
+conferência e de qualquer lançamento.
+
 Na mesma inspeção, a leitura ainda não tinha chave Gemini configurada para a
 unidade. Depois da publicação e atualização dos eventos pelo responsável técnico,
 a etapa de ativação pelo usuário é salvar a chave no painel privado, escolher o

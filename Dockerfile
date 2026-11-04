@@ -79,7 +79,9 @@ RUN apk add --no-cache openssl
 # Roda como usuário sem privilégios. Se algum dia a aplicação for invadida,
 # quem estiver dentro não é root do contêiner.
 RUN addgroup --system --gid 1001 tetteo \
-  && adduser --system --uid 1001 --ingroup tetteo tetteo
+  && adduser --system --uid 1001 --ingroup tetteo tetteo \
+  && mkdir -p /app/arquivos \
+  && chown tetteo:tetteo /app/arquivos
 
 COPY --from=builder --chown=tetteo:tetteo /app/.next/standalone ./
 COPY --from=builder --chown=tetteo:tetteo /app/.next/static ./.next/static

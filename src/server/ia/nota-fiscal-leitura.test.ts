@@ -72,6 +72,19 @@ test("conta tokens com foto embutida antes da geração, esquema estrito e sem p
         "image/jpeg",
       );
       assert.equal(pedido.generationConfig.maxOutputTokens, 8192);
+      const esquema = pedido.generationConfig.responseJsonSchema;
+      assert.doesNotMatch(
+        JSON.stringify(esquema),
+        /"(?:minimum|maximum|exclusiveMinimum|exclusiveMaximum|minLength|maxLength|pattern|format|minItems|maxItems)":/,
+      );
+      assert.equal(esquema.additionalProperties, false);
+      assert.equal(esquema.properties.itens.items.additionalProperties, false);
+      assert.deepEqual(esquema.properties.itens.items.required, [
+        "descricao",
+        "quantidade",
+        "unidade",
+        "valorTotal",
+      ]);
       return Response.json(
         url.endsWith(":countTokens") ? { totalTokens: 700 } : resposta(),
       );
@@ -129,6 +142,10 @@ test("valores impossíveis e campos obrigatórios ilegíveis impedem o lançamen
     { emitidaEm: "2026-02-31" },
     { chaveAcesso: "123" },
     { itens: [] },
+    { itens: Array.from({ length: 101 }, () => leitura.itens[0]) },
+    { itens: [{ ...leitura.itens[0], quantidade: 1_000_001 }] },
+    { itens: [{ ...leitura.itens[0], descricao: "x".repeat(241) }] },
+    { fornecedor: { nome: "Loja", documento: "123" } },
     { fornecedor: {} },
   ])
     assert.equal(
