@@ -83,14 +83,14 @@ export interface ProvedorWhatsapp {
 /**
  * Os eventos que o Tetteo assina na Evolution.
  *
- * Fora, de propósito: `MESSAGES_UPSERT` (o número é pessoal — o Tetteo não
- * precisa ver conversa de ninguém nesta fase) e `QRCODE_UPDATED` (o QR Code
- * nunca viaja por webhook, e portanto nunca para num log).
+ * Entradas permitem notas por foto somente de pessoas vinculadas e autorizadas.
+ * `QRCODE_UPDATED` continua de fora: o QR nunca para num log.
  */
 export const EVENTOS_ASSINADOS = [
   "CONNECTION_UPDATE",
   "MESSAGES_UPDATE",
   "SEND_MESSAGE",
+  "MESSAGES_UPSERT",
 ] as const;
 
 /** Quanto cada QR Code da 2.3.7 dura (`qrTimeout: 45_000` no Baileys). */

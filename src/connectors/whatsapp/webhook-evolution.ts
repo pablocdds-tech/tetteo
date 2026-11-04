@@ -80,6 +80,11 @@ export type EventoDaEvolution =
       grupo: boolean;
       /** TRANSITÓRIO: só para achar o vínculo. Nunca é gravado. */
       remetente: string;
+      /** Conteúdo transitório: só o fluxo autorizado de notas pode persistir. */
+      texto?: string;
+      recebidaEm?: Date | null;
+      /** Sem URL, chave de mídia ou bytes vindos do remetente. */
+      midia?: { idMensagem: string };
     };
 
 export type Interpretacao =
@@ -130,9 +135,46 @@ const dadosDeEntrada = z.object({
   key: z.object({
     id: idDeMensagem,
     remoteJid: z.string().max(200),
+    remoteJidAlt: z.string().max(200).optional(),
     fromMe: z.boolean(),
   }),
+  message: z.record(z.string(), z.unknown()).optional(),
+  messageTimestamp: z.unknown().optional(),
 });
+
+function conteudoDeEntrada(message: Record<string, unknown> | undefined) {
+  let atual = message ?? {};
+  for (let nivel = 0; nivel < 3; nivel++) {
+    const envoltoria =
+      atual.ephemeralMessage ?? atual.documentWithCaptionMessage;
+    if (!envoltoria || typeof envoltoria !== "object") break;
+    const dentro = (envoltoria as { message?: unknown }).message;
+    if (!dentro || typeof dentro !== "object" || Array.isArray(dentro)) break;
+    atual = dentro as Record<string, unknown>;
+  }
+  const imagem = atual.imageMessage ?? atual.documentMessage;
+  const foto =
+    imagem && typeof imagem === "object" && !Array.isArray(imagem)
+      ? (imagem as Record<string, unknown>)
+      : null;
+  const temFoto =
+    !!foto &&
+    ["image/jpeg", "image/png", "image/webp"].includes(String(foto.mimetype));
+  const estendido = atual.extendedTextMessage as { text?: unknown } | undefined;
+  const texto =
+    atual.conversation ??
+    estendido?.text ??
+    (temFoto ? foto?.caption : undefined);
+  return {
+    texto:
+      typeof texto === "string" &&
+      texto.length <= 16_384 &&
+      !texto.includes("\0")
+        ? texto
+        : undefined,
+    temFoto,
+  };
+}
 
 function sha256(texto: string): string {
   return createHash("sha256").update(texto).digest("hex");
@@ -152,7 +194,8 @@ function paraData(carimbo: unknown): Date | null {
     valor = (carimbo as { low: number }).low;
   }
   if (valor === null || !Number.isFinite(valor) || valor <= 0) return null;
-  return new Date(valor < 1e12 ? valor * 1000 : valor);
+  const data = new Date(valor < 1e12 ? valor * 1000 : valor);
+  return Number.isFinite(data.getTime()) ? data : null;
 }
 
 function recusa(status: 400 | 422, motivo: string): Interpretacao {
@@ -241,6 +284,14 @@ export function interpretarWebhook(texto: string): Interpretacao {
     case "messages.upsert": {
       const d = dadosDeEntrada.safeParse(data);
       if (!d.success) return recusa(400, "messages.upsert fora do formato");
+      const grupo = ehGrupo(d.data.key.remoteJid);
+      const privada = !d.data.key.fromMe && !grupo;
+      const entrada = privada ? conteudoDeEntrada(d.data.message) : null;
+      const remetente =
+        d.data.key.remoteJid.endsWith("@lid") &&
+        /^\d{8,15}@s\.whatsapp\.net$/.test(d.data.key.remoteJidAlt ?? "")
+          ? d.data.key.remoteJidAlt!
+          : d.data.key.remoteJid;
       return {
         ok: true,
         evento: {
@@ -249,8 +300,11 @@ export function interpretarWebhook(texto: string): Interpretacao {
           idExterno: `entrada:${d.data.key.id}`,
           idMensagem: d.data.key.id,
           deMim: d.data.key.fromMe,
-          grupo: ehGrupo(d.data.key.remoteJid),
-          remetente: d.data.key.remoteJid,
+          grupo,
+          remetente,
+          ...(entrada?.texto !== undefined ? { texto: entrada.texto } : {}),
+          ...(privada ? { recebidaEm: paraData(d.data.messageTimestamp) } : {}),
+          ...(entrada?.temFoto ? { midia: { idMensagem: d.data.key.id } } : {}),
         },
       };
     }

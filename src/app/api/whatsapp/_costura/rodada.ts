@@ -9,6 +9,7 @@ import {
 import { entregarAvisos, type ResumoDaEntrega } from "./entrega";
 import { atualizarSaude } from "./saude";
 import { verificarIncertos } from "./verificacao";
+import { processarNotasWhatsapp } from "./notas-worker";
 
 /**
  * UMA BATIDA DO RELÓGIO, do lado do WhatsApp. A ordem importa:
@@ -92,6 +93,10 @@ export async function rodadaWhatsapp({
   });
   await passo("limpeza", async () => {
     resumo.ignoradosApagados = await limparIgnorados(agora);
+  });
+
+  await passo("notas", async () => {
+    await processarNotasWhatsapp({ limite, env });
   });
 
   return resumo;

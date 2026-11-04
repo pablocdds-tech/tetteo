@@ -11,7 +11,7 @@ contrato de `tipos.ts`, e nada mais.
 | ------------------- | ------------------------------------------------------------------------- |
 | `consultarConexao`  | Conectado, Conectando ou Desconectado; ou "pendente" com o que falta      |
 | `lerEventos`        | O webhook configurado hoje na instância (endereço mascarado, sem a senha) |
-| `configurarEventos` | Aplica o webhook do Tetteo: endereço, senha do passe e os 3 eventos       |
+| `configurarEventos` | Aplica o webhook do Tetteo: endereço, senha do passe e os 4 eventos       |
 | `pedirQrCode`       | O QR para reconectar. Com o número no ar, devolve "já conectado"          |
 | `enviarMensagem`    | Envia texto. Responde aceito, não chegou, incerto ou recusado             |
 | `consultarMensagem` | Depois de um "incerto": a mensagem com este texto saiu?                   |
@@ -44,6 +44,24 @@ WHATSAPP_WEBHOOK_CHAVE_ANTERIOR=          # só durante a troca
 
 Valores só no ambiente privado. Faltando qualquer um, `configuracao.ts` devolve
 o **nome** do que falta, nunca um valor.
+
+## Fotos de notas da equipe
+
+Os quatro eventos incluem `MESSAGES_UPSERT`. Depois de atualizar o sistema,
+aplique a configuração de eventos na tela WhatsApp para que as novas mensagens
+cheguem. `base64` permanece desativado no webhook: a imagem é buscada somente
+depois da autorização do usuário, pelo id da mensagem na instância configurada.
+
+`nota-midia.ts` usa `POST /chat/getBase64FromMediaMessage/{instance}` da
+Evolution 2.3.7, com `{ message: { key: { id } }, convertToMp4: false }`.
+Não recebe URL de download do remetente, não segue redirecionamentos e aceita
+somente JPG, PNG ou WebP de até 5 MB, conferidos pela assinatura dos bytes.
+
+Texto, legenda e data de entrada são transitórios. A fila privada de notas só
+os recebe após conferir a pessoa vinculada e suas permissões. O resumo técnico
+dos eventos continua sem conversas, fotos ou chaves de mídia. Grupos e mensagens
+do próprio número não iniciam uma leitura. O canal de clientes do CRM continua
+separado deste fluxo financeiro interno.
 
 ## As peças puras (testadas sem rede)
 

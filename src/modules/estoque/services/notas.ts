@@ -397,6 +397,61 @@ export async function lancarNota(contexto: ContextoSessao, id: string) {
   );
 }
 
+/** Compartilha o lançamento com operações atômicas que incluem o Financeiro. */
+export async function lancarNotaNaTransacao(
+  tx: Tx,
+  contexto: ContextoSessao,
+  id: string,
+) {
+  if (!pode(contexto, "estoque.lancar")) {
+    throw new SemPermissao("lançar notas de entrada");
+  }
+  const unidade = exigirUnidade(contexto);
+  if (!contexto.unidadesVisiveis.some((u) => u.id === unidade.id)) {
+    throw new SemPermissao("dar entrada nesta unidade");
+  }
+  if (
+    !(await tx.unidade.count({
+      where: {
+        id: unidade.id,
+        organizacaoId: contexto.organizacao.id,
+        ativa: true,
+        excluidoEm: null,
+      },
+    }))
+  ) {
+    throw new SemPermissao("dar entrada nesta unidade");
+  }
+  const nota = await tx.notaEntrada.findFirst({
+    where: {
+      id,
+      unidadeId: unidade.id,
+      canceladaEm: null,
+      fornecedor: { organizacaoId: contexto.organizacao.id },
+    },
+    include: { itens: { include: { insumo: true } } },
+  });
+  if (!nota) throw new Error("Nota não encontrada nesta unidade.");
+  if (
+    !nota.localDestinoId ||
+    !(await tx.localEstoque.count({
+      where: { id: nota.localDestinoId, unidadeId: unidade.id, ativo: true },
+    }))
+  )
+    throw new Error("Escolha um local de estoque ativo desta unidade.");
+  if (
+    nota.itens.some(
+      (i) =>
+        i.insumo.organizacaoId !== contexto.organizacao.id ||
+        !i.insumo.ativo ||
+        i.insumo.excluidoEm,
+    )
+  ) {
+    throw new Error("A nota contém um insumo indisponível nesta organização.");
+  }
+  return postarNota(tx, id, contexto.usuario.id);
+}
+
 /**
  * Cancelar.
  *

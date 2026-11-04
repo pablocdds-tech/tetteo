@@ -43,6 +43,16 @@ export default async function PaginaNota({
 
   const rascunho = nota.status === "RASCUNHO";
   const podeLancar = pode(contexto, "estoque.lancar");
+  const fotos = await db.arquivo.findMany({
+    where: {
+      organizacaoId: contexto.organizacao.id,
+      unidadeId: contexto.unidadeAtiva.id,
+      entidade: "NotaEntrada",
+      entidadeId: nota.id,
+      excluidoEm: null,
+    },
+    select: { id: true },
+  });
 
   // O catálogo com as embalagens já conhecidas: é o que permite ao formulário
   // do item oferecer "Caixa 10kg" em vez de pedir o fator toda vez.
@@ -101,6 +111,22 @@ export default async function PaginaNota({
           </form>
         )}
       </div>
+
+      {fotos.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-3">
+          {fotos.map((foto, indice) => (
+            <a
+              key={foto.id}
+              href={`/api/arquivos/${foto.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent text-sm underline underline-offset-4"
+            >
+              Ver foto da nota{fotos.length > 1 ? ` ${indice + 1}` : ""}
+            </a>
+          ))}
+        </div>
+      )}
 
       {rascunho && podeLancar && (
         <div className="mt-6">

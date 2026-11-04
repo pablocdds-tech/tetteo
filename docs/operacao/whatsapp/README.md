@@ -3,6 +3,11 @@
 Escrito em 11/09/2026, junto com a implementação (branch `whatsapp-avisos`).
 Em português simples, para quem opera — não só para quem programa.
 
+Atualização de 04/11/2026: o fluxo interno de notas por foto também recebe
+mensagens de pessoas vinculadas e autorizadas. Fotos e confirmações entram
+numa fila privada para leitura e conferência; o lançamento exige confirmação
+da nota pelo usuário e permissão de estoque e financeiro na unidade.
+
 ## O que isto faz, em uma frase
 
 Quando alguém conclui o **checklist de Fechamento** de uma loja, nasce um
@@ -85,7 +90,10 @@ com o nome do que falta — e nada é enviado.
 6. **Aplicar configuração** (em "Eventos do provedor"). Isto **substitui** o
    webhook atual da instância na Evolution — a tela mostra o atual antes.
    Depois disso a Evolution passa a avisar o Tetteo sobre conexão, status das
-   mensagens e mensagens enviadas. Só esses três; conversas não entram.
+   mensagens, mensagens enviadas e entradas (`MESSAGES_UPSERT`). São quatro
+   eventos. O conteúdo de notas só segue para a fila privada depois da
+   autorização da pessoa; grupos, mensagens próprias e contatos desconhecidos
+   não iniciam conferências.
 7. **Números** → na pessoa do contato de teste, **Autorizar para avisos**. Um
    só, no primeiro teste.
 8. **Avisos** → "Preparar aviso" (ou espere um fechamento de checklist virar
@@ -216,8 +224,9 @@ banco da Evolution — fora deste trabalho.
   reenvio vira decisão de uma pessoa, nunca automática.
 - "Entregue" e "Lido" dependem do evento `MESSAGES_UPDATE`. Sem ele, o aviso
   fica em "Aceito pelo provedor", que é a verdade que se tem.
-- O número conectado hoje é uma conta pessoal. Conversas **não** entram no
-  Tetteo (o evento de mensagem recebida não é assinado).
+- O número da equipe pode ser uma conta pessoal. O evento recebido é assinado
+  para permitir a conferência de notas de pessoas vinculadas e autorizadas;
+  contatos desconhecidos, grupos e mensagens próprias não alimentam essa fila.
 
 ## Fontes
 

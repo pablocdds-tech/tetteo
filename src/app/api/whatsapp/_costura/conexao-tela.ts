@@ -34,7 +34,7 @@ type Ambiente = Record<string, string | undefined>;
 
 export type EventosNaTela = ConfiguracaoDeEventos & {
   esperados: string[];
-  /** Tudo como o Tetteo precisa: ativo, os 3 eventos, com senha, no endereço certo. */
+  /** Tudo como o Tetteo precisa: ativo, os 4 eventos, com senha, no endereço certo. */
   confere: boolean;
 };
 
@@ -260,7 +260,7 @@ export async function pedirQrCodeDaConexao(
  * APLICAR A CONFIGURAÇÃO DE EVENTOS na instância.
  *
  * Substitui o webhook que estiver lá — por isso a tela mostra o atual antes.
- * Assina só os três eventos de que o Tetteo precisa, com a senha do passe em
+ * Assina os quatro eventos de que o Tetteo precisa, com a senha do passe em
  * `jwt_key`.
  */
 export async function aplicarEventosDaConexao(

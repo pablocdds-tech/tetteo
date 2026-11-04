@@ -18,6 +18,9 @@ import {
   registrarEvento,
 } from "@/modules/assistente/services/eventos";
 import { vinculoPorContato } from "@/modules/assistente/services/vinculos";
+import { enfileirarNotaWhatsapp } from "@/modules/assistente/services/notas-fila";
+
+import { processarNotasWhatsapp } from "./notas-worker";
 
 /**
  * A ENTRADA DO WEBHOOK — as travas, na ordem, e o que cada uma responde.
@@ -199,12 +202,33 @@ export async function receberWebhook(
     const evento = await normalizar(lido.evento, conexao.organizacaoId);
     const momento = agora();
     const gravado = await registrarEvento(conexao, evento, momento);
+    // O registro legado mantém apenas o resumo técnico. A fila privada de
+    // notas guarda conteúdo somente de equipe vinculada e autorizada.
+    const notaEnfileirada =
+      lido.evento.tipo === "messages.upsert" &&
+      evento.tipo === "messages.upsert" &&
+      !evento.deMim &&
+      !evento.grupo &&
+      evento.vinculoId &&
+      lido.evento.recebidaEm
+        ? await enfileirarNotaWhatsapp(conexao.id, evento.vinculoId, {
+            idMensagem: lido.evento.idMensagem,
+            texto: lido.evento.texto,
+            foto: !!lido.evento.midia,
+            recebidaEm: lido.evento.recebidaEm,
+          })
+        : false;
 
     if (!gravado.duplicado) {
       // Responde já; processa depois. A Evolution espera até 30 s e repete
       // o que demorou — resposta lenta vira evento duplicado.
       agendar(async () => {
         await processarEvento(gravado.id, agora(), evento);
+      });
+    }
+    if (notaEnfileirada) {
+      agendar(async () => {
+        await processarNotasWhatsapp({ limite: 4, env });
       });
     }
     return Response.json({ ok: true, duplicado: gravado.duplicado });

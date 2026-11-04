@@ -420,7 +420,7 @@ export async function changeVirtualModel(ctx: ContextoSessao, raw: unknown) {
         where: scope,
         select: { dailyBudgetMicros: true, maxTurnCostMicros: true },
       });
-      const [runs, probes] = await Promise.all([
+      const [runs, probes, notes] = await Promise.all([
         tx.avAgentRun.aggregate({
           where: { ...scope, createdAt: { gte: since } },
           _sum: { costMicros: true },
@@ -428,6 +428,14 @@ export async function changeVirtualModel(ctx: ContextoSessao, raw: unknown) {
         tx.avModelProbe.aggregate({
           where: { ...scope, createdAt: { gte: since } },
           _sum: { costMicros: true },
+        }),
+        tx.notaFiscalWhatsapp.aggregate({
+          where: {
+            organizacaoId: scope.organizationId,
+            unidadeId: scope.storeId,
+            criadoEm: { gte: since },
+          },
+          _sum: { custoMicros: true },
         }),
       ]);
       const bound = Math.ceil(
@@ -437,7 +445,10 @@ export async function changeVirtualModel(ctx: ContextoSessao, raw: unknown) {
       );
       if (
         bound > (account?.maxTurnCostMicros ?? 100000) ||
-        (runs._sum.costMicros ?? 0) + (probes._sum.costMicros ?? 0) + bound >
+        (runs._sum.costMicros ?? 0) +
+          (probes._sum.costMicros ?? 0) +
+          (notes._sum.custoMicros ?? 0) +
+          bound >
           (account?.dailyBudgetMicros ?? 5_000_000)
       )
         throw new CrmError(

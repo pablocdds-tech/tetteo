@@ -1,0 +1,96 @@
+// Rascunhos e fila durável da conferência de notas pela equipe interna.
+// IDs de Core são escalares, como no schema do assistente.
+model ConversaNotaWhatsapp {
+  id            String @id @default(cuid())
+  organizacaoId String
+  unidadeId     String
+  instanciaId   String
+  vinculoId     String
+  usuarioId     String
+  notaAtivaId   String?
+  padroes       Json?
+  leaseAte      DateTime?
+  leaseDono     String?
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+  mensagens     MensagemNotaWhatsapp[]
+
+  @@unique([instanciaId, vinculoId])
+  @@index([organizacaoId, unidadeId])
+  @@map("conversa_nota_whatsapp")
+}
+
+model NotaFiscalWhatsapp {
+  id             String @id @default(cuid())
+  organizacaoId  String
+  unidadeId      String
+  instanciaId    String
+  vinculoId      String
+  usuarioId      String
+  mensagemId     String @unique
+  estado         String @default("RECEBIDA")
+  arquivoId      String?
+  imagemHash     String?
+  leitura        Json?
+  rascunho       Json?
+  pergunta       Json?
+  revisao        Int @default(0)
+  codigo         String?
+  resumoHash     String?
+  resumoEm       DateTime?
+  expiraEm       DateTime?
+  confirmacaoId  String?
+  resultado      Json?
+  erro           String?
+  custoMicros    Int @default(0)
+  tokens         Int @default(0)
+  leituraTentadaEm DateTime?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  @@index([organizacaoId, unidadeId, criadoEm])
+  @@index([instanciaId, vinculoId, estado])
+  @@index([unidadeId, imagemHash])
+  @@map("nota_fiscal_whatsapp")
+}
+
+model MensagemNotaWhatsapp {
+  id             String @id @default(cuid())
+  conversaId     String
+  conversa       ConversaNotaWhatsapp @relation(fields: [conversaId], references: [id])
+  instanciaId    String
+  idExterno      String
+  direcao        String
+  tipo           String @default("TEXTO")
+  texto          String?
+  notaId         String?
+  estado         String @default("PENDENTE")
+  tentativas     Int @default(0)
+  enviadaEm      DateTime?
+  idEnviado      String?
+  recebidoEm     DateTime
+  aplicadaEm     DateTime?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+
+  @@unique([instanciaId, idExterno])
+  @@index([conversaId, direcao, estado, recebidoEm])
+  @@map("mensagem_nota_whatsapp")
+}
+
+model VinculoItemNotaWhatsapp {
+  id             String @id @default(cuid())
+  organizacaoId  String
+  unidadeId      String
+  fornecedor    String
+  descricao     String
+  unidadeNota   String
+  insumoId      String
+  fator         Decimal @db.Decimal(14, 6)
+  confirmadoPorId String
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
+
+  @@unique([organizacaoId, unidadeId, fornecedor, descricao, unidadeNota])
+  @@map("vinculo_item_nota_whatsapp")
+}

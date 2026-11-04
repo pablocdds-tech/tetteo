@@ -86,9 +86,20 @@ export async function reserveModelBudget(
       },
       _sum: { costMicros: true },
     });
+    const notas = await tx.notaFiscalWhatsapp.aggregate({
+      where: {
+        organizacaoId: input.organizationId,
+        unidadeId: input.storeId,
+        criadoEm: { gte: day },
+      },
+      _sum: { custoMicros: true },
+    });
     if (
       bound > input.limits.maxCostMicros ||
-      (total._sum.costMicros ?? 0) + (probes._sum.costMicros ?? 0) + bound >
+      (total._sum.costMicros ?? 0) +
+        (probes._sum.costMicros ?? 0) +
+        (notas._sum.custoMicros ?? 0) +
+        bound >
         account.dailyBudgetMicros ||
       (account.circuitUntil && account.circuitUntil > new Date())
     )

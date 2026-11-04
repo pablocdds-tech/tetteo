@@ -1292,10 +1292,19 @@ export async function processVirtualQueue(
         },
         _sum: { costMicros: true },
       });
+      const notas = await tx.notaFiscalWhatsapp.aggregate({
+        where: {
+          organizacaoId: conversation.organizationId,
+          unidadeId: conversation.storeId,
+          criadoEm: { gte: new Date(Date.now() - 86_400_000) },
+        },
+        _sum: { custoMicros: true },
+      });
       if (
         (conversation.account.circuitUntil &&
           conversation.account.circuitUntil > new Date()) ||
-        (total._sum.costMicros ?? 0) >= conversation.account.dailyBudgetMicros
+        (total._sum.costMicros ?? 0) + (notas._sum.custoMicros ?? 0) >=
+          conversation.account.dailyBudgetMicros
       ) {
         await createVirtualEscalation(
           tx,
