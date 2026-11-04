@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
+import {
+  MODEL_CATALOG_WARNING,
+  PENDING_MODEL_KEY,
+  saveVirtualModelConfiguration,
+} from "../client/virtual-model-save";
 import type { VirtualModelStatus } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
 import styles from "./virtual.module.css";
@@ -67,20 +72,22 @@ function VirtualConnectionForStore({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [catalogError, setCatalogError] = useState("");
   const [revision, setRevision] = useState(0);
   const pendingTest = useRef<{ revision: number; requestId: string } | null>(
     null,
   );
   const inputRate = Math.round(Number(inputPrice) * 1_000_000);
   const outputRate = Math.round(Number(outputPrice) * 1_000_000);
-  const hasEdits = Boolean(
+  const hasKeyEdits = Boolean(apiKey.trim());
+  const hasSettingsEdits = Boolean(
     status &&
-    (apiKey ||
-      model !== (status.model ?? "") ||
+    (model !== (status.model ?? "") ||
       inputRate !== status.rates.inputMicrosPerMillion ||
       outputRate !== status.rates.outputMicrosPerMillion ||
       ratesConfirmed !== status.rates.confirmed),
   );
+  const hasEdits = hasKeyEdits || hasSettingsEdits;
   const testPassed =
     status?.test.state === "PASSED" && status.test.revision === status.revision;
   const configuredModelMissingFromList = Boolean(
@@ -121,48 +128,72 @@ function VirtualConnectionForStore({
   }
 
   async function save(withKey: boolean) {
-    if (!secure || busy) return;
-    setBusy("save");
+    if (!secure || busy || !status) return;
+    if (!withKey && hasKeyEdits) {
+      setError(PENDING_MODEL_KEY);
+      return;
+    }
+    setBusy(withKey ? "key" : "save");
     setError("");
     setNotice("");
+    if (withKey) setCatalogError("");
     try {
-      const result = await api.post<VirtualModelStatus>(
-        "/api/crm/virtual/model",
+      const result = await saveVirtualModelConfiguration(
         {
           storeId,
-          action: "save",
-          ...(withKey ? { apiKey: apiKey.trim() } : {}),
-          model,
-          ratesConfirmed,
-          inputMicrosPerMillion: inputRate,
-          outputMicrosPerMillion: outputRate,
+          withKey,
+          apiKey,
+          persisted: status,
+          draft: {
+            model,
+            ratesConfirmed,
+            inputMicrosPerMillion: inputRate,
+            outputMicrosPerMillion: outputRate,
+          },
+        },
+        {
+          save: (body) =>
+            api.post<VirtualModelStatus>("/api/crm/virtual/model", body),
+          onSaved: (saved) => {
+            if (withKey) {
+              setStatus(saved);
+              setApiKey("");
+            } else accept(saved);
+            pendingTest.current = null;
+            setNotice(
+              withKey
+                ? "Chave salva para esta unidade. O campo foi limpo por segurança. Consulte os modelos e conclua o teste antes de ativar."
+                : "Modelo e custos salvos. O teste desta revisão ainda precisa ser concluído antes da ativação.",
+            );
+          },
+          listModels: loadModels,
         },
       );
-      accept(result);
-      pendingTest.current = null;
-      setNotice(
-        "Configuração privada salva. O teste desta revisão ainda precisa ser concluído antes da ativação.",
-      );
-      if (withKey) await loadModels();
+      if (result.catalogError) setCatalogError(result.catalogError);
     } catch (failure) {
-      setError(problem(failure));
+      setError(
+        withKey
+          ? `Não foi possível salvar esta chave. ${problem(failure)} O campo foi limpo por segurança.`
+          : problem(failure),
+      );
     } finally {
-      setApiKey("");
+      if (withKey) setApiKey("");
       setBusy(null);
     }
   }
 
   async function listModels() {
-    if (busy) return;
+    if (busy || hasKeyEdits) return;
     setBusy("models");
     setError("");
+    setCatalogError("");
     try {
       await loadModels();
       setNotice(
         "Lista consultada na API do Gemini. Escolha o modelo e confira os custos aplicáveis à sua conta.",
       );
-    } catch (failure) {
-      setError(problem(failure));
+    } catch {
+      setCatalogError(MODEL_CATALOG_WARNING);
     } finally {
       setBusy(null);
     }
@@ -295,6 +326,15 @@ function VirtualConnectionForStore({
                 <>
                   <section className={styles.panel}>
                     <h2>Chave privada do Gemini</h2>
+                    <p
+                      className={
+                        status.credentialPresent ? styles.success : styles.muted
+                      }
+                    >
+                      {status.credentialPresent
+                        ? "Chave salva para esta unidade. O campo vazio não remove a chave; ela não é exibida novamente por segurança."
+                        : "Nenhuma chave salva nesta unidade."}
+                    </p>
                     <p>
                       Insira a chave somente neste campo do sistema. Ela será
                       enviada ao servidor desta organização e não será exibida
@@ -344,7 +384,7 @@ function VirtualConnectionForStore({
                           className="btn btn-primary"
                           disabled={Boolean(busy) || !apiKey.trim()}
                         >
-                          {busy === "save"
+                          {busy === "key"
                             ? "Salvando…"
                             : status.credentialPresent
                               ? "Substituir chave e consultar modelos"
@@ -358,7 +398,11 @@ function VirtualConnectionForStore({
                       <h2>Modelo e custos</h2>
                       <button
                         className="btn"
-                        disabled={Boolean(busy) || !status.credentialPresent}
+                        disabled={
+                          Boolean(busy) ||
+                          !status.credentialPresent ||
+                          hasKeyEdits
+                        }
                         onClick={() => void listModels()}
                       >
                         {busy === "models"
@@ -366,6 +410,11 @@ function VirtualConnectionForStore({
                           : "Consultar modelos disponíveis"}
                       </button>
                     </div>
+                    {catalogError && (
+                      <p className={styles.error} role="alert">
+                        {catalogError}
+                      </p>
+                    )}
                     <p>
                       Confirme na{" "}
                       <a
@@ -421,7 +470,7 @@ function VirtualConnectionForStore({
                             value={inputPrice}
                             min="0"
                             step="0.000001"
-                            max="1000000"
+                            max="1000"
                             required
                             onChange={(event) =>
                               setInputPrice(event.target.value)
@@ -435,7 +484,7 @@ function VirtualConnectionForStore({
                             value={outputPrice}
                             min="0"
                             step="0.000001"
-                            max="1000000"
+                            max="1000"
                             required
                             onChange={(event) =>
                               setOutputPrice(event.target.value)
@@ -456,13 +505,19 @@ function VirtualConnectionForStore({
                         <button
                           type="submit"
                           className="btn"
-                          disabled={!model || !hasEdits}
+                          disabled={hasKeyEdits || !model || !hasSettingsEdits}
                         >
                           Salvar modelo e custos
                         </button>
                       </fieldset>
                     </form>
-                    {hasEdits && (
+                    {hasKeyEdits && (
+                      <p className={styles.muted} style={{ marginTop: 12 }}>
+                        Salve a chave digitada no campo acima antes de consultar
+                        os modelos ou salvar modelo e custos.
+                      </p>
+                    )}
+                    {hasSettingsEdits && (
                       <p className={styles.muted} style={{ marginTop: 12 }}>
                         Há alterações ainda não salvas. Salve a configuração
                         antes de testar ou ativar.

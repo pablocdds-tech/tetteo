@@ -82,6 +82,18 @@ Resultado: **23 testes aprovados**. Cobrem fuso/data, intenção estrita, telefo
 
 Todas essas chamadas de modelo usam `fetch` substituído por respostas fictícias; os testes não validam uma chave Google real nem medem qualidade/custo real do Gemini.
 
+Na revisão de 04/11/2026, os três testes puros de `client/virtual-model-save.test.ts`
+passaram: sucesso de gravação permanece confirmado se o catálogo falhar; chave
+pendente bloqueia salvar modelo/custos sem enviar ou ignorar seu valor; e falha no
+POST não confirma sucesso nem consulta catálogo. O rascunho de custos não impede
+salvar uma chave usando a configuração persistida. Em conferência operacional
+separada, o painel autenticado salvou tarifas zero informadas e confirmadas pelo
+usuário, e um teste real Gemini retornou 444 tokens com custo local calculado de
+USD 0 por essas tarifas. Isso não mede faturamento do provedor. O painel ativou
+a mesma revisão testada (`gemini-2.5-flash`); a conta de atendimento permaneceu
+pausada e não houve envio WhatsApp nessa conferência. Nenhuma chave foi incluída
+nos registros compartilhados.
+
 ### Canais reais, política e qualidade — ensaio com adaptadores fictícios
 
 | Fronteira              | Evidência executada                                                                       | Resultado                                                                                                    |
