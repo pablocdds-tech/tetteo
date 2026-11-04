@@ -326,8 +326,13 @@ export async function runVirtualGreetingProbe(
     },
     take: 2,
   });
-  if (messages.length !== 1 || !messages[0].externalId)
+  if (messages.length !== 1 || !messages[0].externalId) {
+    // Another replica may have claimed and consumed this exact input after the
+    // first status read. Its durable test is the idempotent result.
+    const replay = await status(r);
+    if (replay.testId) return replay;
     fail("PROBE_INPUT_NOT_UNIQUE");
+  }
   const message = messages[0],
     externalId = messages[0].externalId!;
   const inbound = await db.avInboundEvent.findFirst({

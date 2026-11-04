@@ -423,7 +423,7 @@ test("canal ativo, falta de observação, telefone arbitrário e escopo estrange
   });
   await db.avChannelTest.update({
     where: { id: f.origin.id },
-    data: { observedAt: null },
+    data: { observedAt: null, observedById: null },
   });
   await assert.rejects(f.run("prepare"));
   assert.deepEqual(f.counts(), { inputs: 0, replies: 0 });
