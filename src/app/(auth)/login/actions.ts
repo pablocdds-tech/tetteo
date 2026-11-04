@@ -7,7 +7,7 @@ import { signIn } from "@/core/auth";
 import { googleConfigurado } from "@/core/auth/politicas";
 import { destinoAposLogin } from "@/core/auth/destino-login";
 
-export type EstadoLogin = { erro?: string };
+export type EstadoLogin = { erro?: string; destino?: string };
 
 export async function entrarComGoogle(dados: FormData): Promise<void> {
   if (!(await superficiePublica()).reconhecida) return;
@@ -23,15 +23,16 @@ export async function entrar(
 ): Promise<EstadoLogin> {
   if (!(await superficiePublica()).reconhecida)
     return { erro: "Use o endereço oficial para acessar o sistema." };
+  const destino = destinoAposLogin(dados.get("destino"));
   try {
     await signIn("credentials", {
       email: String(dados.get("email") ?? ""),
       senha: String(dados.get("senha") ?? ""),
-      redirectTo: destinoAposLogin(dados.get("destino")),
+      redirectTo: destino,
+      redirect: false,
     });
-    return {};
+    return { destino };
   } catch (erro) {
-    // O redirecionamento de sucesso viaja como exceção no Next — deixa passar.
     if (erro instanceof AuthError) {
       return { erro: "E-mail ou senha incorretos. Confira e tente de novo." };
     }

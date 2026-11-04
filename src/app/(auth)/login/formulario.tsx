@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { Botao } from "@/design-system/botao";
 import { Campo } from "@/design-system/campo";
@@ -45,10 +45,15 @@ export function FormularioLogin({
   operacional?: boolean;
   destino?: string;
 }) {
-  const [estado, acao, enviando] = useActionState<EstadoLogin, FormData>(
+  const [estado, acao, autenticando] = useActionState<EstadoLogin, FormData>(
     entrar,
     {},
   );
+  const enviando = autenticando || Boolean(estado.destino);
+  useEffect(() => {
+    // A navegação completa atualiza a URL após a seleção da unidade pelo link.
+    if (estado.destino) window.location.assign(estado.destino);
+  }, [estado.destino]);
   return (
     <main className="w-full max-w-sm">
       <MarcaAutenticacao operacional={operacional} />
