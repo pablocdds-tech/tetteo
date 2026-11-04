@@ -210,6 +210,11 @@ export const APPS_REGISTRADOS: ManifestoDoApp[] = [
         permissao: "*",
       },
       {
+        rota: "/configuracoes/integracoes/openclaw",
+        nome: "OpenClaw",
+        permissao: "*",
+      },
+      {
         rota: "/configuracoes/integracoes/cardapioweb",
         nome: "Cardápio Web",
         permissao: "configuracoes.cardapioweb",

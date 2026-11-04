@@ -4,7 +4,7 @@ import { Etiqueta } from "@/design-system/etiqueta";
 import type { DadosDoCartao, LinhaDoCartao } from "../schemas/cartao";
 
 /**
- * O CARTÃO DO ASSISTENTE PRIVADO NO PAINEL.
+ * O CARTÃO DO ASSISTENTE PRIVADO EM CONFIGURAÇÕES > INTEGRAÇÕES.
  *
  * Quatro perguntas, uma por linha: está ligado? o que fez por último? o que
  * vem agora? o que espera você? O estado é sempre etiqueta — ponto e palavra,
@@ -26,7 +26,7 @@ export function CartaoDoAssistente({ cartao }: { cartao: DadosDoCartao }) {
         <Linha linha={cartao.conexao} />
         <Linha linha={cartao.ultimaExecucao} />
         <Linha linha={cartao.proximaRotina} />
-        <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 px-4 py-2.5 text-sm leading-5">
+        <div className="grid grid-cols-1 gap-x-3 gap-y-1 px-4 py-2.5 text-sm leading-5 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
           <dt className="text-ink-3">Pendências</dt>
           <dd className="min-w-0">
             {cartao.pendencias.length === 0 ? (
@@ -49,7 +49,7 @@ export function CartaoDoAssistente({ cartao }: { cartao: DadosDoCartao }) {
 
 function Linha({ linha }: { linha: LinhaDoCartao }) {
   return (
-    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-x-3 px-4 py-2.5 text-sm leading-5">
+    <div className="grid grid-cols-1 gap-x-3 gap-y-1 px-4 py-2.5 text-sm leading-5 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
       <dt className="text-ink-3">{linha.rotulo}</dt>
       <dd className="min-w-0">
         <Etiqueta tom={linha.tom}>{linha.texto}</Etiqueta>

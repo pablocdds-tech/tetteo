@@ -8,7 +8,14 @@ Em todos os comandos abaixo, troque `$HOME\.ssh\tetteo_vps` pelo caminho
 real da sua chave, se for diferente, e troque `<ip-da-vps>` pelo endereço
 de verdade do seu servidor, sempre que ele aparecer.
 
-## Abrir o painel
+## Monitor no Tetteo
+
+Acesse **Configurações › Integrações › OpenClaw** para consultar conexão,
+última execução, próxima rotina e pendências da unidade selecionada. O atalho
+também aparece em Conexões de IA para quem já tem permissão de ver o assistente.
+Desde 04/11/2026, esse monitor fica fora do Painel da operação.
+
+## Abrir o painel de administração do OpenClaw
 
 O painel do assistente (o "Control UI" do OpenClaw) só existe dentro da
 VPS, na porta `18789`, e essa porta **nunca** é publicada na internet — só

@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 
 import { consultarSaudeDoMcp, listarConexoesDeIa } from "@/connectors/mcp";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { Cartao } from "@/design-system/cartao";
 import { Vazio } from "@/design-system/vazio";
+import { PERMISSAO_VER_ASSISTENTE_PRIVADO } from "@/modules/assistente-privado/permissoes";
 
 import { BotaoRevogar } from "./botao-revogar";
 
@@ -173,6 +175,18 @@ export default async function PaginaIntegracoes() {
         Suspender a pessoa, tirar a permissão de Financeiro ou trocar a senha
         dela no Tetteo também derrubam as conexões.
       </p>
+      {pode(contexto, PERMISSAO_VER_ASSISTENTE_PRIVADO) && (
+        <Link
+          href="/configuracoes/integracoes/openclaw"
+          className="border-line bg-surface-2 hover:border-accent mt-6 block rounded-xl border px-5 py-4 transition-colors"
+        >
+          <p className="font-semibold">Assistente privado OpenClaw</p>
+          <p className="text-ink-3 mt-1 text-sm">
+            Consultar conexão, última execução, próxima rotina e pendências da
+            unidade.
+          </p>
+        </Link>
+      )}
     </div>
   );
 }

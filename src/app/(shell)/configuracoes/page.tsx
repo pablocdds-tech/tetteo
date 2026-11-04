@@ -9,6 +9,7 @@ import {
 } from "@/core/configuracoes/servicos";
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { APPS_REGISTRADOS } from "@/registro-de-apps";
+import { PERMISSAO_VER_ASSISTENTE_PRIVADO } from "@/modules/assistente-privado/permissoes";
 
 export default async function PaginaConfiguracoes() {
   const contexto = await obterContexto();
@@ -67,7 +68,7 @@ export default async function PaginaConfiguracoes() {
         />
       </section>
 
-      <section className="mt-10">
+      <section id="integracoes" className="mt-10 scroll-mt-20">
         <h2 className="font-semibold">Integrações</h2>
         {pode(contexto, "configuracoes.cardapioweb") && (
           <Link
@@ -90,6 +91,19 @@ export default async function PaginaConfiguracoes() {
             por unidade.
           </p>
         </Link>
+        {pode(contexto, "configuracoes.integracoes") &&
+          pode(contexto, PERMISSAO_VER_ASSISTENTE_PRIVADO) && (
+            <Link
+              href="/configuracoes/integracoes/openclaw"
+              className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"
+            >
+              <p className="font-semibold">OpenClaw</p>
+              <p className="text-ink-3 mt-1 text-sm">
+                Monitorar o assistente privado: conexão, execuções, rotinas e
+                pendências da unidade.
+              </p>
+            </Link>
+          )}
         <Link
           href="/configuracoes/integracoes"
           className="border-line bg-surface-2 hover:border-accent mt-3 block rounded-xl border px-5 py-4 transition-colors"

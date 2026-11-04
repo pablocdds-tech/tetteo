@@ -21,7 +21,8 @@ assistente como o Claude à própria conta do Tetteo (entrando com a própria
 senha), com um botão para revogar esse acesso. O assistente privado desta
 pasta é outra coisa — roda sozinho na VPS, não usa a senha de ninguém, e
 por isso nunca aparece nessa lista. Para saber se ele respondeu hoje, olhe
-o cartão "Assistente privado" no Painel; para ver ou revogar o acesso de
+o monitor em **Configurações › Integrações › OpenClaw**
+(`/configuracoes/integracoes/openclaw`); para ver ou revogar o acesso de
 alguém da equipe a uma IA, use Configurações › Conexões de IA; para
 desligar ou revogar o assistente privado em si, o caminho é outro,
 descrito em `operacao.md`.
@@ -34,7 +35,7 @@ descrito em `operacao.md`.
   que lê os arquivos, calcula e salva), a configuração de exemplo do
   contêiner, e os testes automáticos.
 - `src/modules/assistente-privado/` — o módulo do Tetteo que recebe os
-  registros do assistente e monta o cartão no Painel.
+  registros do assistente e monta o monitor em Configurações › Integrações.
 - `docs/assistente-privado/` — esta pasta: os quatro documentos abaixo.
 - `docs/telas/assistente-privado/` — os prints reais das três telas da
   demonstração.
@@ -68,6 +69,13 @@ descrito em `operacao.md`.
   print de cada tela.
 
 ## O desenho original
+
+Em 04/11/2026, o cartão saiu do Painel da operação e passou para
+Configurações › Integrações › OpenClaw, com atalhos nas Configurações e na
+página de Conexões de IA. A leitura exige `configuracoes.integracoes` e a
+permissão existente `assistente-privado.ver`, além de uma unidade selecionada.
+O painel principal deixa de consultar os registros do assistente. A mudança
+é de localização; a operação do OpenClaw na VPS continua independente.
 
 A decisão de arquitetura, as regras de segurança e os limites conhecidos
 foram aprovados antes da implementação, em:

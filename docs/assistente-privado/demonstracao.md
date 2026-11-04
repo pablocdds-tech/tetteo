@@ -52,6 +52,10 @@ teste, não de vendas reais.
 
 ## Tela 3 — o resultado no Tetteo
 
+**Localização atual (04/11/2026):** Configurações › Integrações › OpenClaw.
+O cartão foi retirado do Painel da operação. A descrição e o print abaixo
+preservam o ensaio histórico de 12/09/2026.
+
 **O que mostrar:** o cartão do assistente no Painel da operação do
 Tetteo, com Conexão, Última execução, Próxima rotina e Pendências.
 

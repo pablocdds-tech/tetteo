@@ -5,6 +5,10 @@ checklists ficam à esquerda e os pedidos e vendas à direita; no celular,
 os blocos seguem essa ordem em uma coluna. A extensão usa os componentes,
 a fonte do sistema e os tokens Aurora existentes.
 
+O monitor do assistente privado OpenClaw fica em **Configurações › Integrações ›
+OpenClaw**, em `/configuracoes/integracoes/openclaw`. O painel principal não
+consulta nem exibe seus registros.
+
 ## Uso
 
 - **Prioridades:** mostra até seis pendências abertas na ordem de urgência

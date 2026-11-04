@@ -18,9 +18,6 @@ import { Icone } from "@/design-system/icones";
 import { IndicadorCarregando } from "@/design-system/indicador";
 import { Vazio } from "@/design-system/vazio";
 import { formatarMoeda } from "@/lib/numero";
-import { CartaoDoAssistente } from "@/modules/assistente-privado/components/cartao-do-assistente";
-import { PERMISSAO_VER_ASSISTENTE_PRIVADO } from "@/modules/assistente-privado/permissoes";
-import { cartaoDoAssistente } from "@/modules/assistente-privado/services/registros";
 import { listarPendencias } from "@/modules/checklists/services/pendencias";
 import {
   listarLancamentos,
@@ -227,14 +224,13 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
   if (!contexto) return null;
 
   const podeFinanceiro = pode(contexto, "financeiro.ver");
-  const podeVerAssistente = pode(contexto, PERMISSAO_VER_ASSISTENTE_PRIVADO);
 
   // Caixa e checklists são de uma LOJA. Farinha na câmara fria de uma unidade
   // não vira pizza na outra, e o boleto vence num CNPJ só. Consolidar a rede
   // aqui produziria um número que não corresponde a nenhuma realidade.
   if (!contexto.unidadeAtiva) return <PrecisaDeUnidade contexto={contexto} />;
 
-  if (!podeFinanceiro && !podeVerAssistente) {
+  if (!podeFinanceiro) {
     return pode(contexto, "checklists.ver") ||
       pode(contexto, "pdv.ver") ||
       pode(contexto, "analytics.ver") ? null : (
@@ -247,12 +243,11 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
     `${diaDeslocado(horarioBrasilia(agora).slice(0, 10), periodo - 1)}T23:59:59.999-03:00`,
   );
 
-  const [caixa, contas, assistente] = await Promise.all([
+  const [caixa, contas] = await Promise.all([
     podeFinanceiro && contexto.ehDiretor
       ? visaoDoCaixa(contexto, periodo)
       : null,
     podeFinanceiro ? listarLancamentos(contexto, { ate: fimDoPeriodo }) : [],
-    podeVerAssistente ? cartaoDoAssistente(contexto) : null,
   ]);
 
   const numeros = numerosDoPainel(contas);
@@ -320,8 +315,6 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
           periodoEmDias={periodo}
         />
       )}
-
-      {assistente && <CartaoDoAssistente cartao={assistente} />}
 
       {podeFinanceiro && (
         <ContasDoPeriodo
