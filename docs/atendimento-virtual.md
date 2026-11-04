@@ -279,6 +279,31 @@ Skills publica versões de estilo, saudação e mensagem de ajuda. Não altera f
 
 ## Pausar, monitorar e recuperar
 
+### Conferir somente a saudação entre números próprios
+
+O diagnóstico administrativo `scripts/teste-saudacao-severina.ts` permite conferir
+uma entrada real e uma saudação com nome mantendo o canal pausado. Não fica
+exposto por rota pública ou ferramenta do agente. Exige gestor autorizado,
+conexão verificada e o destinatário de um teste anterior entregue e observado
+na mesma revisão. Esse destinatário precisa corresponder à instância interna
+da própria organização, conectada e diferente da instância de atendimento.
+Não aceita um número livre como destino.
+
+A execução registra intenção durável antes de enviar, usa correlação exclusiva
+e recusa repetir o envio do mesmo pedido. Primeiro envia uma mensagem de teste
+sem nome do número interno para o atendimento. A continuação exige a entrada
+autenticada correspondente, recebida ao vivo. Usa o nome resolvido pelo sistema
+e o mesmo prefixo de saudação da Severina; a resposta identifica o teste.
+Entrega e observação continuam sendo evidências separadas.
+
+Esse diagnóstico não liga o canal, retoma conversas, processa a fila geral,
+publica fatos, executa reservas ou chama o Gemini. Ele verifica o caminho
+WhatsApp → reconhecimento do nome → saudação → WhatsApp. O teste de Gemini e a
+homologação do atendimento completo são verificações distintas. Horários e
+cardápio reais continuam obrigatórios antes da ativação geral. Segredos são
+lidos somente do ambiente privado; entradas e resultados operacionais com
+identificadores não devem ser copiados para a documentação compartilhada.
+
 - **Pausar uma conversa:** assumir ou pausar pelo inbox; verificar autor/prazo e enviar resposta humana. Isso não desliga outros agentes ou integrações.
 - **Pausar o processamento do módulo:** definir `AV_WORKER_ENABLED=false` no ambiente privado e publicar pelo fluxo habitual. Eventos e histórico permanecem; essa opção não encerra processos de outros módulos.
 - **Fila atrasada:** conferir worker ativo, banco disponível, `processAfter`, lease vencido, tentativas e erro no painel. O lease expirado é recuperado; não editar booleanos em memória.

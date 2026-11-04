@@ -260,6 +260,18 @@ apaga a aceitação que já foi comprovada.
 
 ### Política e métricas
 
+O diagnóstico de saudação é uma operação administrativa server-side, sem rota
+pública e sem inclusão nas ferramentas do agente. A exceção permite somente a
+mensagem de teste entre duas instâncias próprias atestadas e o retorno ao mesmo
+destinatário de um teste entregue e observado da revisão atual. Ela não altera
+`active`, estado humano, pendências ou permissões do worker. A chamada exige
+autorização atual do gestor, correlação durável, prazo e escopo explícitos.
+Entrada histórica, mensagem de outro remetente, troca de conexão e repetição
+não podem liberar envio. O retorno usa nome saneado e renderização fixa, sem
+modelo, dados operacionais ou ferramenta com efeitos. A evidência é auditada
+como diagnóstico, sem inventar `AgentRun` ou alegar atendimento geral habilitado.
+Um timeout conserva a intenção e exige reconciliação; não autoriza outro POST.
+
 Orientação de estilo é versionada por unidade, com rascunho imutável, aprovação de gestor e auditoria contendo somente ID/versão/hash. Links, telefones e credenciais não entram nesses campos. Saudação/fallback estáticos não podem afirmar reserva ou contato humano; tais alegações dependem do renderizador associado ao efeito real. Instruções personalizadas ficam abaixo das invariantes de permissão, confirmação e base aprovada.
 
 Qualidade agrega por organização/unidade/conta e período fechado em 7/30/90 dias. Percentis são calculados no banco; apenas as 50 execuções recentes são retornadas. Erros brutos do provedor e texto de cliente não são retornados: códigos desconhecidos viram EXECUTION_FAILED. Não há dump de conversas nessa consulta.

@@ -21,6 +21,7 @@ import {
 } from "./virtual-agent-plan";
 import { relativeVirtualDate } from "./virtual-knowledge";
 import { approvedVirtualPolicy } from "./virtual-policy";
+import { virtualGreetingPrefix } from "./virtual-greeting";
 import {
   executeVirtualTool,
   claimFor,
@@ -718,7 +719,8 @@ export async function runVirtualAgent(
         : "Não há horário de funcionamento publicado para esse dia. A equipe precisa conferir.",
     );
   }
+  const greetingPrefix = virtualGreetingPrefix(knownName);
   return reply(
-    `${knownName ? `Olá, ${knownName}. ` : ""}${policy ? (/^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!.\s]*$/i.test(joined.trim()) ? policy.greeting : policy.fallbackMessage) || "Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?" : `${knownName ? "" : "Olá! "}Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?`}`,
+    `${greetingPrefix}${policy ? (/^(?:oi|olá|ola|bom dia|boa tarde|boa noite)[!.\s]*$/i.test(joined.trim()) ? policy.greeting : policy.fallbackMessage) || "Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?" : `${greetingPrefix ? "" : "Olá! "}Posso consultar o cardápio, os horários da unidade e as reservas, ou chamar a equipe. Como posso ajudar?`}`,
   );
 }
