@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { api } from "../client/api";
+import {
+  useVirtualAccount,
+  type VirtualChannelsResult,
+} from "../client/virtual-channel-context";
 import styles from "./virtual-history.module.css";
 
 type HistoryStatus = {
@@ -43,9 +48,18 @@ export default function VirtualHistory({
   manageable: boolean;
   onUpdated: () => void;
 }) {
+  const { account, refreshAccounts } = useVirtualAccount();
+  const connection = account?.id === accountId ? account : null;
+  const revision = connection?.revision ?? null;
+  const currentRevision = useRef(revision);
+  useEffect(() => {
+    currentRevision.current = revision;
+  }, [revision]);
   const [history, setHistory] = useState<HistoryStatus | null>(null);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(false);
+  const [connectionIssue, setConnectionIssue] = useState(false);
   const [checking, setChecking] = useState(false);
   const [watchStartedAt, setWatchStartedAt] = useState(() => Date.now());
   const [watchStopped, setWatchStopped] = useState(false);
@@ -143,8 +157,50 @@ export default function VirtualHistory({
       return;
     setSubmitting(true);
     setError("");
-    pendingRequest.current ??= crypto.randomUUID();
+    setConnectionIssue(false);
     try {
+      if (!connection) {
+        setConnectionIssue(true);
+        throw new Error(
+          "Selecione o WhatsApp desta unidade antes de sincronizar.",
+        );
+      }
+      if (connection.connectionState !== "VERIFIED") {
+        setCheckingConnection(true);
+        setConnectionIssue(true);
+        let status: VirtualChannelsResult;
+        try {
+          status = await api.post<VirtualChannelsResult>(
+            "/api/crm/virtual/channels",
+            {
+              storeId,
+              accountId,
+              revision: connection.revision,
+              action: "status",
+            },
+          );
+        } finally {
+          if (live.current) refreshAccounts();
+        }
+        if (!live.current) return;
+        const confirmed = status.accounts.find((item) => item.id === accountId);
+        if (
+          !confirmed ||
+          confirmed.revision !== connection.revision ||
+          currentRevision.current !== connection.revision
+        )
+          throw new Error(
+            "A configuração deste WhatsApp mudou. Atualize a conexão antes de sincronizar.",
+          );
+        if (confirmed.connectionState !== "VERIFIED")
+          throw new Error(
+            "O provedor ainda não confirmou a conexão deste número. Reconecte o WhatsApp e tente novamente.",
+          );
+        setCheckingConnection(false);
+        setConnectionIssue(false);
+      }
+      if (!live.current) return;
+      pendingRequest.current ??= crypto.randomUUID();
       const result = await api.post<HistoryStatus>("/api/crm/virtual/history", {
         storeId,
         accountId,
@@ -160,7 +216,10 @@ export default function VirtualHistory({
     } catch (failure) {
       if (live.current) setError(failureText(failure));
     } finally {
-      if (live.current) setSubmitting(false);
+      if (live.current) {
+        setSubmitting(false);
+        setCheckingConnection(false);
+      }
     }
   }
   const running = state === "RUNNING";
@@ -183,11 +242,13 @@ export default function VirtualHistory({
               }
               onClick={() => void synchronize()}
             >
-              {submitting
-                ? "Solicitando sincronização…"
-                : running
-                  ? "Sincronização em andamento"
-                  : "Sincronizar histórico"}
+              {checkingConnection
+                ? "Verificando conexão…"
+                : submitting
+                  ? "Solicitando sincronização…"
+                  : running
+                    ? "Sincronização em andamento"
+                    : "Sincronizar histórico"}
             </button>
           )}
           {(!running || watchStopped || error) && (
@@ -205,6 +266,15 @@ export default function VirtualHistory({
       {error && (
         <p className={styles.error} role="alert">
           {error}
+          {connectionIssue && (
+            <>
+              {" "}
+              <Link className="underline" href="/assistente/conectar">
+                Conectar WhatsApp
+              </Link>
+              .
+            </>
+          )}
         </p>
       )}
       {history && (

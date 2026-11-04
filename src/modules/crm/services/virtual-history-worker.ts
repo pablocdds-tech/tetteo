@@ -17,7 +17,10 @@ export function startVirtualHistoryWorker(factory: ChannelManagementFactory) {
     if (active) return;
     active = true;
     try {
-      await processVirtualHistoryQueue(factory);
+      const deadline = Date.now() + 8000;
+      for (let round = 0; round < 4 && Date.now() < deadline; round++) {
+        if ((await processVirtualHistoryQueue(factory)) === 0) break;
+      }
     } catch {
       console.error(
         "[atendimento-historico] Rodada não concluída; importação preservada.",

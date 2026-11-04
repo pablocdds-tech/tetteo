@@ -163,6 +163,28 @@ O estado final de `npm run check`, `npm run build`, commit, push e deploy é inf
 
 ## Conferência operacional da configuração privada
 
+### Histórico real — 04/11/2026
+
+Com autorização do usuário, a configuração privada da Evolution passou a gravar
+histórico. Antes da aplicação, configuração, sessão, volume e banco foram
+preservados em backup restrito e o dump foi restaurado em ambiente isolado para
+conferência. Apenas a API foi recriada, com a mesma imagem; banco, Redis e os
+demais serviços foram preservados. As duas instâncias voltaram conectadas.
+
+O usuário leu um novo QR somente da instância de atendimento. Na sessão
+autenticada do Chrome, a conexão foi verificada no painel e o histórico foi
+solicitado pela interface publicada. O job terminou `COMPLETE`, sem erro, com
+**7.977 mensagens históricas e 160 conversas novas**; a conversa real anterior
+permaneceu, totalizando 161 conversas reais no momento da conferência. São
+contagens agregadas: nenhum texto, nome, número, credencial ou QR entra nesta
+documentação. A IA permaneceu pausada e a importação não enviou mensagens.
+
+Essa homologação comprova leitura e persistência do histórico disponibilizado
+pelo provedor. Não comprova que o WhatsApp tenha fornecido todo o conteúdo do
+celular nem homologação de envio automático ou de um modelo pago.
+
+### Preparação administrativa anterior
+
 A configuração administrativa para preparar conexões de clientes foi salva no
 ambiente privado do Dokploy, com backup restrito e sem modificar o token individual
 dos avisos. O domínio configurado foi conferido com o roteamento do contêiner

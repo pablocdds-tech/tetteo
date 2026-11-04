@@ -168,6 +168,10 @@ com recepção a partir da configuração do webhook, sem importação retroativ
 esta função.
 
 O worker próprio usa `AV_HISTORY_WORKER_ENABLED` e independe da ativação da IA.
+Cada ciclo pode avançar até quatro rodadas, com orçamento de oito segundos para
+iniciar novas rodadas. Cada leitura externa mantém seu timeout e cada página tem
+lease e transação próprios; o ciclo para quando não há progresso. Assim, uma
+importação grande não espera dois segundos adicionais entre todas as páginas.
 Testes e QA devem desativá-lo junto dos demais workers. Migração aditiva:
 `20261103150000_whatsapp_history`. Contrato verificado no código da
 [Evolution 2.3.7 — consulta paginada](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/services/channel.service.ts)
