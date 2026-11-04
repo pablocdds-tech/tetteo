@@ -1,3 +1,6 @@
+"use client";
+
+import { useId, useState } from "react";
 import { Cartao, TituloDeSecao } from "@/design-system/cartao";
 import { Etiqueta } from "@/design-system/etiqueta";
 import { formatarMoeda } from "@/lib/numero";
@@ -64,6 +67,11 @@ export function GraficoDeCaixa({
   periodoEmDias: number;
 }) {
   const dias = projecao.length;
+  const preenchimento = useId();
+  const seletor = useId();
+  const [indiceSelecionado, setIndiceSelecionado] = useState(0);
+  const indice = Math.min(indiceSelecionado, Math.max(dias - 1, 0));
+  const selecionado = projecao[indice];
 
   // O primeiro dia em que o saldo projetado fica negativo. É o número que o
   // gestor procura — e por isso ele é dito por EXTENSO, não só desenhado.
@@ -109,7 +117,7 @@ export function GraficoDeCaixa({
   return (
     <Cartao como="section" className="flex min-w-0 flex-col">
       <TituloDeSecao
-        apoio={`Saldo dia a dia pelos próximos ${periodoEmDias} dias · em reais (BRL) · começa no saldo real das contas`}
+        apoio={`Próximos ${periodoEmDias} dias, a partir do saldo real. Explore cada dia abaixo.`}
         acao={
           primeiroNegativo ? (
             <Etiqueta tom="ruim">
@@ -137,15 +145,23 @@ export function GraficoDeCaixa({
               aria-hidden="true"
               viewBox={`0 0 ${LARGURA} ${ALTURA}`}
               className="h-auto w-full"
+              onPointerMove={(event) => {
+                const limites = event.currentTarget.getBoundingClientRect();
+                const posicao =
+                  ((event.clientX - limites.left) / limites.width) * LARGURA;
+                setIndiceSelecionado(
+                  Math.round(
+                    Math.max(
+                      0,
+                      Math.min(1, (posicao - MARGEM.esquerda) / larguraUtil),
+                    ) *
+                      (dias - 1),
+                  ),
+                );
+              }}
             >
               <defs>
-                <linearGradient
-                  id="preenchimento-caixa"
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
-                >
+                <linearGradient id={preenchimento} x1="0" y1="0" x2="0" y2="1">
                   <stop
                     offset="0%"
                     stopColor="var(--accent)"
@@ -181,7 +197,7 @@ export function GraficoDeCaixa({
                 x={MARGEM.esquerda - 8}
                 y={MARGEM.topo + 4}
                 textAnchor="end"
-                fontSize="11"
+                fontSize="12"
                 fill="var(--ink-3)"
               >
                 {compacto.format(alto)}
@@ -190,7 +206,7 @@ export function GraficoDeCaixa({
                 x={MARGEM.esquerda - 8}
                 y={ALTURA - MARGEM.baixo + 4}
                 textAnchor="end"
-                fontSize="11"
+                fontSize="12"
                 fill="var(--ink-3)"
               >
                 {compacto.format(baixo)}
@@ -211,7 +227,7 @@ export function GraficoDeCaixa({
                     x={MARGEM.esquerda - 8}
                     y={yZero + 4}
                     textAnchor="end"
-                    fontSize="11"
+                    fontSize="12"
                     fill="var(--bad)"
                   >
                     R$ 0
@@ -219,7 +235,7 @@ export function GraficoDeCaixa({
                 </>
               )}
 
-              <path d={area} fill="url(#preenchimento-caixa)" />
+              <path d={area} fill={`url(#${preenchimento})`} />
               <path
                 d={linha}
                 fill="none"
@@ -228,6 +244,27 @@ export function GraficoDeCaixa({
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
+
+              {selecionado && (
+                <>
+                  <line
+                    x1={x(indice)}
+                    x2={x(indice)}
+                    y1={MARGEM.topo}
+                    y2={ALTURA - MARGEM.baixo}
+                    stroke="var(--line-2)"
+                    strokeDasharray="3 4"
+                  />
+                  <circle
+                    cx={x(indice)}
+                    cy={y(selecionado.saldo)}
+                    r="5"
+                    fill="var(--surface)"
+                    stroke="var(--accent)"
+                    strokeWidth="2"
+                  />
+                </>
+              )}
 
               {primeiroNegativo && (
                 <circle
@@ -246,13 +283,65 @@ export function GraficoDeCaixa({
                   textAnchor={
                     i === 0 ? "start" : i === dias - 1 ? "end" : "middle"
                   }
-                  fontSize="11"
+                  fontSize="12"
                   fill="var(--ink-3)"
                 >
                   {diaMes.format(projecao[i].data)}
                 </text>
               ))}
             </svg>
+
+            {selecionado && (
+              <div className="bg-surface-2 mt-3 rounded-lg p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label
+                    htmlFor={seletor}
+                    className="text-ink text-sm font-semibold"
+                  >
+                    {diaPorExtenso.format(selecionado.data)}
+                  </label>
+                  <span className="text-ink-3 text-xs">
+                    Arraste para consultar um dia
+                  </span>
+                </div>
+                <input
+                  id={seletor}
+                  type="range"
+                  min={0}
+                  max={dias - 1}
+                  value={indice}
+                  disabled={dias <= 1}
+                  onChange={(event) =>
+                    setIndiceSelecionado(Number(event.target.value))
+                  }
+                  aria-label="Dia da projeção"
+                  aria-valuetext={`${diaPorExtenso.format(selecionado.data)}, entradas ${formatarMoeda(selecionado.entradas)}, saídas ${formatarMoeda(selecionado.saidas)}, saldo ${formatarMoeda(selecionado.saldo)}`}
+                  className="accent-accent focus-visible:outline-accent my-1 h-11 w-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-3"
+                />
+                <dl className="grid grid-cols-3 gap-2 text-xs">
+                  <div>
+                    <dt className="text-ink-3">Entradas</dt>
+                    <dd className="text-ok mt-1 font-semibold tabular-nums">
+                      {formatarMoeda(selecionado.entradas)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-3">Saídas</dt>
+                    <dd className="text-ink-2 mt-1 font-semibold tabular-nums">
+                      {formatarMoeda(selecionado.saidas)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-ink-3">Saldo projetado</dt>
+                    <dd
+                      className={`mt-1 font-semibold tabular-nums ${selecionado.saldo < 0 ? "text-bad" : "text-ink"}`}
+                    >
+                      {formatarMoeda(selecionado.saldo)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            )}
 
             <p className="text-ink-2 mt-3 text-sm leading-5">
               Hoje o caixa tem{" "}

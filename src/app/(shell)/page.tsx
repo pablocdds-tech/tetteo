@@ -15,7 +15,7 @@ import { CabecalhoDePagina } from "@/design-system/cabecalho-de-pagina";
 import { Cartao } from "@/design-system/cartao";
 import { Esqueleto, LinhasCarregando } from "@/design-system/esqueleto";
 import { Icone } from "@/design-system/icones";
-import { Indicador, IndicadorCarregando } from "@/design-system/indicador";
+import { IndicadorCarregando } from "@/design-system/indicador";
 import { Vazio } from "@/design-system/vazio";
 import { formatarMoeda } from "@/lib/numero";
 import { CartaoDoAssistente } from "@/modules/assistente-privado/components/cartao-do-assistente";
@@ -36,37 +36,13 @@ import {
 import { GraficoDeCaixa } from "./painel/grafico-de-caixa";
 import { numerosDoPainel } from "./painel/numeros";
 import { Prioridades } from "./painel/prioridades";
+import {
+  ResumoFinanceiro,
+  type IndicadorDeAcao,
+} from "./painel/resumo-financeiro";
+import { VendasDaOperacao } from "./painel/vendas-da-operacao";
 
-/**
- * O PAINEL DA OPERAÇÃO.
- *
- * Responde, sem abrir mais nenhuma tela: quanto tem em caixa, o que já venceu,
- * o que vence no período, e o que está pendente com quem.
- *
- * ---------------------------------------------------------------------------
- * O QUE ESTA TELA ERA, E POR QUE MUDOU.
- *
- * Era "Bom dia, Pablo ☀️" seguido de uma grade de ícones. A saudação ocupava o
- * topo sem informar nada, e a grade de módulos hoje mora na barra lateral, que
- * está em TODAS as telas. Sobrava, na primeira tela do sistema, zero trabalho.
- *
- * A regra que continua valendo, e que era o bom instinto da versão antiga: o
- * painel NUNCA vira o "App de tudo". Toda vez que alguém quiser somar mais um
- * número aqui, a resposta padrão é "isso mora no App X". Sem essa disciplina,
- * em um ano é um painel poluído que ninguém lê.
- *
- * O que ganhou o direito de estar aqui tem que passar em dois testes: é do DIA
- * (não do mês passado) e é ACIONÁVEL (dá para fazer algo hoje a respeito).
- * ---------------------------------------------------------------------------
- *
- * NÃO HÁ VENDAS AQUI, e a ausência é honesta: o Tetteo ainda não tem módulo de
- * pedidos de cliente — Delivery e Analytics estão em construção. Um painel com
- * "ticket médio" inventado seria mais bonito e valeria menos que nada.
- *
- * O cartão do ASSISTENTE PRIVADO passa nos dois testes sem trazer número de
- * venda: diz se o assistente da VPS está ligado, o que fez por último e o que
- * espera decisão. Os números do fechamento moram no relatório, não aqui.
- */
+/** Visão acionável do dia; cada módulo continua responsável por suas operações. */
 
 const dataPorExtenso = new Intl.DateTimeFormat("pt-BR", {
   weekday: "long",
@@ -84,7 +60,7 @@ const dataCurta = new Intl.DateTimeFormat("pt-BR", {
 export default async function PainelDaOperacao({
   searchParams,
 }: {
-  searchParams: Promise<{ periodo?: string }>;
+  searchParams: Promise<{ periodo?: string; situacao?: string }>;
 }) {
   const superficie = await superficiePublica();
   if (superficie.operacional && superficie.config)
@@ -101,33 +77,145 @@ export default async function PainelDaOperacao({
         contexto.unidadesVisiveis.length === 1 ? "unidade" : "unidades"
       }`;
 
+  const temVendas = pode(contexto, "pdv.ver");
+  const temFinanceiro = pode(contexto, "financeiro.ver");
+  const temPrioridades = pode(contexto, "checklists.ver");
+
   return (
-    <div className="mx-auto flex w-full max-w-[var(--width-data)] flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[var(--width-data)] flex-col gap-6">
       <CabecalhoDePagina
         titulo="Painel da operação"
         contexto={`${dataPorExtenso.format(new Date())} · ${onde}`}
-        controles={<FiltroDePeriodo atual={periodo} />}
       />
+      {contexto.unidadeAtiva && (
+        <nav
+          aria-label="Áreas do painel"
+          className="border-line flex flex-wrap items-center gap-2 border-b pb-4"
+        >
+          {temVendas && (
+            <a
+              href="#pedidos-e-vendas"
+              className="border-line-2 bg-surface hover:bg-surface-2 focus-visible:outline-accent inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-3"
+            >
+              <Icone nome="prato" tamanho={16} />
+              Pedidos e vendas
+            </a>
+          )}
+          {temPrioridades && (
+            <a
+              href="#prioridades-do-dia"
+              className="border-line-2 bg-surface hover:bg-surface-2 focus-visible:outline-accent inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-3"
+            >
+              <Icone nome="lista-conferida" tamanho={16} />
+              Prioridades do dia
+            </a>
+          )}
+          {temFinanceiro && (
+            <a
+              href="#contas-do-periodo"
+              className="border-line-2 bg-surface hover:bg-surface-2 focus-visible:outline-accent inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-3"
+            >
+              <Icone nome="moeda" tamanho={16} />
+              Contas e caixa
+            </a>
+          )}
+          {pode(contexto, "analytics.ver") && (
+            <a
+              href="#vendas-saipos"
+              className="border-line-2 bg-surface hover:bg-surface-2 focus-visible:outline-accent inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-3"
+            >
+              <Icone nome="grafico" tamanho={16} />
+              Vendas Saipos
+            </a>
+          )}
+        </nav>
+      )}
 
-      {/* A chave força um esqueleto novo a cada troca de período: sem ela, o
-          React reaproveitaria a árvore e a tela ficaria com os números velhos
-          parados enquanto os novos vêm — o pior dos dois mundos, porque
-          parece atualizado e não está. */}
-      <Suspense key={periodo} fallback={<EsqueletoDoPainel />}>
+      {contexto.unidadeAtiva && (temPrioridades || temVendas) && (
+        <div
+          className={`grid min-w-0 grid-cols-1 items-start gap-4 ${temPrioridades && temVendas ? "xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" : ""}`}
+        >
+          {temPrioridades && (
+            <div id="prioridades-do-dia" className="min-w-0 scroll-mt-20">
+              <Suspense
+                fallback={
+                  <Cartao>
+                    <LinhasCarregando linhas={4} />
+                  </Cartao>
+                }
+              >
+                <PrioridadesDoDia />
+              </Suspense>
+            </div>
+          )}
+          {temVendas && (
+            <div id="pedidos-e-vendas" className="min-w-0 scroll-mt-20">
+              <Suspense
+                fallback={
+                  <Cartao>
+                    <LinhasCarregando linhas={3} />
+                  </Cartao>
+                }
+              >
+                <VendasDaOperacao />
+              </Suspense>
+            </div>
+          )}
+        </div>
+      )}
+
+      {pode(contexto, "analytics.ver") && (
+        <section
+          id="vendas-saipos"
+          aria-labelledby="titulo-vendas-saipos"
+          className="flex min-w-0 scroll-mt-20 flex-col gap-3"
+        >
+          <div>
+            <h2 id="titulo-vendas-saipos" className="text-lg font-semibold">
+              Vendas Saipos
+            </h2>
+            <p className="text-ink-3 mt-1 text-sm">
+              Últimos 7 dias encerrados. A importação Saipos é separada dos
+              pedidos ao vivo do PDV.
+            </p>
+          </div>
+          <Suspense
+            fallback={
+              <Cartao>
+                <LinhasCarregando linhas={3} />
+              </Cartao>
+            }
+          >
+            <PainelVendas
+              de={diaDeslocado(horarioBrasilia().slice(0, 10), -7)}
+              ate={diaDeslocado(horarioBrasilia().slice(0, 10), -1)}
+              compacto
+            />
+          </Suspense>
+        </section>
+      )}
+
+      <Suspense
+        key={`${contexto.unidadeAtiva?.id ?? "rede"}-${periodo}`}
+        fallback={<EsqueletoDoPainel />}
+      >
         <CorpoDoPainel periodo={periodo} />
       </Suspense>
-      {pode(contexto, "analytics.ver") && (
-        <Suspense
-          fallback={<p className="text-ink-3 text-sm">Carregando vendas…</p>}
-        >
-          <PainelVendas
-            de={diaDeslocado(horarioBrasilia().slice(0, 10), -7)}
-            ate={diaDeslocado(horarioBrasilia().slice(0, 10), -1)}
-            compacto
-          />
-        </Suspense>
-      )}
     </div>
+  );
+}
+
+async function PrioridadesDoDia() {
+  const contexto = await obterContexto();
+  if (!contexto?.unidadeAtiva || !pode(contexto, "checklists.ver")) return null;
+  const pendencias = await listarPendencias(contexto);
+  const abertas = pendencias.filter((p) => p.status === "ABERTA");
+  return (
+    <Prioridades
+      pendencias={abertas}
+      totalAbertas={abertas.length}
+      hoje={new Date()}
+    />
   );
 }
 
@@ -136,7 +224,6 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
   if (!contexto) return null;
 
   const podeFinanceiro = pode(contexto, "financeiro.ver");
-  const podeChecklists = pode(contexto, "checklists.ver");
   const podeVerAssistente = pode(contexto, PERMISSAO_VER_ASSISTENTE_PRIVADO);
 
   // Caixa e checklists são de uma LOJA. Farinha na câmara fria de uma unidade
@@ -144,124 +231,92 @@ async function CorpoDoPainel({ periodo }: { periodo: Periodo }) {
   // aqui produziria um número que não corresponde a nenhuma realidade.
   if (!contexto.unidadeAtiva) return <PrecisaDeUnidade contexto={contexto} />;
 
-  if (!podeFinanceiro && !podeChecklists) {
-    return <SemBlocosParaVer contexto={contexto} />;
+  if (!podeFinanceiro && !podeVerAssistente) {
+    return pode(contexto, "checklists.ver") ||
+      pode(contexto, "pdv.ver") ||
+      pode(contexto, "analytics.ver") ? null : (
+      <SemBlocosParaVer contexto={contexto} />
+    );
   }
 
   const agora = new Date();
-  const fimDoPeriodo = new Date(agora);
-  fimDoPeriodo.setDate(fimDoPeriodo.getDate() + periodo - 1);
-  fimDoPeriodo.setHours(23, 59, 59, 999);
+  const fimDoPeriodo = new Date(
+    `${diaDeslocado(horarioBrasilia(agora).slice(0, 10), periodo - 1)}T23:59:59.999-03:00`,
+  );
 
-  const [caixa, contas, pendencias, assistente] = await Promise.all([
+  const [caixa, contas, assistente] = await Promise.all([
     podeFinanceiro && contexto.ehDiretor
       ? visaoDoCaixa(contexto, periodo)
       : null,
     podeFinanceiro ? listarLancamentos(contexto, { ate: fimDoPeriodo }) : [],
-    podeChecklists ? listarPendencias(contexto) : [],
     podeVerAssistente ? cartaoDoAssistente(contexto) : null,
   ]);
 
   const numeros = numerosDoPainel(contas);
-  const abertas = pendencias.filter((p) => p.status === "ABERTA");
-  const atrasadas = abertas.filter((p) => p.atrasada).length;
 
-  const indicadores = [
-    podeFinanceiro && caixa ? (
-      <Indicador
-        key="caixa"
-        rotulo="Saldo em caixa"
-        valor={formatarMoeda(caixa.saldoAtual)}
-        apoio={
-          caixa.saldoSemConta !== 0
-            ? "Inclui baixas sem conta bancária vinculada · hoje"
-            : `Soma das ${caixa.contas.length} ${
-                caixa.contas.length === 1
-                  ? "conta cadastrada"
-                  : "contas cadastradas"
-              } · hoje`
-        }
-      />
-    ) : null,
-
-    podeFinanceiro ? (
-      <Indicador
-        key="vencido"
-        rotulo="Vencido a pagar"
-        valor={formatarMoeda(numeros.vencidoAPagar)}
-        tom={numeros.contasVencidas > 0 ? "critico" : "positivo"}
-        apoio={
-          numeros.contasVencidas > 0
-            ? `${numeros.contasVencidas} ${
-                numeros.contasVencidas === 1 ? "conta" : "contas"
-              } fora do prazo · em aberto`
-            : "Nenhuma conta fora do prazo"
-        }
-      />
-    ) : null,
-
-    podeFinanceiro ? (
-      <Indicador
-        key="a-pagar"
-        rotulo="A pagar no período"
-        valor={formatarMoeda(numeros.aPagarNoPeriodo)}
-        apoio={`${numeros.contasAPagar} ${
-          numeros.contasAPagar === 1 ? "conta" : "contas"
-        } · vence até ${dataCurta.format(fimDoPeriodo)}`}
-      />
-    ) : null,
-
-    podeChecklists ? (
-      <Indicador
-        key="pendencias"
-        rotulo="Pendências abertas"
-        valor={String(abertas.length)}
-        tom={atrasadas > 0 ? "atencao" : "normal"}
-        apoio={
-          atrasadas > 0
-            ? `${atrasadas} ${atrasadas === 1 ? "atrasada" : "atrasadas"} · dos checklists`
-            : "Nenhuma atrasada · dos checklists"
-        }
-      />
-    ) : null,
-  ].filter(Boolean);
-
-  const colunas =
-    indicadores.length >= 4
-      ? "sm:grid-cols-2 desk:grid-cols-4"
-      : indicadores.length === 3
-        ? "sm:grid-cols-3"
-        : indicadores.length === 2
-          ? "sm:grid-cols-2"
-          : "";
+  const base = `/?periodo=${periodo}`;
+  const indicadores: IndicadorDeAcao[] = [];
+  if (podeFinanceiro && caixa)
+    indicadores.push({
+      rotulo: "Saldo em caixa",
+      valor: formatarMoeda(caixa.saldoAtual),
+      apoio:
+        caixa.saldoSemConta !== 0
+          ? "Inclui baixas sem conta vinculada · hoje"
+          : `${caixa.contas.length} contas cadastradas · hoje`,
+      icone: "moeda",
+      href: "/financeiro/contas",
+      acao: "Consultar contas",
+    });
+  if (podeFinanceiro)
+    indicadores.push(
+      {
+        rotulo: "Vencido a pagar",
+        valor: formatarMoeda(numeros.vencidoAPagar),
+        apoio: `${numeros.contasVencidas} contas abertas fora do prazo`,
+        icone: "alerta",
+        tom: numeros.contasVencidas ? "critico" : "positivo",
+        href: `${base}&situacao=pagar-vencidas#contas-do-periodo`,
+        acao: "Conferir vencidas",
+      },
+      {
+        rotulo: "A pagar no período",
+        valor: formatarMoeda(numeros.aPagarNoPeriodo),
+        apoio: `${numeros.contasAPagar} contas a vencer até ${dataCurta.format(fimDoPeriodo)}`,
+        icone: "relogio",
+        href: `${base}&situacao=pagar-a-vencer#contas-do-periodo`,
+        acao: "Planejar pagamentos",
+      },
+    );
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <div className={`grid min-w-0 grid-cols-1 gap-4 ${colunas}`}>
-        {indicadores}
-      </div>
-
-      <div className="desk:grid-cols-3 grid min-w-0 grid-cols-1 gap-4">
-        {podeFinanceiro && caixa && (
-          <div className="desk:col-span-2 min-w-0">
-            <GraficoDeCaixa
-              projecao={caixa.projecao}
-              saldoAtual={caixa.saldoAtual}
-              periodoEmDias={periodo}
-            />
+      {podeFinanceiro && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Planeje os próximos dias</h2>
+            <p className="text-ink-3 mt-1 text-sm">
+              O período abaixo filtra contas e projeção de caixa.
+            </p>
           </div>
-        )}
+          <FiltroDePeriodo atual={periodo} />
+        </div>
+      )}
+      {indicadores.length > 0 && <ResumoFinanceiro indicadores={indicadores} />}
+      {contas.length >= 300 && (
+        <p className="text-warn text-xs">
+          Os indicadores financeiros consideram as 300 contas exibidas. Confira
+          a visão completa no Financeiro.
+        </p>
+      )}
 
-        {podeChecklists && (
-          <div className={`min-w-0 ${podeFinanceiro ? "" : "desk:col-span-3"}`}>
-            <Prioridades
-              pendencias={abertas}
-              totalAbertas={abertas.length}
-              hoje={agora}
-            />
-          </div>
-        )}
-      </div>
+      {podeFinanceiro && caixa && (
+        <GraficoDeCaixa
+          projecao={caixa.projecao}
+          saldoAtual={caixa.saldoAtual}
+          periodoEmDias={periodo}
+        />
+      )}
 
       {assistente && <CartaoDoAssistente cartao={assistente} />}
 
@@ -353,32 +408,22 @@ function SemBlocosParaVer({ contexto }: { contexto: ContextoSessao }) {
 /** Do tamanho aproximado do que vem — a tela não pula quando o dado chega. */
 function EsqueletoDoPainel() {
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <span className="sr-only" role="status">
-        Carregando os números do painel.
-      </span>
-
-      <div className="desk:grid-cols-4 grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-        {[0, 1, 2, 3].map((i) => (
+    <div
+      aria-busy="true"
+      aria-label="Carregando planejamento financeiro"
+      className="flex min-w-0 flex-col gap-4"
+    >
+      <Esqueleto className="h-8 w-64" />
+      <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-3">
+        {[0, 1, 2].map((i) => (
           <IndicadorCarregando key={i} />
         ))}
       </div>
-
-      <div className="desk:grid-cols-3 grid min-w-0 grid-cols-1 gap-4">
-        <Cartao className="desk:col-span-2 min-w-0 p-4">
-          <Esqueleto className="h-5 w-40" />
-          <Esqueleto className="mt-4 h-[200px] w-full" arredondado="md" />
-        </Cartao>
-        <Cartao className="min-w-0 p-4">
-          <Esqueleto className="h-5 w-28" />
-          <div className="mt-4 flex flex-col gap-3">
-            {[0, 1, 2, 3].map((i) => (
-              <Esqueleto key={i} className="h-10 w-full" arredondado="md" />
-            ))}
-          </div>
-        </Cartao>
-      </div>
-
+      <Cartao className="min-w-0 p-4">
+        <Esqueleto className="h-5 w-40" />
+        <Esqueleto className="mt-4 h-64 w-full" arredondado="md" />
+        <Esqueleto className="mt-4 h-20 w-full" arredondado="md" />
+      </Cartao>
       <Cartao className="min-w-0 overflow-hidden">
         <div className="border-line border-b px-4 py-3">
           <Esqueleto className="h-5 w-44" />

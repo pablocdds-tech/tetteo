@@ -44,7 +44,7 @@ export function FiltroDePeriodo({ atual }: { atual: Periodo }) {
             key={dias}
             href={dias === PERIODO_PADRAO ? "/" : `/?periodo=${dias}`}
             aria-current={ativo ? "true" : undefined}
-            className={`focus-visible:outline-accent inline-flex h-9 items-center rounded-[5px] px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-3 ${
+            className={`focus-visible:outline-accent inline-flex h-11 items-center rounded-[5px] px-3 text-sm font-medium transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-3 sm:h-9 ${
               ativo
                 ? "bg-accent text-accent-ink"
                 : "text-ink-2 hover:bg-surface-2 hover:text-ink"

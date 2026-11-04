@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
 import { BarraDeFiltros } from "@/design-system/barra-de-filtros";
@@ -12,6 +13,7 @@ import { LinhaDeDetalhe, PainelLateral } from "@/design-system/painel-lateral";
 import { Tabela, type Coluna } from "@/design-system/tabela";
 import { Vazio } from "@/design-system/vazio";
 import { formatarMoeda } from "@/lib/numero";
+import { caiNaSituacao, lerSituacao, type Situacao } from "./filtros-contas";
 
 /**
  * AS CONTAS DO PERÍODO.
@@ -27,10 +29,10 @@ import { formatarMoeda } from "@/lib/numero";
  * mudar junto. Estando na URL, os três se atualizam de uma vez, o botão
  * Voltar funciona, e o link colado no WhatsApp abre a mesma tela.
  *
- * BUSCA e SITUAÇÃO ficam AQUI, na memória do navegador. Eles apenas escondem
- * parte do que já está na tela. Mandá-los para o servidor faria uma requisição
- * por tecla digitada — e uma tela que pisca a cada letra é uma tela que
- * ninguém usa para procurar.
+ * BUSCA é local; SITUAÇÃO acompanha a URL com a History API. Ambas filtram
+ * somente os dados já carregados, sem nova consulta a cada alteração. A URL
+ * permite que um indicador reaplique seu filtro, mesmo depois de mudanças
+ * locais, e mantém a seleção coerente durante atualizações do painel.
  *
  * O detalhe também é local. Por isso voltar dele devolve a lista exatamente
  * como estava: mesma busca, mesmo filtro, mesma posição de rolagem. Não houve
@@ -71,21 +73,19 @@ const dataLonga = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
 });
 
+const dataDoArquivo = new Intl.DateTimeFormat("sv-SE", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: "America/Sao_Paulo",
+});
+
 function normalizar(texto: string) {
   return texto
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .trim();
-}
-
-type Situacao = "todas" | "vencidas" | "abertas" | "quitadas";
-
-function caiNaSituacao(conta: ContaNoPainel, situacao: Situacao) {
-  if (situacao === "todas") return true;
-  if (situacao === "vencidas") return conta.atrasado;
-  if (situacao === "abertas") return conta.status === "ABERTO";
-  return conta.status === "QUITADO";
 }
 
 export function ContasDoPeriodo({
@@ -99,8 +99,10 @@ export function ContasDoPeriodo({
   podeLancar: boolean;
 }) {
   const [busca, setBusca] = useState("");
-  const [situacao, setSituacao] = useState<Situacao>("todas");
-  const [aberta, setAberta] = useState<ContaNoPainel | null>(null);
+  const parametros = useSearchParams();
+  const situacao = lerSituacao(parametros.get("situacao") ?? undefined);
+  const [abertaId, setAbertaId] = useState<string | null>(null);
+  const aberta = contas.find((conta) => conta.id === abertaId) ?? null;
   const [exportando, setExportando] = useState(false);
   const ancora = useRef<HTMLAnchorElement>(null);
 
@@ -110,6 +112,10 @@ export function ContasDoPeriodo({
       vencidas: contas.filter((c) => c.atrasado).length,
       abertas: contas.filter((c) => c.status === "ABERTO").length,
       quitadas: contas.filter((c) => c.status === "QUITADO").length,
+      pagarVencidas: contas.filter((c) => caiNaSituacao(c, "pagar-vencidas"))
+        .length,
+      pagarAVencer: contas.filter((c) => caiNaSituacao(c, "pagar-a-vencer"))
+        .length,
     }),
     [contas],
   );
@@ -134,6 +140,17 @@ export function ContasDoPeriodo({
   }, [contas, busca, situacao]);
 
   const temFiltro = busca.trim() !== "" || situacao !== "todas";
+
+  function setSituacao(nova: Situacao) {
+    const url = new URL(window.location.href);
+    if (nova === "todas") url.searchParams.delete("situacao");
+    else url.searchParams.set("situacao", nova);
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }
 
   function limpar() {
     setBusca("");
@@ -192,7 +209,7 @@ export function ContasDoPeriodo({
       const link = ancora.current;
       if (link) {
         link.href = url;
-        link.download = `contas-ate-${fimDoPeriodo.toISOString().slice(0, 10)}.csv`;
+        link.download = `contas-ate-${dataDoArquivo.format(fimDoPeriodo)}.csv`;
         link.click();
       }
 
@@ -259,226 +276,282 @@ export function ContasDoPeriodo({
   ];
 
   return (
-    <Cartao como="section" className="min-w-0 overflow-hidden">
-      <TituloDeSecao
-        apoio={`Vencendo até ${dataLonga.format(fimDoPeriodo)}, mais o que já venceu e continua em aberto`}
-        acao={
-          <Botao
-            peso="secundario"
-            tamanho="pequeno"
-            onClick={exportar}
-            disabled={filtradas.length === 0}
-            carregando={exportando}
-          >
-            <Icone nome="baixar" tamanho={15} />
-            Exportar
-          </Botao>
-        }
-      >
-        Contas do período
-      </TituloDeSecao>
-
-      {/* O `<a>` que recebe o arquivo. Escondido porque quem comanda é o
-          botão acima — mas é um link de verdade, e é ele que baixa. */}
-      <a ref={ancora} className="hidden" aria-hidden="true" tabIndex={-1} />
-
-      {contas.length === 0 ? (
-        <Vazio
-          icone="moeda"
-          titulo="Nenhuma conta neste período"
-          explicacao={
-            podeLancar
-              ? "Não há contas a pagar nem a receber vencendo até o fim do período escolhido. Aumente o período ou lance uma conta no Financeiro."
-              : "Não há contas a pagar nem a receber vencendo até o fim do período escolhido. Experimente aumentar o período."
-          }
+    <div id="contas-do-periodo" className="scroll-mt-20">
+      <Cartao como="section" className="min-w-0 overflow-hidden">
+        <TituloDeSecao
+          apoio={`Contas com vencimento até ${dataLonga.format(fimDoPeriodo)}. Selecione uma linha para ver o detalhe.`}
           acao={
-            podeLancar ? (
+            <Botao
+              peso="secundario"
+              tamanho="pequeno"
+              onClick={exportar}
+              disabled={filtradas.length === 0}
+              carregando={exportando}
+            >
+              <Icone nome="baixar" tamanho={15} />
+              Exportar
+            </Botao>
+          }
+        >
+          Contas do período
+        </TituloDeSecao>
+
+        {/* O `<a>` que recebe o arquivo. Escondido porque quem comanda é o
+          botão acima — mas é um link de verdade, e é ele que baixa. */}
+        <a ref={ancora} className="hidden" aria-hidden="true" tabIndex={-1} />
+
+        {contas.length === 0 ? (
+          <Vazio
+            icone="moeda"
+            titulo="Nenhuma conta neste período"
+            explicacao={
+              podeLancar
+                ? "Não há contas a pagar nem a receber vencendo até o fim do período escolhido. Aumente o período ou lance uma conta no Financeiro."
+                : "Não há contas a pagar nem a receber vencendo até o fim do período escolhido. Experimente aumentar o período."
+            }
+            acao={
+              podeLancar ? (
+                <Link
+                  href="/financeiro/pagar"
+                  className={estiloDeBotao("secundario", "pequeno")}
+                >
+                  Abrir contas a pagar
+                </Link>
+              ) : undefined
+            }
+          />
+        ) : (
+          <>
+            <BarraDeFiltros
+              busca={busca}
+              aoBuscar={setBusca}
+              rotuloBusca="Buscar por descrição, fornecedor ou categoria"
+              nomeDoGrupo="Situação da conta"
+              opcoes={[
+                { valor: "todas", rotulo: "Todas", contagem: contagens.todas },
+                ...(situacao === "pagar-vencidas"
+                  ? [
+                      {
+                        valor: "pagar-vencidas",
+                        rotulo: "A pagar vencidas",
+                        contagem: contagens.pagarVencidas,
+                      },
+                    ]
+                  : []),
+                ...(situacao === "pagar-a-vencer"
+                  ? [
+                      {
+                        valor: "pagar-a-vencer",
+                        rotulo: "A pagar a vencer",
+                        contagem: contagens.pagarAVencer,
+                      },
+                    ]
+                  : []),
+                {
+                  valor: "vencidas",
+                  rotulo: "Vencidas",
+                  contagem: contagens.vencidas,
+                },
+                {
+                  valor: "abertas",
+                  rotulo: "Em aberto",
+                  contagem: contagens.abertas,
+                },
+                {
+                  valor: "quitadas",
+                  rotulo: "Quitadas",
+                  contagem: contagens.quitadas,
+                },
+              ]}
+              selecionado={situacao}
+              aoSelecionar={(v) => setSituacao(v as Situacao)}
+              aoLimpar={temFiltro ? limpar : undefined}
+              resumo={`${filtradas.length} de ${contas.length} ${
+                contas.length === 1 ? "conta" : "contas"
+              }`}
+            />
+
+            <p
+              aria-live="polite"
+              className="border-line text-ink-2 flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 text-sm"
+            >
+              <span>
+                {filtradas.length}{" "}
+                {filtradas.length === 1
+                  ? "conta encontrada"
+                  : "contas encontradas"}
+              </span>
+              <span className="flex flex-wrap gap-x-4 gap-y-1">
+                <span>
+                  A pagar:{" "}
+                  <strong className="text-ink font-semibold tabular-nums">
+                    {formatarMoeda(
+                      filtradas
+                        .filter((c) => c.direcao === "PAGAR")
+                        .reduce((total, c) => total + c.valor, 0),
+                    )}
+                  </strong>
+                </span>
+                <span>
+                  A receber:{" "}
+                  <strong className="text-ok font-semibold tabular-nums">
+                    {formatarMoeda(
+                      filtradas
+                        .filter((c) => c.direcao === "RECEBER")
+                        .reduce((total, c) => total + c.valor, 0),
+                    )}
+                  </strong>
+                </span>
+              </span>
+            </p>
+            <Tabela
+              legenda="Contas a pagar e a receber do período"
+              colunas={colunas}
+              linhas={filtradas}
+              chaveDaLinha={(c) => c.id}
+              linhaAtiva={aberta?.id ?? null}
+              aoAbrir={(conta) => setAbertaId(conta.id)}
+              rotuloAbrir={(c) => `Ver detalhe de ${c.descricao}`}
+              vazio={
+                <Vazio
+                  icone="lupa"
+                  titulo="Nenhuma conta com esses filtros"
+                  explicacao={
+                    busca.trim()
+                      ? `Nada encontrado para “${busca.trim()}” na situação escolhida. Sua busca continua aqui — limpe os filtros para ver as ${contas.length} contas do período.`
+                      : `Nenhuma conta nessa situação. Limpe os filtros para ver as ${contas.length} contas do período.`
+                  }
+                  acao={
+                    <Botao peso="secundario" tamanho="pequeno" onClick={limpar}>
+                      Limpar filtros
+                    </Botao>
+                  }
+                />
+              }
+            />
+          </>
+        )}
+
+        {contas.length >= 300 && (
+          <p className="border-line text-warn border-t px-4 py-3 text-xs">
+            O painel exibe até 300 contas. Consulte o Financeiro para conferir
+            todos os lançamentos.
+          </p>
+        )}
+
+        <PainelLateral
+          aberto={aberta !== null}
+          aoFechar={() => setAbertaId(null)}
+          titulo={aberta?.descricao ?? ""}
+          apoio={
+            aberta
+              ? `${aberta.direcao === "PAGAR" ? "Conta a pagar" : "Conta a receber"} · vence ${dataLonga.format(aberta.vencimento)}`
+              : undefined
+          }
+          rodape={
+            aberta ? (
               <Link
-                href="/financeiro/pagar"
+                href={`/financeiro/lancamentos/${aberta.id}`}
                 className={estiloDeBotao("secundario", "pequeno")}
               >
-                Abrir contas a pagar
+                Abrir no Financeiro
               </Link>
             ) : undefined
           }
-        />
-      ) : (
-        <>
-          <BarraDeFiltros
-            busca={busca}
-            aoBuscar={setBusca}
-            rotuloBusca="Buscar por descrição, fornecedor ou categoria"
-            nomeDoGrupo="Situação da conta"
-            opcoes={[
-              { valor: "todas", rotulo: "Todas", contagem: contagens.todas },
-              {
-                valor: "vencidas",
-                rotulo: "Vencidas",
-                contagem: contagens.vencidas,
-              },
-              {
-                valor: "abertas",
-                rotulo: "Em aberto",
-                contagem: contagens.abertas,
-              },
-              {
-                valor: "quitadas",
-                rotulo: "Quitadas",
-                contagem: contagens.quitadas,
-              },
-            ]}
-            selecionado={situacao}
-            aoSelecionar={(v) => setSituacao(v as Situacao)}
-            aoLimpar={temFiltro ? limpar : undefined}
-            resumo={`${filtradas.length} de ${contas.length} ${
-              contas.length === 1 ? "conta" : "contas"
-            }`}
-          />
+        >
+          {aberta && (
+            <>
+              <h3 className="text-ink-3 text-xs leading-[18px] font-semibold">
+                O lançamento
+              </h3>
+              <dl className="mt-1">
+                <LinhaDeDetalhe rotulo="Valor">
+                  <span className="font-semibold tabular-nums">
+                    {formatarMoeda(aberta.valor)}
+                  </span>
+                </LinhaDeDetalhe>
+                <LinhaDeDetalhe rotulo="Situação">
+                  {aberta.status === "QUITADO" ? (
+                    <Etiqueta tom="ok">Quitada</Etiqueta>
+                  ) : aberta.atrasado ? (
+                    <Etiqueta tom="ruim">Vencida</Etiqueta>
+                  ) : (
+                    <Etiqueta tom="aviso">Em aberto</Etiqueta>
+                  )}
+                </LinhaDeDetalhe>
+                <LinhaDeDetalhe rotulo="Vencimento">
+                  <span className="tabular-nums">
+                    {dataLonga.format(aberta.vencimento)}
+                  </span>
+                </LinhaDeDetalhe>
+                {aberta.parcela && aberta.totalParcelas ? (
+                  <LinhaDeDetalhe rotulo="Parcela">
+                    {aberta.parcela} de {aberta.totalParcelas}
+                  </LinhaDeDetalhe>
+                ) : null}
+              </dl>
 
-          <Tabela
-            legenda="Contas a pagar e a receber do período"
-            colunas={colunas}
-            linhas={filtradas}
-            chaveDaLinha={(c) => c.id}
-            linhaAtiva={aberta?.id ?? null}
-            aoAbrir={setAberta}
-            rotuloAbrir={(c) => `Ver detalhe de ${c.descricao}`}
-            vazio={
-              <Vazio
-                icone="lupa"
-                titulo="Nenhuma conta com esses filtros"
-                explicacao={
-                  busca.trim()
-                    ? `Nada encontrado para “${busca.trim()}” na situação escolhida. Sua busca continua aqui — limpe os filtros para ver as ${contas.length} contas do período.`
-                    : `Nenhuma conta nessa situação. Limpe os filtros para ver as ${contas.length} contas do período.`
-                }
-                acao={
-                  <Botao peso="secundario" tamanho="pequeno" onClick={limpar}>
-                    Limpar filtros
-                  </Botao>
-                }
-              />
-            }
-          />
-        </>
-      )}
+              <h3 className="text-ink-3 mt-5 text-xs leading-[18px] font-semibold">
+                De onde veio
+              </h3>
+              <dl className="mt-1">
+                <LinhaDeDetalhe rotulo="Fornecedor">
+                  {aberta.fornecedor?.nome ?? (
+                    <span className="text-ink-3">não informado</span>
+                  )}
+                </LinhaDeDetalhe>
+                <LinhaDeDetalhe rotulo="Categoria">
+                  {aberta.categoria?.nome ?? (
+                    <span className="text-ink-3">sem categoria</span>
+                  )}
+                </LinhaDeDetalhe>
+                <LinhaDeDetalhe rotulo="Conta">
+                  {aberta.conta?.nome ?? (
+                    <span className="text-ink-3">não vinculada</span>
+                  )}
+                </LinhaDeDetalhe>
+                <LinhaDeDetalhe rotulo="Origem">
+                  {aberta.daNota
+                    ? "Gerada por uma nota de entrada do Estoque"
+                    : "Lançada à mão no Financeiro"}
+                </LinhaDeDetalhe>
+              </dl>
 
-      <PainelLateral
-        aberto={aberta !== null}
-        aoFechar={() => setAberta(null)}
-        titulo={aberta?.descricao ?? ""}
-        apoio={
-          aberta
-            ? `${aberta.direcao === "PAGAR" ? "Conta a pagar" : "Conta a receber"} · vence ${dataLonga.format(aberta.vencimento)}`
-            : undefined
-        }
-        rodape={
-          aberta ? (
-            <Link
-              href={
-                aberta.direcao === "PAGAR"
-                  ? "/financeiro/pagar"
-                  : "/financeiro/receber"
-              }
-              className={estiloDeBotao("secundario", "pequeno")}
-            >
-              Abrir no Financeiro
-            </Link>
-          ) : undefined
-        }
-      >
-        {aberta && (
-          <>
-            <h3 className="text-ink-3 text-xs leading-[18px] font-semibold">
-              O lançamento
-            </h3>
-            <dl className="mt-1">
-              <LinhaDeDetalhe rotulo="Valor">
-                <span className="font-semibold tabular-nums">
-                  {formatarMoeda(aberta.valor)}
-                </span>
-              </LinhaDeDetalhe>
-              <LinhaDeDetalhe rotulo="Situação">
-                {aberta.status === "QUITADO" ? (
-                  <Etiqueta tom="ok">Quitada</Etiqueta>
-                ) : aberta.atrasado ? (
-                  <Etiqueta tom="ruim">Vencida</Etiqueta>
+              <h3 className="text-ink-3 mt-5 text-xs leading-[18px] font-semibold">
+                Histórico
+              </h3>
+              <dl className="mt-1">
+                {aberta.quitadoEm ? (
+                  <>
+                    <LinhaDeDetalhe rotulo="Quitada em">
+                      <span className="tabular-nums">
+                        {dataLonga.format(aberta.quitadoEm)}
+                      </span>
+                    </LinhaDeDetalhe>
+                    <LinhaDeDetalhe rotulo="Valor pago">
+                      <span className="tabular-nums">
+                        {aberta.valorQuitado === null
+                          ? "—"
+                          : formatarMoeda(aberta.valorQuitado)}
+                      </span>
+                    </LinhaDeDetalhe>
+                  </>
                 ) : (
-                  <Etiqueta tom="aviso">Em aberto</Etiqueta>
-                )}
-              </LinhaDeDetalhe>
-              <LinhaDeDetalhe rotulo="Vencimento">
-                <span className="tabular-nums">
-                  {dataLonga.format(aberta.vencimento)}
-                </span>
-              </LinhaDeDetalhe>
-              {aberta.parcela && aberta.totalParcelas ? (
-                <LinhaDeDetalhe rotulo="Parcela">
-                  {aberta.parcela} de {aberta.totalParcelas}
-                </LinhaDeDetalhe>
-              ) : null}
-            </dl>
-
-            <h3 className="text-ink-3 mt-5 text-xs leading-[18px] font-semibold">
-              De onde veio
-            </h3>
-            <dl className="mt-1">
-              <LinhaDeDetalhe rotulo="Fornecedor">
-                {aberta.fornecedor?.nome ?? (
-                  <span className="text-ink-3">não informado</span>
-                )}
-              </LinhaDeDetalhe>
-              <LinhaDeDetalhe rotulo="Categoria">
-                {aberta.categoria?.nome ?? (
-                  <span className="text-ink-3">sem categoria</span>
-                )}
-              </LinhaDeDetalhe>
-              <LinhaDeDetalhe rotulo="Conta">
-                {aberta.conta?.nome ?? (
-                  <span className="text-ink-3">não vinculada</span>
-                )}
-              </LinhaDeDetalhe>
-              <LinhaDeDetalhe rotulo="Origem">
-                {aberta.daNota
-                  ? "Gerada por uma nota de entrada do Estoque"
-                  : "Lançada à mão no Financeiro"}
-              </LinhaDeDetalhe>
-            </dl>
-
-            <h3 className="text-ink-3 mt-5 text-xs leading-[18px] font-semibold">
-              Histórico
-            </h3>
-            <dl className="mt-1">
-              {aberta.quitadoEm ? (
-                <>
-                  <LinhaDeDetalhe rotulo="Quitada em">
-                    <span className="tabular-nums">
-                      {dataLonga.format(aberta.quitadoEm)}
-                    </span>
+                  <LinhaDeDetalhe rotulo="Quitação">
+                    <span className="text-ink-3">ainda não foi quitada</span>
                   </LinhaDeDetalhe>
-                  <LinhaDeDetalhe rotulo="Valor pago">
-                    <span className="tabular-nums">
-                      {aberta.valorQuitado === null
-                        ? "—"
-                        : formatarMoeda(aberta.valorQuitado)}
-                    </span>
-                  </LinhaDeDetalhe>
-                </>
-              ) : (
-                <LinhaDeDetalhe rotulo="Quitação">
-                  <span className="text-ink-3">ainda não foi quitada</span>
-                </LinhaDeDetalhe>
-              )}
-            </dl>
+                )}
+              </dl>
 
-            <p className="text-ink-3 mt-5 text-xs leading-[18px]">
-              Para quitar, estornar ou cancelar esta conta, abra o Financeiro. O
-              painel é só de leitura — mexer no dinheiro acontece onde ficam as
-              travas e o histórico de quem mexeu.
-            </p>
-          </>
-        )}
-      </PainelLateral>
-    </Cartao>
+              <p className="text-ink-3 mt-5 text-xs leading-[18px]">
+                Para quitar, estornar ou cancelar esta conta, abra o Financeiro.
+                O painel é só de leitura — mexer no dinheiro acontece onde ficam
+                as travas e o histórico de quem mexeu.
+              </p>
+            </>
+          )}
+        </PainelLateral>
+      </Cartao>
+    </div>
   );
 }
