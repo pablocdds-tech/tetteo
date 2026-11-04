@@ -62,6 +62,16 @@ const RESERVATION_STATUS: Record<string, string> = {
   CONFIRMED: "Confirmada",
   CANCELLED: "Cancelada",
 };
+const NAME_SOURCE: Record<string, string> = {
+  CUSTOMER_CORRECTION: "Informado pelo cliente neste atendimento",
+  CRM_VERIFIED: "Cadastro CRM verificado",
+  DEVICE_CONTACT: "Nome do contato no aparelho",
+  PROVIDER_CONTACT: "Contato sincronizado do WhatsApp",
+  CRM_PHONE_HINT: "Nome sugerido do cadastro, sem vínculo verificado",
+  WHATSAPP_PROFILE: "Nome de perfil do WhatsApp",
+  HISTORY: "Histórico do WhatsApp",
+  UNKNOWN: "Não identificado",
+};
 const EMPTY_MESSAGES: VirtualConversationDetail["messages"] = [];
 const when = (value: string | null) =>
   value
@@ -981,6 +991,18 @@ function VirtualInboxForAccount({
                     <dl>
                       <dt>Nome</dt>
                       <dd>{currentDetail.customer.name}</dd>
+                      <dt>Origem do nome</dt>
+                      <dd>
+                        {NAME_SOURCE[
+                          currentDetail.customer.nameSource ?? "UNKNOWN"
+                        ] ?? NAME_SOURCE.UNKNOWN}
+                      </dd>
+                      <dt>Nome atualizado em</dt>
+                      <dd>
+                        {currentDetail.customer.nameUpdatedAt
+                          ? when(currentDetail.customer.nameUpdatedAt)
+                          : "Data não informada"}
+                      </dd>
                       <dt>Origem do contexto</dt>
                       <dd>{currentDetail.customer.source}</dd>
                       <dt>Atualização</dt>

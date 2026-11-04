@@ -10,7 +10,12 @@ import {
 } from "@/server/atendimento-canal";
 import { db } from "@/server/db";
 import { channelRecipientHash } from "@/server/atendimento-credenciais";
+import { safeVirtualCustomerName } from "@/server/atendimento-nome";
 import { canonicalHash, CrmError, protectIdentity } from "./campaign-domain";
+import {
+  applyVirtualCustomerName,
+  virtualNameLookupDue,
+} from "./virtual-name-state";
 import {
   type VirtualClaim,
   type VirtualTurnInput,
@@ -156,7 +161,7 @@ export async function assertVirtualTurn(
     | "version"
     | "leaseOwner"
     | "runId"
-  >,
+  > & { contactId?: string | null },
 ) {
   await lockVirtualConversation(tx, input.conversationId);
   const conversation = await tx.avConversation.findFirst({
@@ -197,6 +202,7 @@ export async function assertVirtualTurn(
     !run ||
     !conversation ||
     conversation.version !== input.version ||
+    ("contactId" in input && conversation.contactId !== input.contactId) ||
     conversation.leaseOwner !== input.leaseOwner ||
     !conversation.leaseUntil ||
     conversation.leaseUntil.getTime() <= Date.now() ||
@@ -357,6 +363,8 @@ const inboundSchema = z
       .optional(),
     recipient: z.string().max(160).optional(),
     occurredAt: z.iso.datetime().optional(),
+    profileName: z.string().max(500).optional(),
+    profileObservedAt: z.iso.datetime().optional(),
   })
   .strict();
 export async function receiveVirtualInbound(
@@ -427,7 +435,17 @@ export async function receiveVirtualInbound(
         externalId: data.externalId,
         type: data.type,
         senderKey: data.senderKey,
-        payload: { ...data, text },
+        payload: {
+          ...data,
+          text,
+          ...(data.profileName
+            ? {
+                profileName:
+                  safeVirtualCustomerName(data.profileName) ??
+                  "[nome indisponível]",
+              }
+            : {}),
+        },
       },
     });
     await tx.avChannelAccount.update({
@@ -677,6 +695,19 @@ export async function receiveVirtualInbound(
     const current = await tx.avConversation.findUniqueOrThrow({
       where: { id: conversation.id },
     });
+    const resolvedName = await applyVirtualCustomerName(tx, current, data);
+    const nameRevision =
+      account.mode === "EVOLUTION"
+        ? (attestation?.revision ??
+          (
+            await tx.avChannelConnection.findUnique({
+              where: { accountId },
+              select: { revision: true },
+            })
+          )?.revision)
+        : undefined;
+    const nameLookupDue =
+      nameRevision !== undefined && virtualNameLookupDue(current, nameRevision);
     const now = new Date();
     const first = current.pendingSince ?? now;
     const due = new Date(
@@ -711,9 +742,11 @@ export async function receiveVirtualInbound(
     await tx.avConversation.update({
       where: { id: conversation.id },
       data: {
-        contactId: contact?.id ?? null,
-        displayName:
-          namePreference?.value ?? contact?.name ?? current.displayName,
+        contactId: resolvedName.contactId,
+        displayName: resolvedName.name,
+        ...(nameLookupDue
+          ? { nameLookupAfter: now, nameLookupAttempts: 0 }
+          : {}),
         version: { increment: 1 },
         pendingSince: first,
         processAfter: due,

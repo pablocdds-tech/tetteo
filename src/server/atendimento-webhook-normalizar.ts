@@ -25,6 +25,8 @@ export type NormalizedCustomerMessage = {
   group: boolean;
   occurredAt?: string;
   trustedPhone?: string;
+  profileName?: string;
+  profileObservedAt?: string;
 };
 export type NormalizedChannelBatch = {
   messages: NormalizedCustomerMessage[];
@@ -49,6 +51,28 @@ function timestamp(value: unknown) {
     return undefined;
   const date = new Date(numeric < 1e12 ? numeric * 1000 : numeric);
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+}
+function profileName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = value.trim();
+  return name && name.length <= 160 && !/[\x00-\x1f\x7f]/.test(name)
+    ? name
+    : undefined;
+}
+function metaProfileName(
+  contacts: unknown,
+  sender: string | null,
+): string | undefined {
+  if (!sender || !Array.isArray(contacts) || contacts.length > 100)
+    return undefined;
+  const matches = contacts.filter((value) => {
+    const parsed = object.safeParse(value);
+    return parsed.success && e164(parsed.data.wa_id) === sender;
+  });
+  if (matches.length !== 1) return undefined;
+  const contact = object.parse(matches[0]);
+  const profile = object.safeParse(contact.profile);
+  return profile.success ? profileName(profile.data.name) : undefined;
 }
 const correlation = (value: unknown) =>
   typeof value === "string" &&
@@ -142,7 +166,9 @@ export function normalizeMetaWebhook(
         const message = record(item),
           content = normalizedContent(message.type, message);
         if (!content) continue;
-        const sender = e164(message.from);
+        const sender = e164(message.from),
+          name = metaProfileName(value.contacts, sender),
+          observedAt = timestamp(message.timestamp);
         result.messages.push({
           externalId: `message:${id.parse(message.id)}`,
           senderKey: sender ?? "unresolved:meta",
@@ -151,8 +177,12 @@ export function normalizeMetaWebhook(
           fromSelf: false,
           group: false,
           ...(sender ? { trustedPhone: sender } : {}),
-          ...(timestamp(message.timestamp)
-            ? { occurredAt: timestamp(message.timestamp) }
+          ...(observedAt ? { occurredAt: observedAt } : {}),
+          ...(name
+            ? {
+                profileName: name,
+                ...(observedAt ? { profileObservedAt: observedAt } : {}),
+              }
             : {}),
         });
       }
@@ -264,6 +294,9 @@ export function normalizeEvolutionWebhook(
         text: "[Anexo recebido; conferência humana necessária]",
         transcriptionCertain: false,
       };
+    const name =
+      !fromSelf && !group && sender ? profileName(data.pushName) : undefined;
+    const observedAt = timestamp(data.messageTimestamp);
     if (content)
       result.messages.push({
         externalId: `message:${external}`,
@@ -273,8 +306,12 @@ export function normalizeEvolutionWebhook(
         fromSelf,
         group,
         ...(sender ? { trustedPhone: sender } : {}),
-        ...(timestamp(data.messageTimestamp)
-          ? { occurredAt: timestamp(data.messageTimestamp) }
+        ...(observedAt ? { occurredAt: observedAt } : {}),
+        ...(name
+          ? {
+              profileName: name,
+              ...(observedAt ? { profileObservedAt: observedAt } : {}),
+            }
           : {}),
       });
   } else if (event === "messages.update") {

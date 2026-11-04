@@ -109,6 +109,51 @@ Os cinco cenários temporais preservam a referência de “amanhã” enviada à
 
 Os casos chamam serviços de verdade e transações PostgreSQL, com `ChannelManagementFactory` fictícia. Não constituem homologação dos servidores Evolution/Meta nem autorização para mensagens a clientes.
 
+## Nomes dos clientes — 04/11/2026
+
+A migração aditiva `20261104010000_whatsapp_customer_names` foi aplicada apenas
+no PostgreSQL local exclusivo. A suíte dirigida passou em **26/26 cenários** no
+estado final do código, com consultas de provedor simuladas e dados fictícios
+Kairu. Com os 99 cenários de atendimento da base anterior, o conjunto passa a
+**125 cenários**; a reexecução agregada nessa revisão será confirmada pelo CI,
+separadamente desta evidência local.
+
+```powershell
+$env:AV_WORKER_ENABLED = 'false'
+$env:AV_HISTORY_WORKER_ENABLED = 'false'
+$env:AV_NAMES_WORKER_ENABLED = 'false'
+node --import tsx --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 src/modules/crm/services/virtual-customer-name.integracao.ts
+```
+
+Os testes verificam a prioridade: correção explícita do cliente, CRM verificado,
+contato exato do aparelho/provedor, perfil do WhatsApp, pista CRM por telefone,
+nome histórico e fallback mascarado. Contato do provedor não é apresentado como
+agenda do aparelho sem evidência dessa origem. Perfil válido vence cadastro CRM
+sem verificação e permite aproveitar o nome sem promover `known` ou `contactId`.
+Uma pista CRM isolada exige confirmação e nunca fornece notas, email, identidade
+verificada ou permissões adicionais.
+
+A cobertura inclui isolamento por organização/unidade/conta; telefone
+internacional exato, sem inferir nono dígito; cadastros ambíguos e provas futuras,
+sem responsável, inativas ou fundidas; nomes Unicode; rejeição de links,
+telefones, credenciais e placeholders; atualização/origem do contexto; e
+auditoria sem nome ou telefone. O fallback mascarado aplicado novamente continua
+`UNKNOWN` e não pode preencher uma reserva.
+
+Os cenários de fila/cache exercitam duas réplicas com HTTP pendente, retorno de
+outro remetente, revisão alterada, lease substituído, backoff e três tentativas.
+Consultas em conta inativa conservam pausa, estado e fila da IA e não geram
+mensagem, outbox, reserva ou identidade CRM. Correções feitas durante a consulta
+e eventos de perfil antigos preservam o nome escolhido pelo cliente.
+
+O agente preenche um rascunho com nome de perfil válido sem perguntar novamente,
+mas não cria a reserva antes da confirmação final. Nome inseguro em resumo
+legado não cria objeto nem reaparece na resposta. Uma troca de identidade cerca
+o turno anterior; mesmo com versão/lease novos, `contactId` antigo é recusado
+para consulta CRM ou criação. Um alias explícito não restabelece o vínculo
+revogado. Prettier, ESLint dirigido e revisão do diff passaram; estes testes não
+comprovam a agenda disponível em um aparelho real ou envio WhatsApp.
+
 ## Histórico do WhatsApp
 
 A migração aditiva `20261103150000_whatsapp_history` foi aplicada somente no PostgreSQL local exclusivo. Os 13 casos de `virtual-history.integracao.ts` verificam importação em conta inativa; isolamento e permissão; revogação durante HTTP; direções, datas e sigilo; preservação do controle humano e da fila live já existente; deduplicação nos dois sentidos entre histórico e webhook, incluindo saídas do sistema; replay atual/antigo e continuação parcial; páginas repetidas e três tentativas; duas réplicas; recuperação e fencing de lease; mudança de revisão; linhas sem remetente/data confiáveis; e atualização monotônica de `lastMessageAt` sob disputa real pelo lock PostgreSQL.

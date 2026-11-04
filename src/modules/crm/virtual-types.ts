@@ -57,6 +57,18 @@ export type VirtualConversationDetail = {
     createdAt: string;
   }[];
   customer: {
+    nameSource?:
+      | "CUSTOMER_CORRECTION"
+      | "CRM_VERIFIED"
+      | "DEVICE_CONTACT"
+      | "PROVIDER_CONTACT"
+      | "CRM_PHONE_HINT"
+      | "WHATSAPP_PROFILE"
+      | "HISTORY"
+      | "UNKNOWN";
+    nameUpdatedAt?: string | null;
+    nameUsableForReservation?: boolean;
+    nameNeedsConfirmation?: boolean;
     id: string | null;
     name: string;
     known: boolean;

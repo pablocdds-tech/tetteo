@@ -47,6 +47,16 @@ export type ChannelHistoryPage = {
   nextPage: number | null;
   skipped: number;
 };
+export type ChannelContactName = {
+  name: string;
+  source: "DEVICE_CONTACT" | "PROVIDER_CONTACT" | "WHATSAPP_PROFILE";
+  updatedAt: string | null;
+};
+export type ChannelContactNamesQuery = { trustedPhone: string };
+export type ChannelContactNamesResult = {
+  trustedPhone: string;
+  names: ChannelContactName[];
+};
 export interface ChannelManagement extends AtendimentoChannelAdapter {
   createInstance?(): Promise<void>;
   ensureInstance?(): Promise<void>;
@@ -54,6 +64,9 @@ export interface ChannelManagement extends AtendimentoChannelAdapter {
   webhook(url: string, replace: boolean): Promise<void>;
   qr(): Promise<ChannelConnectionQr>;
   readHistoryPage?(query: ChannelHistoryQuery): Promise<ChannelHistoryPage>;
+  lookupContactNames?(
+    query: ChannelContactNamesQuery,
+  ): Promise<ChannelContactNamesResult>;
 }
 export type ChannelManagementFactory = (
   accountId: string,

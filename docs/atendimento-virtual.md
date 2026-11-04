@@ -123,6 +123,39 @@ Esse contrato é de ensaio do Tetteo. Não é o contrato de webhook Meta/Evoluti
 
 ## Conectar Evolution ou API oficial
 
+### Nome do cliente e origem
+
+Mensagens de cliente autenticadas aproveitam o nome disponível para o telefone
+canônico da própria conta. A prioridade é: correção explícita do cliente, CRM
+verificado da unidade, contato sincronizado da instância WhatsApp, perfil recebido
+do canal, sugestão não verificada de cadastro anterior e nome do histórico. Sem
+nome válido, a conversa mostra apenas um identificador com os últimos dígitos.
+
+Nome e identidade são campos distintos. Um apelido ou contato do aparelho não
+marca o CRM como reconhecido, não concede acesso a notas, endereços, reservas de
+outro cadastro ou ao painel. Um cadastro sem prova ou com conflito requer
+confirmação breve; nenhuma correspondência é feita apenas pelo nome digitado.
+O nome de perfil recebido via Meta exige `wa_id` correspondente ao remetente.
+
+No Evolution, o serviço consulta um contato por telefone e instância exatos,
+fora da transação de recebimento. O worker tem lease, até três tentativas e
+cache; não envia mensagem, não marca leitura e não reconecta o número. Conversas
+anteriores também recebem essa atualização. Mensagem nova pode pedir atualização
+depois de seis horas; uma falha esgotada aguarda pelo menos quinze minutos e
+nova atividade para outra tentativa. Use `AV_NAMES_WORKER_ENABLED=false` nos
+ensaios. A migração é `20261104010000_whatsapp_customer_names`.
+
+Na versão 2.3.7, o campo `pushName` de um contato pode misturar nome da agenda e
+nome de perfil. Por isso aparece como **Contato sincronizado do WhatsApp**;
+somente um campo explícito permite uma origem mais específica. O painel mostra
+**Origem do nome** e data separadas da origem da identidade CRM.
+
+Nomes válidos do canal podem preencher o rascunho da reserva sem perguntar de
+novo. Nome informado para aquela reserva e correção do cliente prevalecem; o
+resumo e a confirmação da reserva continuam obrigatórios. Credenciais, URLs,
+telefones e marcadores genéricos não são usados como nome de pessoa. O histórico
+e o nome recebido são dados e não instruções do agente.
+
 Os dois adaptadores estão implementados. Credenciais e testes reais permanecem sob controle do gestor no painel HTTPS. Salvar uma conta nunca ativa o atendimento. Os testes automatizados usam mensagens fictícias e HTTP simulado; não comprovam entrega real.
 
 1. Em **Configuração**, cadastre/teste/ative o Gemini e confira tarifas e teto de consumo.
