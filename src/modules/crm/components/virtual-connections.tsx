@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
 import type { VirtualModelStatus } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
+import { virtualModelSetup } from "./virtual-model-setup";
 import styles from "./virtual.module.css";
 
 const subscribe = () => () => {};
@@ -22,13 +29,6 @@ const problem = (failure: unknown) =>
   failure instanceof Error
     ? failure.message
     : "Não foi possível concluir a configuração do Gemini.";
-const TEST_LABELS: Record<VirtualModelStatus["test"]["state"], string> = {
-  NONE: "Sem teste realizado",
-  PENDING: "Configuração salva; teste pendente",
-  TESTING: "Teste em andamento",
-  PASSED: "Teste concluído com sucesso",
-  FAILED: "Teste falhou",
-};
 
 export default function VirtualConnections({
   embedded = false,
@@ -68,26 +68,36 @@ function VirtualConnectionForStore({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [revision, setRevision] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  const setupId = useId();
+  const keyId = `${setupId}-key`;
+  const costsId = `${setupId}-costs`;
+  const testReasonId = `${setupId}-test-reason`;
+  const activationReasonId = `${setupId}-activation-reason`;
+  const saveReasonId = `${setupId}-save-reason`;
   const pendingTest = useRef<{ revision: number; requestId: string } | null>(
     null,
   );
-  const inputRate = Math.round(Number(inputPrice) * 1_000_000);
-  const outputRate = Math.round(Number(outputPrice) * 1_000_000);
-  const hasEdits = Boolean(
-    status &&
-    (apiKey ||
-      model !== (status.model ?? "") ||
-      inputRate !== status.rates.inputMicrosPerMillion ||
-      outputRate !== status.rates.outputMicrosPerMillion ||
-      ratesConfirmed !== status.rates.confirmed),
+  const setup = virtualModelSetup(
+    status,
+    {
+      pendingKey: Boolean(apiKey.trim()),
+      model,
+      inputPrice,
+      outputPrice,
+      ratesConfirmed,
+    },
+    Boolean(busy),
+    now,
+    secure,
   );
-  const testPassed =
-    status?.test.state === "PASSED" && status.test.revision === status.revision;
+  const { inputRate, outputRate, testPassed } = setup;
   const configuredModelMissingFromList = Boolean(
     model && !models.some((item) => item.name === model),
   );
 
   function accept(result: VirtualModelStatus) {
+    setNow(Date.now());
     setStatus(result);
     setModel(result.model ?? "");
     setInputPrice(String(result.rates.inputMicrosPerMillion / 1_000_000));
@@ -122,6 +132,13 @@ function VirtualConnectionForStore({
 
   async function save(withKey: boolean) {
     if (!secure || busy) return;
+    if (!withKey && setup.saveReason) return;
+    if (inputRate === null || outputRate === null) {
+      setError(
+        "Preencha as duas tarifas antes de salvar. Informe zero somente para a modalidade gratuita da sua conta.",
+      );
+      return;
+    }
     setBusy("save");
     setError("");
     setNotice("");
@@ -141,13 +158,25 @@ function VirtualConnectionForStore({
       accept(result);
       pendingTest.current = null;
       setNotice(
-        "Configuração privada salva. O teste desta revisão ainda precisa ser concluído antes da ativação.",
+        withKey && (!result.model || !result.rates.confirmed)
+          ? "Chave privada salva. Confira o modelo e as tarifas em Modelo e custos, confirme os valores e salve para liberar o teste."
+          : "Modelo e custos salvos. Faça o teste desta revisão e depois ative o Gemini.",
       );
-      if (withKey) await loadModels();
+      if (withKey) {
+        setApiKey("");
+        setBusy("models");
+        try {
+          await loadModels();
+        } catch {
+          setError(
+            "A chave foi salva, mas a lista de modelos não pôde ser consultada. Tente consultar novamente ou informe o nome do modelo manualmente em Modelo e custos.",
+          );
+        }
+      }
     } catch (failure) {
       setError(problem(failure));
     } finally {
-      setApiKey("");
+      if (withKey) setApiKey("");
       setBusy(null);
     }
   }
@@ -169,7 +198,7 @@ function VirtualConnectionForStore({
   }
 
   async function test() {
-    if (!status || busy || hasEdits) return;
+    if (!status || setup.testReason) return;
     setBusy("test");
     setError("");
     setNotice("");
@@ -200,7 +229,7 @@ function VirtualConnectionForStore({
   }
 
   async function activate(enabled: boolean) {
-    if (!status || busy) return;
+    if (!secure || !status || busy || (enabled && setup.activateReason)) return;
     setBusy("activate");
     setError("");
     setNotice("");
@@ -271,8 +300,11 @@ function VirtualConnectionForStore({
                   ? "Há uma configuração privada no ambiente do servidor."
                   : "Há uma chave privada salva para esta unidade."
                 : "Nenhuma chave do Gemini foi configurada nesta unidade."}{" "}
-              Depois de salvar a chave, faça o teste e ative a inteligência
-              artificial.
+              {status.enabled
+                ? "Gemini está ativo para esta unidade. Alterações de chave, modelo ou tarifas exigem novo teste antes de reativar."
+                : testPassed
+                  ? "O teste desta revisão foi aprovado. Ative o Gemini abaixo para usar a inteligência artificial nesta unidade."
+                  : "Escolha o modelo, confira e confirme as tarifas em Modelo e custos. Salve essa configuração para liberar o teste e, depois, a ativação."}
             </p>
             {status.blockers.length > 0 && (
               <ul className={styles.checklist}>
@@ -293,7 +325,7 @@ function VirtualConnectionForStore({
               )}
               {secure && (
                 <>
-                  <section className={styles.panel}>
+                  <section id={keyId} tabIndex={-1} className={styles.panel}>
                     <h2>Chave privada do Gemini</h2>
                     <p>
                       Insira a chave somente neste campo do sistema. Ela será
@@ -350,10 +382,20 @@ function VirtualConnectionForStore({
                               ? "Substituir chave e consultar modelos"
                               : "Salvar chave e consultar modelos"}
                         </button>
+                        {setup.pendingKey && status.credentialPresent && (
+                          <button
+                            type="button"
+                            className="btn"
+                            disabled={Boolean(busy)}
+                            onClick={() => setApiKey("")}
+                          >
+                            Descartar nova chave
+                          </button>
+                        )}
                       </div>
                     </form>
                   </section>
-                  <section className={styles.panel}>
+                  <section id={costsId} tabIndex={-1} className={styles.panel}>
                     <div className={styles.sectionHeading}>
                       <h2>Modelo e custos</h2>
                       <button
@@ -404,7 +446,10 @@ function VirtualConnectionForStore({
                             </option>
                             {configuredModelMissingFromList && (
                               <option value={model}>
-                                {model} · configuração atual
+                                {model} ·{" "}
+                                {model === status.model
+                                  ? "configuração salva"
+                                  : "modelo informado"}
                               </option>
                             )}
                             {models.map((item) => (
@@ -414,6 +459,31 @@ function VirtualConnectionForStore({
                             ))}
                           </select>
                         </label>
+                        <details style={{ gridColumn: "1 / -1" }}>
+                          <summary className={styles.textLink}>
+                            Informar nome do modelo manualmente
+                          </summary>
+                          <label
+                            className={styles.field}
+                            style={{ marginTop: 12 }}
+                          >
+                            Nome completo do modelo Gemini
+                            <input
+                              value={model}
+                              onChange={(event) => setModel(event.target.value)}
+                              maxLength={128}
+                              pattern="gemini-[a-zA-Z0-9.\-]+"
+                              autoCapitalize="off"
+                              spellCheck={false}
+                              placeholder="Ex.: gemini-2.5-flash"
+                            />
+                          </label>
+                          <p className={styles.muted}>
+                            Use o nome da API informado no Google AI Studio.
+                            Essa opção também funciona quando a consulta da
+                            lista está indisponível.
+                          </p>
+                        </details>
                         <label className={styles.field}>
                           Entrada: US$ por 1 milhão de tokens
                           <input
@@ -421,7 +491,7 @@ function VirtualConnectionForStore({
                             value={inputPrice}
                             min="0"
                             step="0.000001"
-                            max="1000000"
+                            max="1000"
                             required
                             onChange={(event) =>
                               setInputPrice(event.target.value)
@@ -435,7 +505,7 @@ function VirtualConnectionForStore({
                             value={outputPrice}
                             min="0"
                             step="0.000001"
-                            max="1000000"
+                            max="1000"
                             required
                             onChange={(event) =>
                               setOutputPrice(event.target.value)
@@ -456,18 +526,22 @@ function VirtualConnectionForStore({
                         <button
                           type="submit"
                           className="btn"
-                          disabled={!model || !hasEdits}
+                          disabled={Boolean(setup.saveReason)}
+                          aria-describedby={saveReasonId}
                         >
                           Salvar modelo e custos
                         </button>
                       </fieldset>
                     </form>
-                    {hasEdits && (
-                      <p className={styles.muted} style={{ marginTop: 12 }}>
-                        Há alterações ainda não salvas. Salve a configuração
-                        antes de testar ou ativar.
-                      </p>
-                    )}
+                    <p
+                      id={saveReasonId}
+                      className={styles.muted}
+                      style={{ marginTop: 12 }}
+                      aria-live="polite"
+                    >
+                      {setup.saveReason ??
+                        "Salve modelo e custos para liberar o teste desta revisão."}
+                    </p>
                   </section>
                   <section className={styles.panel}>
                     <div className={styles.sectionHeading}>
@@ -475,7 +549,7 @@ function VirtualConnectionForStore({
                       <span
                         className={`${styles.badge} ${testPassed ? styles.success : styles.warning}`}
                       >
-                        {TEST_LABELS[status.test.state]}
+                        {setup.testLabel}
                       </span>
                     </div>
                     <p>
@@ -497,21 +571,40 @@ function VirtualConnectionForStore({
                         modelo, a cota e as tarifas antes de repetir.
                       </p>
                     )}
+                    <p
+                      id={testReasonId}
+                      className={styles.muted}
+                      aria-live="polite"
+                    >
+                      {setup.testReason ??
+                        (testPassed
+                          ? status.enabled
+                            ? "Esta revisão já passou no teste e está ativa."
+                            : "Esta revisão já passou no teste. Você pode ativá-la abaixo."
+                          : "Modelo e tarifas salvos. O teste está disponível.")}{" "}
+                      {setup.testReason && !busy && (
+                        <a
+                          className={styles.textLink}
+                          href={`#${!status.credentialPresent || setup.pendingKey ? keyId : costsId}`}
+                        >
+                          {!status.credentialPresent || setup.pendingKey
+                            ? "Conferir chave privada"
+                            : "Conferir modelo e custos"}
+                        </a>
+                      )}
+                    </p>
                     <div className={styles.actions} style={{ marginTop: 16 }}>
                       <button
                         className="btn"
-                        disabled={
-                          Boolean(busy) ||
-                          hasEdits ||
-                          !status.credentialPresent ||
-                          !status.model ||
-                          !status.rates.confirmed
-                        }
+                        disabled={Boolean(setup.testReason)}
+                        aria-describedby={testReasonId}
                         onClick={() => void test()}
                       >
                         {busy === "test"
                           ? "Testando Gemini…"
-                          : "Testar com mensagem fictícia"}
+                          : testPassed
+                            ? "Testar novamente com mensagem fictícia"
+                            : "Testar com mensagem fictícia"}
                       </button>
                       {status.enabled ? (
                         <button
@@ -524,13 +617,25 @@ function VirtualConnectionForStore({
                       ) : (
                         <button
                           className="btn btn-primary"
-                          disabled={Boolean(busy) || hasEdits || !testPassed}
+                          disabled={Boolean(setup.activateReason)}
+                          aria-describedby={activationReasonId}
                           onClick={() => void activate(true)}
                         >
                           Ativar Gemini testado
                         </button>
                       )}
                     </div>
+                    {!status.enabled && (
+                      <p
+                        id={activationReasonId}
+                        className={styles.muted}
+                        style={{ marginTop: 12 }}
+                        aria-live="polite"
+                      >
+                        {setup.activateReason ??
+                          "Teste aprovado para esta revisão. Você já pode ativar o Gemini."}
+                      </p>
+                    )}
                   </section>
                 </>
               )}
