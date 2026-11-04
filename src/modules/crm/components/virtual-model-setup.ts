@@ -22,6 +22,31 @@ function rateMicros(price: string): number | null {
     : null;
 }
 
+/** A key rotation preserves saved settings, independently of unfinished drafts. */
+export function virtualModelSaveSettings(
+  status: VirtualModelStatus,
+  draft: VirtualModelDraft,
+  withKey: boolean,
+) {
+  if (withKey)
+    return {
+      model: status.model ?? "",
+      ratesConfirmed: status.rates.confirmed,
+      inputMicrosPerMillion: status.rates.inputMicrosPerMillion,
+      outputMicrosPerMillion: status.rates.outputMicrosPerMillion,
+    };
+  const inputRate = rateMicros(draft.inputPrice);
+  const outputRate = rateMicros(draft.outputPrice);
+  if (draft.pendingKey || inputRate === null || outputRate === null)
+    return null;
+  return {
+    model: draft.model,
+    ratesConfirmed: draft.ratesConfirmed,
+    inputMicrosPerMillion: inputRate,
+    outputMicrosPerMillion: outputRate,
+  };
+}
+
 /** Shared button gates and explanations; no catalog dependency or inferred tariff. */
 export function virtualModelSetup(
   status: VirtualModelStatus | null,

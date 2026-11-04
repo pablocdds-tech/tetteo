@@ -259,6 +259,16 @@ Qualidade agrega por organização/unidade/conta e período fechado em 7/30/90 d
 
 O usuário escolheu Gemini com credencial inserida no painel HTTPS. `changeVirtualModel` exige gestor/unidade ativa; a chave é cifrada por AES-256-GCM e AAD de organização/unidade antes de persistir. `safeVirtualModelStatus` devolve somente presença/estado, revisão, tarifas e teste. Chave e ciphertext não vão para DTO nem auditoria. Um backup da cifra sem a chave estável não permite decifrar; uma cifra de outra unidade falha por autenticação. Evidências: `virtual-model.ts`, `src/server/ia/credencial-atendimento.ts` e migração `20261103021000_virtual_model_configuration`.
 
+A interface bloqueia salvar modelo/custos enquanto existe uma chave nova ainda
+pendente; esse caminho não descarta nem ignora o segredo digitado. A ação explícita
+de salvar a chave envia apenas as configurações já persistidas, preservando o
+rascunho de modelo/custos. Sucesso do salvamento é registrado antes da consulta de
+catálogo; falha nessa consulta vira aviso separado e não anuncia falha de gravação.
+A chave não volta no retorno, e a limpeza do campo após sua operação é informada
+na tela. Essas mudanças de interface não alteram autenticação, escopo, cifra,
+teste obrigatório ou ativação. Evidências: `virtual-connections.tsx` e
+`components/virtual-model-setup.ts`.
+
 Salvar qualquer mudança desativa o modelo e invalida o teste. A ativação exige teste `PASSED`, mesma revisão e validade de 30 dias. Probes têm correlação idempotente, limite de três por hora/unidade e reserva de custo anterior à rede; falha/timeout conservam o débito. A conclusão de probe antigo não altera a revisão nova. O orçamento de turno relê a configuração vigente sob lock antes de usar a credencial; a corrida com snapshot antigo é testada sem invalidar artificialmente o lease da conversa.
 
 Probe `RUNNING` abandonado por mais de 60 segundos é reconciliado como `FAILED/MODEL_TEST_TIMEOUT` ao repetir o mesmo ID, sem chamar novamente a API ou zerar a reserva de custo. A finalização atrasada não pode reabrir o probe falho; uma nova tentativa requer ID explícito e passa novamente pelas cotas e pelo orçamento.

@@ -4,6 +4,7 @@ import { test } from "node:test";
 import type { VirtualModelStatus } from "../virtual-types";
 import {
   MODEL_TEST_VALIDITY_MS,
+  virtualModelSaveSettings,
   virtualModelSetup,
   type VirtualModelDraft,
 } from "./virtual-model-setup";
@@ -40,6 +41,54 @@ const draft: VirtualModelDraft = {
 };
 const setup = (saved = status, editing = draft, busy = false, secure = true) =>
   virtualModelSetup(saved, editing, busy, now, secure);
+
+test("salvar chave preserva configurações já salvas mesmo com rascunho de modelo e tarifas inválidos", () => {
+  const editing = {
+    ...draft,
+    pendingKey: true,
+    model: "modelo inválido",
+    inputPrice: "",
+    outputPrice: "-1",
+    ratesConfirmed: false,
+  };
+  assert.deepEqual(virtualModelSaveSettings(status, editing, true), {
+    model: status.model,
+    ratesConfirmed: status.rates.confirmed,
+    inputMicrosPerMillion: status.rates.inputMicrosPerMillion,
+    outputMicrosPerMillion: status.rates.outputMicrosPerMillion,
+  });
+  assert.equal(virtualModelSaveSettings(status, editing, false), null);
+});
+
+test("cadastro inicial da chave independe de modelo e tarifas enquanto salvar custos usa o rascunho", () => {
+  const initial = {
+    ...status,
+    model: null,
+    rates: { ...status.rates, confirmed: false },
+  };
+  assert.deepEqual(
+    virtualModelSaveSettings(
+      initial,
+      { ...draft, pendingKey: true, inputPrice: "", outputPrice: "" },
+      true,
+    ),
+    {
+      model: "",
+      ratesConfirmed: false,
+      inputMicrosPerMillion: 0,
+      outputMicrosPerMillion: 0,
+    },
+  );
+  assert.deepEqual(
+    virtualModelSaveSettings(status, { ...draft, inputPrice: "1.25" }, false),
+    {
+      model: draft.model,
+      ratesConfirmed: true,
+      inputMicrosPerMillion: 1_250_000,
+      outputMicrosPerMillion: 0,
+    },
+  );
+});
 
 test("tarifas zero explicitamente confirmadas liberam teste, mantendo ativação condicionada à aprovação", () => {
   const ready = setup();

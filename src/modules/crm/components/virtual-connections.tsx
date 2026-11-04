@@ -12,7 +12,10 @@ import { api } from "../client/api";
 import { useAuth } from "../client/context";
 import type { VirtualModelStatus } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
-import { virtualModelSetup } from "./virtual-model-setup";
+import {
+  virtualModelSaveSettings,
+  virtualModelSetup,
+} from "./virtual-model-setup";
 import styles from "./virtual.module.css";
 
 const subscribe = () => () => {};
@@ -78,20 +81,15 @@ function VirtualConnectionForStore({
   const pendingTest = useRef<{ revision: number; requestId: string } | null>(
     null,
   );
-  const setup = virtualModelSetup(
-    status,
-    {
-      pendingKey: Boolean(apiKey.trim()),
-      model,
-      inputPrice,
-      outputPrice,
-      ratesConfirmed,
-    },
-    Boolean(busy),
-    now,
-    secure,
-  );
-  const { inputRate, outputRate, testPassed } = setup;
+  const draft = {
+    pendingKey: Boolean(apiKey.trim()),
+    model,
+    inputPrice,
+    outputPrice,
+    ratesConfirmed,
+  };
+  const setup = virtualModelSetup(status, draft, Boolean(busy), now, secure);
+  const { testPassed } = setup;
   const configuredModelMissingFromList = Boolean(
     model && !models.some((item) => item.name === model),
   );
@@ -131,9 +129,10 @@ function VirtualConnectionForStore({
   }
 
   async function save(withKey: boolean) {
-    if (!secure || busy) return;
+    if (!secure || busy || !status) return;
     if (!withKey && setup.saveReason) return;
-    if (inputRate === null || outputRate === null) {
+    const settings = virtualModelSaveSettings(status, draft, withKey);
+    if (!settings) {
       setError(
         "Preencha as duas tarifas antes de salvar. Informe zero somente para a modalidade gratuita da sua conta.",
       );
@@ -149,17 +148,17 @@ function VirtualConnectionForStore({
           storeId,
           action: "save",
           ...(withKey ? { apiKey: apiKey.trim() } : {}),
-          model,
-          ratesConfirmed,
-          inputMicrosPerMillion: inputRate,
-          outputMicrosPerMillion: outputRate,
+          ...settings,
         },
       );
-      accept(result);
+      if (withKey) {
+        setNow(Date.now());
+        setStatus(result);
+      } else accept(result);
       pendingTest.current = null;
       setNotice(
-        withKey && (!result.model || !result.rates.confirmed)
-          ? "Chave privada salva. Confira o modelo e as tarifas em Modelo e custos, confirme os valores e salve para liberar o teste."
+        withKey
+          ? `Chave privada salva para esta unidade. O campo foi limpo por segurança. ${!result.model || !result.rates.confirmed ? "Confira o modelo e as tarifas em Modelo e custos, confirme os valores e salve para liberar o teste." : "Faça o teste desta revisão e depois ative o Gemini."}`
           : "Modelo e custos salvos. Faça o teste desta revisão e depois ative o Gemini.",
       );
       if (withKey) {
@@ -327,6 +326,12 @@ function VirtualConnectionForStore({
                 <>
                   <section id={keyId} tabIndex={-1} className={styles.panel}>
                     <h2>Chave privada do Gemini</h2>
+                    {status.credentialPresent && (
+                      <p className={styles.muted}>
+                        Chave salva nesta unidade. O campo vazio não remove a
+                        chave; ela não é exibida novamente por segurança.
+                      </p>
+                    )}
                     <p>
                       Insira a chave somente neste campo do sistema. Ela será
                       enviada ao servidor desta organização e não será exibida
