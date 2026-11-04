@@ -1,25 +1,32 @@
 "use client";
-
 import Link from "next/link";
 import { useVirtualAccount } from "../client/virtual-channel-context";
 import styles from "./virtual.module.css";
-
+import navigation from "./virtual-navigation.module.css";
+type Section =
+  | "overview"
+  | "inbox"
+  | "escalacoes"
+  | "saude"
+  | "base"
+  | "conexoes"
+  | "configuracao"
+  | "skills"
+  | "qualidade"
+  | "evolution"
+  | "meta"
+  | "limites";
+const CONFIGURATION = [
+  ["configuracao", "/assistente/configuracao", "Inteligência artificial"],
+  ["base", "/assistente/configuracao/informacoes", "Informações da unidade"],
+  ["skills", "/assistente/configuracao/tom-de-voz", "Tom de voz"],
+  ["limites", "/assistente/configuracao/limites", "Limites e responsáveis"],
+];
 export function VirtualHeader({
   section,
   children,
 }: {
-  section:
-    | "overview"
-    | "inbox"
-    | "escalacoes"
-    | "saude"
-    | "base"
-    | "conexoes"
-    | "configuracao"
-    | "skills"
-    | "qualidade"
-    | "evolution"
-    | "meta";
+  section: Section;
   children?: React.ReactNode;
 }) {
   const {
@@ -35,58 +42,111 @@ export function VirtualHeader({
     "escalacoes",
     "saude",
     "base",
-    "conexoes",
-    "configuracao",
+    "limites",
     "qualidade",
   ].includes(section);
-  const titles = {
+  const titles: Record<Section, string> = {
     overview: "Severina",
-    inbox: "Inbox",
-    escalacoes: "Escalações da equipe",
-    saude: "Saúde do atendimento",
+    inbox: "Atendimentos",
+    escalacoes: "Pendências da equipe",
+    saude: "Monitoramento",
     base: "Informações da unidade",
-    conexoes: "Conexões do atendimento",
-    configuracao: "Configuração da Severina",
-    skills: "Skills / Tom de voz",
+    conexoes: "Assistente",
+    configuracao: "Assistente",
+    skills: "Tom de voz",
     qualidade: "Qualidade do atendimento",
-    evolution: "Chips Evolution",
-    meta: "Meta WhatsApp",
+    evolution: "Conectar WhatsApp",
+    meta: "Conectar WhatsApp",
+    limites: "Limites e responsáveis",
   };
+  const descriptions: Partial<Record<Section, string>> = {
+    overview: "Seu atendimento e as conversas que precisam de atenção.",
+    inbox: "Acompanhe as conversas e assuma quando precisar.",
+    escalacoes: "Solicitações que precisam de uma pessoa da equipe.",
+    saude: "Confira a conexão, a fila e os avisos da operação.",
+    base: "O que a Severina pode informar aos seus clientes.",
+    configuracao:
+      "Configure a inteligência artificial e as informações do atendimento.",
+    skills: "Escolha como a Severina recebe e orienta seus clientes.",
+    qualidade: "Resultados e consumo das execuções do atendimento.",
+    limites: "Defina quem recebe os alertas e os limites de uso.",
+    evolution: "Conecte um número para atender seus clientes.",
+    meta: "Conecte um número para atender seus clientes.",
+  };
+  const tabs = ["inbox", "escalacoes"].includes(section)
+    ? [
+        ["inbox", "/assistente/inbox", "Conversas"],
+        ["escalacoes", "/assistente/inbox/pendencias", "Pendências"],
+      ]
+    : ["saude", "qualidade"].includes(section)
+      ? [
+          ["saude", "/assistente/monitoramento", "Saúde da operação"],
+          [
+            "qualidade",
+            "/assistente/monitoramento/qualidade",
+            "Qualidade e consumo",
+          ],
+        ]
+      : ["configuracao", "base", "skills", "limites", "conexoes"].includes(
+            section,
+          )
+        ? CONFIGURATION
+        : [];
   return (
     <>
       <header className={styles.heading}>
         <div>
           <h1>{titles[section]}</h1>
-          <p>
-            Conversas com contexto, reservas e passagem para uma pessoa da
-            Vitaliano.
-          </p>
+          <p>{descriptions[section]}</p>
         </div>
-        {children}
-      </header>
-      <div className={styles.toolbar}>
-        <nav className={styles.navigation} aria-label="Atendimento da Severina">
+        <div className={styles.actions}>
+          {children}
           {[
-            ["overview", "/assistente", "Overview"],
-            ["inbox", "/assistente/inbox", "Inbox"],
-            ["escalacoes", "/assistente/escalacoes", "Escalações"],
-            ["saude", "/assistente/saude", "Saúde da operação"],
-            ["configuracao", "/assistente/configuracao", "Configuração"],
-          ].map(([key, href, label]) => (
+            "inbox",
+            "escalacoes",
+            "saude",
+            "qualidade",
+            "configuracao",
+            "base",
+            "limites",
+          ].includes(section) && (
+            <Link className="btn" href="/assistente/conectar">
+              Conectar WhatsApp
+            </Link>
+          )}
+        </div>
+      </header>
+      {tabs.length > 0 && (
+        <nav
+          className={navigation.tabs}
+          aria-label={
+            ["inbox", "escalacoes"].includes(section)
+              ? "Atendimentos"
+              : ["saude", "qualidade"].includes(section)
+                ? "Monitoramento"
+                : "Configuração do assistente"
+          }
+        >
+          {tabs.map(([key, href, label]) => (
             <Link
               key={key}
               href={href}
-              aria-current={section === key ? "page" : undefined}
+              aria-current={
+                section === key ||
+                (section === "conexoes" && key === "configuracao")
+                  ? "page"
+                  : undefined
+              }
             >
               {label}
             </Link>
           ))}
         </nav>
-      </div>
+      )}
       {chooseAccount && (
-        <div className={styles.channelBar}>
+        <div className={navigation.accountRow}>
           <label className={styles.field}>
-            Conta do canal
+            WhatsApp ou demonstração
             <select
               value={selectedAccountId}
               disabled={loading || accounts.length === 0}
@@ -94,17 +154,13 @@ export function VirtualHeader({
             >
               {accounts.length === 0 && (
                 <option value="">
-                  {loading ? "Carregando contas…" : "Nenhuma conta configurada"}
+                  {loading ? "Carregando…" : "Nenhum WhatsApp cadastrado"}
                 </option>
               )}
               {accounts.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name} ·{" "}
-                  {item.provider === "DEMO"
-                    ? "Demonstração"
-                    : item.provider === "META"
-                      ? "Meta oficial"
-                      : "Evolution"}
+                  {item.name}
+                  {item.provider === "DEMO" ? " (demonstração)" : ""}
                 </option>
               ))}
             </select>
@@ -114,10 +170,10 @@ export function VirtualHeader({
               className={`${styles.badge} ${account.active ? styles.success : styles.warning}`}
             >
               {account.provider === "DEMO"
-                ? "Canal local de demonstração"
+                ? "Demonstração Kairu"
                 : account.active
-                  ? "Conta ativada"
-                  : "Conta pausada"}
+                  ? "Atendimento ativo"
+                  : "Atendimento pausado"}
             </span>
           )}
           {error && (
@@ -130,11 +186,10 @@ export function VirtualHeader({
     </>
   );
 }
-
 export function VirtualCredit() {
   return (
     <p className={styles.credit}>
-      Fluxo e composição inspirados nas prévias ilustrativas de atendimento da{" "}
+      Referência de fluxo:{" "}
       <a
         href="https://portal.kairulabs.com.br/images/solutions/atendimento-virtual-1.png"
         target="_blank"
@@ -142,8 +197,7 @@ export function VirtualCredit() {
       >
         Kairu
       </a>
-      , adaptados ao Tetteo. Os exemplos não comprovam atendimento ou entrega
-      real.
+      . Exemplos identificados como demonstração usam dados fictícios.
     </p>
   );
 }

@@ -1,5 +1,4 @@
-import VirtualChannelsPage from "@/modules/crm/components/virtual-channels";
-
-export default function MetaWhatsappPage() {
-  return <VirtualChannelsPage provider="META" />;
+import { redirect } from "next/navigation";
+export default function Page() {
+  redirect("/assistente/conectar?metodo=meta");
 }

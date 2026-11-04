@@ -6,7 +6,6 @@ import { useAuth } from "../client/context";
 import { useVirtualAccount } from "../client/virtual-channel-context";
 import type { VirtualFacts } from "../services/virtual-knowledge";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
-import VirtualSettings from "./virtual-settings";
 import styles from "./virtual.module.css";
 
 type Version = {
@@ -213,7 +212,6 @@ function VirtualKnowledgeForAccount({
   return (
     <Container className={embedded ? undefined : styles.page}>
       {!embedded && <VirtualHeader section="base" />}
-      {manageable && <VirtualSettings />}
       {error && (
         <p className={styles.error} role="alert">
           {error}

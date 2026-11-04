@@ -15,7 +15,7 @@ export default async function PaginaNovoAgente() {
   return (
     <div className="mx-auto w-full max-w-5xl">
       <Link
-        href="/assistente/agentes"
+        href="/assistente/equipe/agentes"
         className="text-ink-3 hover:text-ink text-sm"
       >
         ← Agentes

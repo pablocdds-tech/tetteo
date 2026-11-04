@@ -1,0 +1,199 @@
+.page {
+  max-width: 1280px;
+  margin-inline: auto;
+}
+.unit {
+  color: var(--ink-3);
+  font-size: 0.875rem;
+  margin-top: -8px;
+  margin-bottom: 24px;
+}
+.connection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 28px 32px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.connection h2 {
+  font-size: 1.5rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.connection p {
+  font-size: 1rem;
+  color: var(--ink-3);
+  line-height: 1.55;
+  max-width: 58ch;
+  margin-top: 8px;
+}
+.connection > a {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding-inline: 20px;
+}
+.names {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  font-size: 0.875rem;
+}
+.names > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  gap: 40px;
+  margin-top: 32px;
+}
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.content h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+.sectionTitle a,
+.empty a,
+.next a,
+.bottom a {
+  color: var(--accent);
+  font-size: 0.875rem;
+  text-underline-offset: 4px;
+}
+.empty {
+  padding: 24px 0;
+  max-width: 60ch;
+}
+.empty h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.empty p {
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--ink-3);
+  margin-block: 8px 16px;
+}
+.next {
+  padding-left: 28px;
+  border-left: 1px solid var(--line);
+}
+.next ol {
+  list-style: decimal;
+  margin: 20px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 20px;
+}
+.next li {
+  padding-left: 4px;
+  color: var(--ink-3);
+  font-size: 0.875rem;
+}
+.next a {
+  font-weight: 600;
+}
+.next p {
+  margin-top: 4px;
+  line-height: 1.6;
+}
+.recent {
+  display: grid;
+  list-style: none;
+  padding: 0;
+}
+.recent li + li {
+  border-top: 1px solid var(--line);
+}
+.recent a {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding-block: 16px;
+}
+.recent a > div:first-child {
+  min-width: 0;
+}
+.recent strong {
+  font-size: 1rem;
+  font-weight: 600;
+}
+.recent p {
+  font-size: 0.875rem;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 6px;
+}
+.recent a > div:last-child {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+}
+.bottom {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 900px) {
+  .connection {
+    align-items: flex-start;
+    gap: 24px;
+    flex-direction: column;
+  }
+  .content {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+  .next {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    padding: 24px 0 0;
+  }
+}
+@media (max-width: 640px) {
+  .connection {
+    padding: 24px;
+    gap: 20px;
+  }
+  .connection h2 {
+    font-size: 1.25rem;
+  }
+  .connection > a {
+    width: 100%;
+  }
+  .recent a {
+    gap: 12px;
+  }
+  .recent a > div:last-child {
+    max-width: 112px;
+    text-align: right;
+  }
+  .sectionTitle {
+    align-items: flex-start;
+  }
+  .content {
+    margin-top: 24px;
+  }
+}

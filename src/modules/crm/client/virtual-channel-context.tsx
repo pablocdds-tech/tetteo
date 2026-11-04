@@ -46,6 +46,8 @@ export type VirtualChannelsResult = {
   accounts: VirtualChannelAccount[];
   allowedEvolutionOrigins: string[];
   legacyReservedInstance: string | null;
+  managedEvolutionAvailable?: boolean;
+  createdAccountId?: string;
 };
 type AccountContextValue = {
   accounts: VirtualChannelAccount[];

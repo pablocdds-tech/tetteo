@@ -1,1 +1,4 @@
-export { default } from "@/modules/crm/components/virtual-policy";
+import { redirect } from "next/navigation";
+export default function Page() {
+  redirect("/assistente/configuracao/tom-de-voz");
+}

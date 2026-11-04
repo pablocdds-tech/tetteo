@@ -6,6 +6,35 @@ O atendimento acrescenta entrada de cliente, ferramentas com efeitos e controle 
 
 ## Scope and assumptions
 
+### Revisão de usabilidade e conexão por QR — 03/11/2026
+
+A preparação rápida exige `AV_EVOLUTION_API_KEY`, uma chave administrativa privada
+configurada explicitamente para a criação. O token individual dos avisos não é
+alternativa para essa chave. Seu uso só é permitido após conferir
+permissões atuais e o vínculo único da instância original com a organização. O
+gestor precisa de `crm.gerenciar` na unidade e de `assistente.conectar` no escopo
+da conexão original; acesso apenas à loja B não libera o recurso da loja A, e uma
+conexão de rede exige autorização de rede. Vínculo ausente, estrangeiro, ambíguo
+ou revogado fecha a opção rápida. GET retorna apenas disponibilidade booleana.
+Evidência: `virtual-evolution-config.ts` e sua integração com banco local.
+
+`quickSetup` gera identificador e segredo novos no servidor e salva somente uma
+conta inativa, cifrada. `connect` confirma a existência, cria apenas após 404,
+configura o webhook antes do QR e cerca cada etapa pela revisão atual. Um destino
+estrangeiro não é substituído. Erro explícito em HTTP 200 também é falha; timeout
+não repete a criação automaticamente. `status` só consulta o provedor, registra
+mudanças e não gera QR, envia mensagem ou ativa a IA. A leitura do QR é privada,
+limitada por tempo e descartada ao trocar unidade/conta. Nenhuma credencial ou QR
+real foi utilizado na validação visual.
+
+Duas abas não podem preparar simultaneamente a mesma instância: um lease durável
+de dois minutos em `AvChannelConnection` cerca `connect`, QR e ações avançadas que
+alteram o provedor. A aquisição usa o relógio do banco; cada etapa confere o dono,
+a validade e a revisão. Salvar outra revisão preserva a exclusão até a execução
+anterior terminar ou expirar. HTTP fica fora da transação, e a finalização só
+libera o próprio lease. Isso evita duas criações após consultas concorrentes de
+ausência, sem depender de idempotência oferecida pelo Evolution.
+
 - Contexto confirmado pelo pedido: sistema Vitaliano existente, Auth.js, PostgreSQL privado, acesso público HTTPS pelo Dokploy, isolamento por organização e unidade; primeiro canal é demonstração.
 - Escopo: telas de atendimento dentro de Severina, APIs autenticadas, configuração das duas opções de canal, fatos/políticas aprovados, identidade mínima, fila, reservas, inbox, pausas, tarefas, alertas, métricas e extrator de intenção.
 - Fora do escopo dos ensaios executados: envio a cliente real, mudança das permissões existentes, acesso administrativo pelo cliente, pagamentos, disparos em massa, ingestão de arquivo e transcrição externa de áudio.

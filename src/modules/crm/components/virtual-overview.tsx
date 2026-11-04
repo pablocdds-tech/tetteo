@@ -1,31 +1,30 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
+import { useVirtualAccount } from "../client/virtual-channel-context";
 import type { VirtualHealth, VirtualInboxResult } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
-import styles from "./virtual.module.css";
-
+import styles from "./virtual-overview.module.css";
+import common from "./virtual.module.css";
 const STATUS: Record<string, string> = {
   OPEN: "Aberta",
   WAITING_CUSTOMER: "Aguardando cliente",
   WAITING_TEAM: "Aguardando equipe",
-  ESCALATED: "Escalada",
+  ESCALATED: "Precisa da equipe",
   PAUSED: "Pausada",
   RESOLVED: "Resolvida",
 };
-
 export default function VirtualOverview() {
   const { selectedStoreId: storeId, user } = useAuth();
+  const { accounts, loading: accountsLoading } = useVirtualAccount();
   const [result, setResult] = useState<{
     storeId: string;
     inbox: VirtualInboxResult;
     health: VirtualHealth;
   } | null>(null);
   const [error, setError] = useState("");
-  const [revision, setRevision] = useState(0);
   const data = result?.storeId === storeId ? result : null;
   useEffect(() => {
     let alive = true;
@@ -48,165 +47,144 @@ export default function VirtualOverview() {
           setError(
             failure instanceof Error
               ? failure.message
-              : "Não foi possível consultar a operação.",
+              : "Não foi possível consultar o atendimento.",
           );
       });
     return () => {
       alive = false;
     };
-  }, [storeId, revision]);
-  const metrics = data
-    ? [
-        [
-          "Atendimentos em andamento",
-          String(
-            Object.entries(data.inbox.counts).reduce(
-              (total, [status, count]) =>
-                total + (status === "RESOLVED" ? 0 : count),
-              0,
-            ),
-          ),
-          "Conversas abertas nos estados do inbox.",
-          "/assistente/inbox",
-        ],
-        [
-          "Pendências da equipe",
-          String(data.health.pendingEscalations),
-          "Escalações ainda não concluídas.",
-          "/assistente/escalacoes",
-        ],
-        [
-          "Na fila",
-          String(data.health.queuePending),
-          `Espera mais antiga: ${Math.ceil(data.health.queueDelayMs / 1000)} segundos.`,
-          "/assistente/saude",
-        ],
-        [
-          "Erros de canal",
-          String(data.health.channelErrors),
-          `${data.health.failedAlerts} alerta(s) com falha.`,
-          "/assistente/saude",
-        ],
-      ]
-    : [];
+  }, [storeId]);
+  const real = accounts.filter((account) => account.provider !== "DEMO");
+  const active = real.filter((account) => account.active);
+  const verified = real.filter(
+    (account) => account.connectionState === "VERIFIED",
+  );
+  const recent =
+    data?.inbox.items.filter((item) => !item.demo).slice(0, 5) ?? [];
   return (
-    <main className={styles.page}>
-      <VirtualHeader section="overview">
-        <button
-          className="btn"
-          onClick={() => setRevision((value) => value + 1)}
-        >
-          Atualizar
-        </button>
-      </VirtualHeader>
-      <p className={styles.muted} style={{ marginTop: 16 }}>
+    <main className={`${common.page} ${styles.page}`}>
+      <VirtualHeader section="overview" />
+      <p className={styles.unit}>
         {user.stores.find((store) => store.id === storeId)?.name}
       </p>
       {error && (
-        <p className={styles.error} role="alert">
+        <p className={common.error} role="alert">
           {error}
         </p>
       )}
-      {!data && !error && (
-        <p className={styles.empty}>Consultando atendimentos e pendências…</p>
-      )}
-      {data && (
-        <>
-          <div className={styles.overviewGrid}>
-            {metrics.map(([label, value, description, href]) => (
-              <Link href={href} className={styles.healthMetric} key={label}>
-                <h2>{label}</h2>
-                <strong>{value}</strong>
-                <p>{description}</p>
-              </Link>
-            ))}
-          </div>
-          <section className={styles.panel}>
-            <div className={styles.sectionHeading}>
-              <h2>Conversas recentes</h2>
-              <Link className="btn" href="/assistente/inbox">
-                Abrir inbox
-              </Link>
+      <section className={styles.connection} aria-labelledby="connection-title">
+        <div>
+          <h2 id="connection-title">
+            {accountsLoading
+              ? "Seu WhatsApp"
+              : real.length
+                ? active.length
+                  ? "Seu atendimento está ativo"
+                  : "Continue a configuração do WhatsApp"
+                : "Comece conectando seu WhatsApp"}
+          </h2>
+          <p>
+            {accountsLoading
+              ? "Consultando os números desta unidade…"
+              : real.length
+                ? `${real.length} WhatsApp${real.length === 1 ? "" : "s"} cadastrado${real.length === 1 ? "" : "s"}. ${verified.length ? `${verified.length} com conexão verificada.` : "Abra a conexão para gerar o QR Code e ler com o celular."}`
+                : "Gere o QR Code, leia com o celular e prepare o atendimento aos seus clientes."}
+          </p>
+          {real.length > 0 && (
+            <div className={styles.names}>
+              {real.slice(0, 3).map((account) => (
+                <span key={account.id}>
+                  {account.name}
+                  <span
+                    className={`${common.badge} ${account.active ? common.success : common.warning}`}
+                  >
+                    {account.active
+                      ? "Atendimento ativo"
+                      : "Configuração pendente"}
+                  </span>
+                </span>
+              ))}
             </div>
-            {data.inbox.items.length ? (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Última mensagem</th>
-                      <th>Canal</th>
-                      <th>Situação</th>
-                      <th>Atualização</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.inbox.items.slice(0, 6).map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <strong>{item.customerName}</strong>
-                        </td>
-                        <td>{item.lastMessage}</td>
-                        <td>
-                          {item.channel}
-                          {item.demo ? " · demonstração" : ""}
-                        </td>
-                        <td>{STATUS[item.status] ?? item.status}</td>
-                        <td>
-                          {new Date(item.lastMessageAt).toLocaleString("pt-BR")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p>
-                Nenhuma conversa recebida nesta unidade. Configure um canal ou
-                prepare exemplos fictícios no inbox.
-              </p>
-            )}
-          </section>
-          <section className={styles.panel}>
-            <h2>Processamento e conexões</h2>
-            <p>
-              {data.health.engine?.enabled
-                ? `Gemini ativo: ${data.health.engine.model ?? "modelo configurado"}.`
-                : "O modelo Gemini não está ativo nesta unidade."}{" "}
-              O estado de cada conta de WhatsApp é verificado separadamente.
-            </p>
-            <div className={styles.actions} style={{ marginTop: 16 }}>
-              <Link className="btn" href="/assistente/evolution">
-                Chips Evolution
-              </Link>
-              <Link className="btn" href="/assistente/meta-whatsapp">
-                Meta WhatsApp
-              </Link>
-              <Link className="btn" href="/assistente/configuracao">
-                Configurar atendimento
-              </Link>
-            </div>
-          </section>
-        </>
-      )}
-      <section className={styles.panel}>
-        <h2>Operação da equipe</h2>
-        <p>
-          Os avisos, agentes e vínculos existentes continuam disponíveis na
-          Severina.
-        </p>
-        <div className={styles.actions} style={{ marginTop: 16 }}>
-          <Link className="btn" href="/assistente/disparos">
-            Feed de Disparos
-          </Link>
-          <Link className="btn" href="/assistente/conversas-equipe">
-            Conversas da equipe
-          </Link>
-          <Link className="btn" href="/assistente/agentes">
-            Agentes de aviso
-          </Link>
+          )}
         </div>
+        <Link href="/assistente/conectar" className="btn btn-primary">
+          {real.length ? "Abrir conexão e QR Code" : "Conectar WhatsApp"}
+        </Link>
       </section>
+      <div className={styles.content}>
+        <section
+          className={styles.conversations}
+          aria-labelledby="recent-title"
+        >
+          <div className={styles.sectionTitle}>
+            <h2 id="recent-title">Conversas recentes</h2>
+            <Link href="/assistente/inbox">Ver atendimentos</Link>
+          </div>
+          {!data && !error ? (
+            <p className={styles.empty}>Carregando conversas…</p>
+          ) : recent.length ? (
+            <ul className={styles.recent}>
+              {recent.map((item) => (
+                <li key={item.id}>
+                  <Link href="/assistente/inbox">
+                    <div>
+                      <strong>{item.customerName}</strong>
+                      <p>{item.lastMessage}</p>
+                    </div>
+                    <div>
+                      <span>{STATUS[item.status] ?? item.status}</span>
+                      <time dateTime={item.lastMessageAt}>
+                        {new Date(item.lastMessageAt).toLocaleTimeString(
+                          "pt-BR",
+                          { hour: "2-digit", minute: "2-digit" },
+                        )}
+                      </time>
+                    </div>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className={styles.empty}>
+              <h3>As mensagens dos clientes aparecem aqui</h3>
+              <p>
+                Depois de conectar o número, as mensagens recebidas ficam
+                reunidas nesta área.
+              </p>
+              <Link href="/assistente/conectar">Abrir conexão do WhatsApp</Link>
+            </div>
+          )}
+        </section>
+        <aside className={styles.next} aria-labelledby="next-title">
+          <h2 id="next-title">Prepare seu atendimento</h2>
+          <ol>
+            <li>
+              <Link href="/assistente/conectar">Conecte o WhatsApp</Link>
+              <p>Leia o QR Code ou configure a API oficial.</p>
+            </li>
+            <li>
+              <Link href="/assistente/configuracao">Configure a Severina</Link>
+              <p>
+                {data?.health.engine?.enabled
+                  ? "Inteligência artificial ativada nesta unidade."
+                  : "Escolha a IA e cadastre as informações da unidade."}
+              </p>
+            </li>
+            <li>
+              <Link href="/assistente/conectar">
+                Teste e ative o atendimento
+              </Link>
+              <p>
+                Confira a entrega no seu celular antes de liberar as respostas.
+              </p>
+            </li>
+          </ol>
+        </aside>
+      </div>
+      <div className={styles.bottom}>
+        <Link href="/assistente/equipe">Equipe e avisos internos</Link>
+        <Link href="/assistente/monitoramento">Ver monitoramento</Link>
+      </div>
       <VirtualCredit />
     </main>
   );

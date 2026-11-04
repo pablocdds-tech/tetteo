@@ -256,13 +256,13 @@ function VirtualConnectionForStore({
         <>
           <section className={styles.panel}>
             <div className={styles.sectionHeading}>
-              <h2>Processamento das mensagens</h2>
+              <h2>Inteligência artificial</h2>
               <span
                 className={`${styles.badge} ${status.enabled ? styles.success : styles.warning}`}
               >
                 {status.enabled
                   ? `Gemini ativo · ${status.model ?? "modelo configurado"}`
-                  : "Regras locais de demonstração"}
+                  : "Precisa de configuração"}
               </span>
             </div>
             <p>
@@ -271,11 +271,8 @@ function VirtualConnectionForStore({
                   ? "Há uma configuração privada no ambiente do servidor."
                   : "Há uma chave privada salva para esta unidade."
                 : "Nenhuma chave do Gemini foi configurada nesta unidade."}{" "}
-              A presença da chave, o teste e a ativação são estados separados.
-            </p>
-            <p className={styles.muted}>
-              O modelo interpreta a intenção. Reservas, permissões e envio de
-              mensagens continuam sendo controlados pelo servidor.
+              Depois de salvar a chave, faça o teste e ative a inteligência
+              artificial.
             </p>
             {status.blockers.length > 0 && (
               <ul className={styles.checklist}>

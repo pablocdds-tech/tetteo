@@ -17,13 +17,8 @@ export function evolutionAttendance(
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   const recent = new Map<string, { recipient: string; sentAt: Date }>();
-  return {
-    identify: () => ({
-      mode: "EVOLUTION",
-      accountKey: config.accountId,
-      revision: config.revision,
-    }),
-    async createInstance() {
+  const createInstance = async () => {
+    const response = record(
       await channelHttp(`${settings.url}/instance/create`, {
         method: "POST",
         headers: {
@@ -35,40 +30,86 @@ export function evolutionAttendance(
           integration: "WHATSAPP-BAILEYS",
           qrcode: false,
         }),
-      });
+      }),
+    );
+    if (response.error === true)
+      throw new Error("EVOLUTION_INSTANCE_CREATE_FAILED");
+  };
+  return {
+    identify: () => ({
+      mode: "EVOLUTION",
+      accountKey: config.accountId,
+      revision: config.revision,
+    }),
+    createInstance,
+    async ensureInstance() {
+      try {
+        const response = record(await api("instance/connectionState"));
+        if (
+          response.error === true ||
+          !["open", "connecting", "close"].includes(
+            string(record(response.instance).state),
+          )
+        )
+          throw new Error("EVOLUTION_INSTANCE_STATE_UNAVAILABLE");
+      } catch (error) {
+        // Only a definite absence authorizes creation. Timeouts are reconciled by
+        // another state lookup on the next explicit request, never a blind POST.
+        if (!(error instanceof Error) || error.message !== "PROVIDER_HTTP_404")
+          throw error;
+        await createInstance();
+      }
     },
     async verify() {
       const response = record(await api("instance/connectionState"));
+      if (response.error === true)
+        throw new Error("EVOLUTION_CONNECTION_REJECTED");
       return { connected: record(response.instance).state === "open" };
     },
     async webhook(url, replace) {
       const existing = record(await api("webhook/find"));
       const current = record(existing.webhook ?? existing);
+      if (existing.error === true || current.error === true)
+        throw new Error("EVOLUTION_WEBHOOK_LOOKUP_REJECTED");
       if (
-        current.enabled &&
         typeof current.url === "string" &&
+        current.url.trim() &&
         current.url !== url &&
         !replace
       )
         throw new Error("EXISTING_WEBHOOK_CONFIRMATION_REQUIRED");
-      await api("webhook/set", {
-        webhook: {
-          enabled: true,
-          url,
-          headers: { jwt_key: secrets.webhookSecret },
-          byEvents: false,
-          base64: false,
-          events: [
-            "MESSAGES_UPSERT",
-            "MESSAGES_UPDATE",
-            "SEND_MESSAGE",
-            "CONNECTION_UPDATE",
-          ],
-        },
-      });
+      const applied = record(
+        await api("webhook/set", {
+          webhook: {
+            enabled: true,
+            url,
+            headers: { jwt_key: secrets.webhookSecret },
+            byEvents: false,
+            base64: false,
+            events: [
+              "MESSAGES_UPSERT",
+              "MESSAGES_UPDATE",
+              "SEND_MESSAGE",
+              "CONNECTION_UPDATE",
+            ],
+          },
+        }),
+      );
+      if (applied.error === true)
+        throw new Error("EVOLUTION_WEBHOOK_SET_REJECTED");
     },
     async qr() {
       const result = record(await api("instance/connect"));
+      if (result.error === true) throw new Error("EVOLUTION_QR_REJECTED");
+      const state = string(record(result.instance).state);
+      if (state === "open")
+        return {
+          state: "CONNECTED",
+          qrDataUrl: null,
+          expiresAt: null,
+          status:
+            "Número conectado. A ativação do atendimento é feita depois do teste.",
+        };
       const base64 = string(result.base64);
       const valid =
         /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(base64) &&
@@ -77,11 +118,18 @@ export function evolutionAttendance(
           .subarray(0, 8)
           .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
       return {
+        state: valid
+          ? "QR"
+          : state === "connecting"
+            ? "CONNECTING"
+            : "UNAVAILABLE",
         qrDataUrl: valid ? base64 : null,
         expiresAt: valid ? new Date(Date.now() + 45000).toISOString() : null,
         status: valid
           ? "Leia com o número desta conta de atendimento."
-          : "QR indisponível. Confira o estado da instância.",
+          : state === "connecting"
+            ? "Preparando a conexão. Aguarde alguns segundos."
+            : "O QR ainda não ficou pronto. Tente gerar um novo código em alguns segundos.",
       };
     },
     async sendText(input): Promise<ChannelSendResult> {

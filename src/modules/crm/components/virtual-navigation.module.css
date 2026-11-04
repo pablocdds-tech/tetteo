@@ -1,0 +1,89 @@
+.tabs {
+  display: flex;
+  gap: 24px;
+  overflow-x: auto;
+  max-width: 100%;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.tabs a {
+  flex-shrink: 0;
+  padding: 12px 0;
+  color: var(--ink-3);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  text-underline-offset: 4px;
+}
+.tabs a:hover {
+  color: var(--ink);
+}
+.tabs a[aria-current="page"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.tabs a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.accountRow {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.accountRow label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--ink-3);
+  min-width: 220px;
+}
+.accountRow select {
+  min-height: 40px;
+  max-width: 100%;
+}
+.team {
+  max-width: 1120px;
+  margin-inline: auto;
+  min-width: 0;
+}
+.teamHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.teamHeader a {
+  font-size: 0.875rem;
+  color: var(--accent);
+  text-underline-offset: 4px;
+}
+@media (max-width: 640px) {
+  .tabs {
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+  .tabs a {
+    padding-block: 14px;
+    font-size: 0.875rem;
+  }
+  .accountRow label {
+    width: 100%;
+    min-width: 0;
+  }
+  .accountRow select {
+    min-height: 44px;
+    width: 100%;
+  }
+  .teamHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}

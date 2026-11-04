@@ -99,7 +99,7 @@ export default async function PaginaAvisos({
             opcoes={GRUPOS.map((g) => ({
               valor: g.valor,
               rotulo: g.rotulo,
-              href: `/assistente/disparos?grupo=${g.valor}`,
+              href: `/assistente/equipe/avisos?grupo=${g.valor}`,
               contagem: g.valor === "todos" ? undefined : contagens[g.valor],
             }))}
           />

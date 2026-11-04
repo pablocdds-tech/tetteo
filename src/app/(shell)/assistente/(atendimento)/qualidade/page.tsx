@@ -1,1 +1,4 @@
-export { default } from "@/modules/crm/components/virtual-quality";
+import { redirect } from "next/navigation";
+export default function Page() {
+  redirect("/assistente/monitoramento/qualidade");
+}

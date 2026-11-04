@@ -96,7 +96,12 @@ async function fixture() {
         revision: config.revision,
       }),
       verify: async () => ({ connected: true }),
-      qr: async () => ({ qrDataUrl: null, expiresAt: null, status: "OPEN" }),
+      qr: async () => ({
+        state: "CONNECTED",
+        qrDataUrl: null,
+        expiresAt: null,
+        status: "OPEN",
+      }),
       webhook: async () => {},
       sendText: async () => {
         sends++;

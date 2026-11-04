@@ -140,7 +140,7 @@ export async function changeVirtualSettings(
       if (account.mode !== "DEMO" && data.active && !account.active)
         throw new CrmError(
           "CHANNEL_ACTIVATION_REQUIRED",
-          "Valide e ative o canal real pela tela de Conexões.",
+          "Teste e ative este número em Conectar WhatsApp.",
           409,
         );
       const destinations = await authorizedDestinations(

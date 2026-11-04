@@ -19,7 +19,9 @@ export default async function PaginaConversas() {
   return (
     <div className="mx-auto w-full max-w-5xl">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Severina</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Conversas da equipe
+        </h1>
         <p className="text-ink-3 mt-1 text-sm">
           O que ela falou, para quem, e o que não conseguiu entregar
         </p>

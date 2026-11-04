@@ -39,7 +39,7 @@ export function CabecalhoDePagina({
       </div>
 
       {(controles || acao) && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex max-w-full min-w-0 flex-wrap items-center gap-2">
           {controles}
           {acao}
         </div>

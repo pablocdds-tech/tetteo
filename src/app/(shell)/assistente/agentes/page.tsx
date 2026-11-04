@@ -24,7 +24,7 @@ export default async function PaginaAgentes() {
         </div>
 
         {podeConfigurar && (
-          <Link href="/assistente/agentes/novo">
+          <Link href="/assistente/equipe/agentes/novo">
             <Botao>Novo agente</Botao>
           </Link>
         )}

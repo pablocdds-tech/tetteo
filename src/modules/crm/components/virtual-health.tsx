@@ -156,7 +156,7 @@ export default function VirtualHealthPage() {
               {engine
                 ? engine.enabled
                   ? `Gemini ativo · ${engine.model ?? "modelo configurado"}`
-                  : "regras locais de demonstração, sem chamada de modelo"
+                  : "inteligência artificial desativada"
                 : "estado do modelo indisponível"}
               .
             </p>

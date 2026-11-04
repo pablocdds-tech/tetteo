@@ -1,6 +1,6 @@
 # Atendimento virtual — evidências de aceite
 
-Validação local com dados fictícios Kairu. Não houve envio para telefone real, reserva real, chamada externa de provedor nem leitura de dados de clientes da produção. Números de ensaio usam a faixa fictícia +1 202 555; credenciais e respostas HTTP são simuladas.
+Ensaios locais com dados fictícios Kairu. Não houve envio para telefone real nem reserva real. Números de ensaio usam a faixa fictícia +1 202 555; credenciais e respostas dos testes são simuladas. A conferência operacional de configuração descrita abaixo foi somente de leitura, separada dos testes de aceite.
 
 ## Ambiente e migração
 
@@ -20,10 +20,10 @@ Comando da integração:
 
 ```powershell
 $env:AV_WORKER_ENABLED = 'false'
-node node_modules/tsx/dist/cli.mjs --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 src/modules/crm/services/virtual.integracao.ts src/modules/crm/services/virtual-model.integracao.ts src/modules/crm/services/virtual-channel.integracao.ts src/modules/crm/services/virtual-temporal.integracao.ts src/app/api/atendimento/_costura/receber-live.integracao.ts
+node node_modules/tsx/dist/cli.mjs --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 src/modules/crm/services/virtual.integracao.ts src/modules/crm/services/virtual-model.integracao.ts src/modules/crm/services/virtual-channel.integracao.ts src/modules/crm/services/virtual-temporal.integracao.ts src/app/api/atendimento/_costura/receber-live.integracao.ts src/modules/crm/services/virtual-evolution-config.integracao.ts src/modules/crm/services/virtual-channel-setup.integracao.ts
 ```
 
-Resultado: **65 cenários aprovados**: 32 de atendimento/outbox, 10 do modelo privado, 15 de canais/política/qualidade, 3 das rotas reais e 5 temporais. Incluem agente, serviços e PostgreSQL real. As fixtures desativam suas contas ao final; adaptadores de canal não acessam rede. A prova dos modos reais é feita com contas fictícias META/EVOLUTION no banco local, sem credencial real. Servidor de desenvolvimento e workers externos ao ensaio devem ficar desligados para não consumir a mesma fila de fixtures.
+Resultado agregado em 03/11/2026: **84 cenários aprovados**: 32 de atendimento/outbox, 10 do modelo privado, 15 de canais/política/qualidade, 3 das rotas reais, 5 temporais, 7 de autorização da configuração privada e 12 de preparação/conexão. Incluem agente, serviços e PostgreSQL real. As fixtures desativam suas contas ao final; adaptadores de canal não acessam rede. A prova dos modos reais é feita com contas fictícias META/EVOLUTION no banco local, sem credencial real. Servidor de desenvolvimento e workers externos ao ensaio devem ficar desligados para não consumir a mesma fila de fixtures.
 
 Também foi validada a continuação com respostas isoladas (“19” e “4”): o servidor associa o campo à pergunta anterior. Uma pergunta de cardápio durante a reserva recebe a informação pública e invalida o resumo antigo; um “sim” posterior não cria reserva até existir um novo resumo para confirmação.
 
@@ -110,8 +110,38 @@ Os casos chamam serviços de verdade e transações PostgreSQL, com `ChannelMana
 
 ## Limites da evidência
 
-- Navegação em desenvolvimento: dez menus dentro da Severina, Inbox, contexto, escalação reconhecida, formulários Evolution/Meta, Skills, Qualidade, Configuração, Feed e conversas da equipe foram conferidos. Somente duas contas fictícias pausadas foram salvas; nenhuma ação de provedor foi executada. Os campos privados ficaram vazios após salvar e ausentes dos GETs.
-- O build otimizado passou. A revisão automática bloqueou o comando que iniciaria a prévia local de produção em 127.0.0.1:3009, com motivo literal “blocked by policy”. Assim, Overview → Inbox nesse modo permanece sem observação. O comportamento transitório visto durante HMR não foi tratado como prova de falha ou de funcionamento em produção.
+### Conexão e usabilidade revisadas em 03/11/2026
+
+O menu passou para seis áreas, com entrada explícita **Conectar WhatsApp** e abas
+por tarefa. A conferência em 1440×960 e 390×844 verificou o caminho Início →
+Conectar WhatsApp, o botão de QR acima da dobra em conta existente, credenciais
+recolhidas, configuração sem servidor disponível, API oficial sem QR e as páginas
+de informações, tom de voz, limites, monitoramento e equipe. Dados são fictícios
+Kairu; as capturas de requisições/QR simulados são apenas evidência privada.
+
+Com HTTP simulado no navegador: carregar a tela não pede QR; o clique executa
+`quickSetup` → `connect`; a consulta de estado começa depois da ação e para no
+limite de 45 segundos, ao confirmar a conexão ou ao trocar de conta. Trocar de
+unidade descarta o QR antigo. Nenhum envio ou ativação real foi executado.
+
+Os 19 novos casos de integração (7 de autorização da configuração privada e 12 de
+preparação/conexão) usam PostgreSQL local e provedores fictícios. Cobrem chave só
+no servidor, vínculo estrangeiro/ambíguo, permissão por loja/rede e revogação;
+conta nova inativa, ordem existência → webhook → QR, falha de destino externo,
+consulta sem regeneração e revisão alterada durante a preparação. Testes puros do
+adaptador cobrem instância ausente, timeout sem repetir POST, número já conectado,
+PNG inválido e erro explícito em HTTP 200. O estado final agregado das verificações
+é informado no encerramento da tarefa.
+
+Os cinco casos de concorrência da preparação cobrem duas réplicas com HTTP
+pendente e segundo pedido recusado com CONNECTION_BUSY/409; recuperação de lease
+expirado; revisão salva sem liberar a execução antiga; dono antigo impedido de
+limpar o lease de outra réplica; e QR tardio recusado na finalização transacional,
+preservando VERIFIED, horário, erro e lease da execução nova. A migração aditiva
+`20261103140000_atendimento_conexao_lease` foi aplicada somente ao banco local;
+seu CHECK também recusa preencher apenas uma das duas colunas do lease.
+
+- Na entrega anterior `8076ac0`, a navegação de dez menus foi conferida em desenvolvimento. A revisão automática bloqueou a prévia local de produção com motivo “blocked by policy”; aquela tentativa não foi usada como comprovação de navegação autenticada em produção. A revisão atual acima usa os seis destinos reorganizados.
 
 - Estados de aceitação/entrega acima foram produzidos por adaptadores e eventos fictícios, inclusive nos modos META/EVOLUTION. Não comprovam entrega WhatsApp real ou leitura humana.
 - Áudio é uma marcação de entrada com transcrição opcional; não há transcritor externo. Mídia real/upload/download não foi ativado; anexos são encaminhados à equipe.
@@ -121,3 +151,13 @@ Os casos chamam serviços de verdade e transações PostgreSQL, com `ChannelMana
 - Busca, filtros e paginação usam consultas do servidor; inspeção visual, navegação responsiva e screenshots são evidências separadas dos testes de serviço.
 
 O estado final de `npm run check`, `npm run build`, commit, push e deploy é informado no fechamento da tarefa. Esta matriz não substitui essas verificações nem afirma que o domínio foi atualizado.
+
+## Conferência operacional da configuração privada
+
+A configuração administrativa para preparar conexões de clientes foi salva no
+ambiente privado do Dokploy, com backup restrito e sem modificar o token individual
+dos avisos. O domínio configurado foi conferido com o roteamento do contêiner
+Evolution existente. Uma consulta administrativa somente de leitura retornou
+HTTP 200; o corpo de instâncias não foi registrado. Nenhuma instância foi criada,
+nenhum QR real foi pedido, nenhum número foi pareado e nenhuma mensagem foi
+enviada nessa conferência. Credenciais permaneceram no ambiente privado.

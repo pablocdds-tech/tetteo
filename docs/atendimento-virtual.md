@@ -8,18 +8,17 @@ A composição se inspira nas prévias ilustrativas Kairu de atendimento. Os nom
 
 ## Telas e permissões
 
-| Tela                | Caminho                     | Uso                                                           |
-| ------------------- | --------------------------- | ------------------------------------------------------------- |
-| Overview            | `/assistente`               | Resumo da operação e acessos ao atendimento                   |
-| Inbox/conversa      | `/assistente/inbox`         | Busca, filtros, paginação, contexto e controles humanos       |
-| Escalações          | `/assistente/escalacoes`    | Falha do alerta, reconhecimento e responsável                 |
-| Feed de Disparos    | `/assistente/disparos`      | Histórico de avisos existente; não libera marketing ao agente |
-| Skills / Tom de voz | `/assistente/skills`        | Orientações de estilo com versão, rascunho e aprovação        |
-| Qualidade           | `/assistente/qualidade`     | Execuções, erros, ferramentas, latência e consumo reais       |
-| Saúde da Operação   | `/assistente/saude`         | Entrada recente, atraso, circuito e pendências                |
-| Chips Evolution     | `/assistente/evolution`     | Contas de clientes, instância, QR privado, webhook e teste    |
-| Meta WhatsApp       | `/assistente/meta-whatsapp` | Cloud API oficial, callback, teste e ativação                 |
-| Configuração        | `/assistente/configuracao`  | Gemini privado, fatos reais, grade e limites por conta        |
+| Área              | Caminho                     | Conteúdo                                                         |
+| ----------------- | --------------------------- | ---------------------------------------------------------------- |
+| Início            | `/assistente`               | Conectar WhatsApp e acompanhar conversas recentes                |
+| Atendimentos      | `/assistente/inbox`         | Conversas, contexto, controle humano e aba Pendências            |
+| Conectar WhatsApp | `/assistente/conectar`      | Conexão por QR/Evolution ou API oficial Meta, teste e ativação   |
+| Assistente        | `/assistente/configuracao`  | Abas de IA, informações da unidade, tom de voz e limites         |
+| Monitoramento     | `/assistente/monitoramento` | Saúde da operação e qualidade/consumo                            |
+| Equipe e avisos   | `/assistente/equipe`        | Avisos, conversas, WhatsApp, agentes, pessoas e eventos internos |
+
+Os endereços anteriores de Evolution, Meta, Escalações, Saúde, Qualidade e Skills
+encaminham para a área correspondente. As funções não foram removidas da interface.
 
 A interface na Severina exige `assistente.ver`. `crm.ver` permite consultar; `crm.editar` permite operar; `crm.gerenciar` controla conexões, base aprovada, vínculo verificado e grade. O servidor exige a unidade ativa e não amplia acesso com IDs do navegador ou da mensagem. Cliente externo não obtém acesso ao painel por possuir o telefone. As rotas antigas do CRM redirecionam para a Severina. Avisos, agentes e números internos continuam separados.
 
@@ -28,7 +27,7 @@ O contexto mostra nome conhecido, origem/atualização, preferências deste cana
 ## Iniciar a demonstração
 
 1. Publique a migração aditiva pelo fluxo normal do projeto e entre no sistema com uma unidade ativa.
-2. Abra Severina → Inbox e inicie a demonstração. A ação cria uma conta `DEMO` da unidade, contatos/identidades fictícios, conversas de exemplo e fatos versionados para o ensaio. Repetir não duplica o conjunto inicial.
+2. Abra Severina → Atendimentos e inicie a demonstração. A ação cria uma conta `DEMO` da unidade, contatos/identidades fictícios, conversas de exemplo e fatos versionados para o ensaio. Repetir não duplica o conjunto inicial.
 3. Use o simulador da conversa para enviar mensagens fictícias, por exemplo “Quero reservar amanhã” e depois “às 19h, quatro pessoas”. O worker agrupa e processa o conjunto.
 4. Confira o resumo antes de responder “confirmo”. A consulta não bloqueia vaga; a confirmação revalida a capacidade na transação.
 5. Experimente assumir, responder, pausar, retomar com resumo e reconhecer a escalação. Os exemplos Kairu permanecem marcados como demonstração.
@@ -71,7 +70,7 @@ Escalar cria primeiro a tarefa durável, com motivo, trecho útil, cliente/conve
 
 ### Gemini pelo painel
 
-Abra **Severina → Configuração → Gemini** com permissão `crm.gerenciar`. A chave é inserida somente no campo privado da página HTTPS; não deve ser enviada pelo chat. Use [Google AI Studio](https://aistudio.google.com/api-keys) para criar/gerenciar a chave da sua conta.
+Abra **Severina → Assistente → Inteligência artificial** com permissão `crm.gerenciar`. A chave é inserida somente no campo privado da página HTTPS; não deve ser enviada pelo chat. Use [Google AI Studio](https://aistudio.google.com/api-keys) para criar/gerenciar a chave da sua conta.
 
 1. Salve a chave e consulte os modelos disponíveis na API. O servidor devolve somente nomes/metadados; não devolve a chave.
 2. Escolha um modelo da conta, confira as tarifas/cota aplicáveis na tabela oficial e salve a configuração. Tarifas zero exigem a mesma confirmação explícita das demais; o sistema não promete que sua conta terá cota gratuita.
@@ -127,14 +126,45 @@ Esse contrato é de ensaio do Tetteo. Não é o contrato de webhook Meta/Evoluti
 Os dois adaptadores estão implementados. Credenciais e testes reais permanecem sob controle do gestor no painel HTTPS. Salvar uma conta nunca ativa o atendimento. Os testes automatizados usam mensagens fictícias e HTTP simulado; não comprovam entrega real.
 
 1. Em **Configuração**, cadastre/teste/ative o Gemini e confira tarifas e teto de consumo.
-2. Em **Chips Evolution** ou **Meta WhatsApp**, salve uma conta real da unidade com seus campos privados. Eles ficam cifrados e não são devolvidos em GET/auditoria. Campos omitidos na edição preservam o segredo existente; salvar desativa a conta, invalida a revisão/teste e as respostas antigas. Alterar número/instância exige outra conta para manter a reconciliação do histórico.
-3. Selecione a conta no cabeçalho de Configuração. Publique fatos reais com validade e configure a grade e o responsável pelos alertas. Evolution e Meta compartilham capacidade por unidade/data/horário; a demonstração fica fora dessa capacidade.
+2. Abra **Conectar WhatsApp** e escolha **Ler QR no celular** ou **API oficial (Meta)**. Se a configuração privada do Evolution estiver autorizada para sua organização e seu acesso, preencha somente o nome opcional e clique em **Gerar QR Code**. Caso precise de outro servidor, abra a configuração avançada e informe as credenciais privadas. Eles ficam cifrados e não são devolvidos em GET/auditoria. Campos omitidos na edição preservam o segredo existente; salvar desativa a conta, invalida a revisão/teste e as respostas antigas. Alterar número/instância exige outra conta para manter a reconciliação do histórico.
+3. Em **Assistente → Informações da unidade**, selecione o número, publique fatos reais com validade e configure a grade. Escolha o responsável e o orçamento em **Limites e responsáveis**. Evolution e Meta compartilham capacidade por unidade/data/horário; a demonstração fica fora dessa capacidade.
 4. Faça a configuração específica abaixo. Verifique a conexão da revisão atual.
 5. Envie o teste **somente para um número de teste que você controla**, marcado explicitamente no formulário. A mensagem é fixa, tem ID durável e limite de três testes/hora/conta. Na Meta, envie primeiro “oi” do telefone de teste para o número comercial para abrir a janela de 24 horas.
 6. Aguarde callback autenticado de **entrega** e confirme no painel que observou a mensagem. Aceitação HTTP isolada não habilita a ativação. Em timeout, **Consultar teste** reconcilia a mesma tentativa, sem reenviar.
 7. Ative a conta. O servidor exige revisão verificada, webhook autenticado, entrega + observação, Gemini ativo e fatos aprovados vigentes. Use **Pausar canal** para suspender sem apagar histórico; uma conversa pode continuar pausada individualmente.
 
 ### Evolution
+
+O botão **Gerar QR Code** confirma se a instância existe, cria somente uma instância
+ausente, prepara o recebimento de mensagens e pede o QR. Um destino de eventos de
+outro sistema é recusado. O código aparece junto das instruções
+**WhatsApp → Dispositivos conectados → Conectar dispositivo**. Depois da ação, a
+tela consulta a conexão por até 45 segundos e mostra a confirmação retornada pelo
+provedor. Trocar de conta/unidade ou sair interrompe essa consulta e remove o QR.
+Um número já conectado é reconhecido sem apresentar erro de QR indisponível.
+
+A preparação é protegida no banco por conta, inclusive entre duas abas ou réplicas.
+Se outra preparação estiver em andamento, aguarde sua conclusão antes de tentar
+novamente. Uma execução interrompida libera nova tentativa após o lease de dois
+minutos; a tentativa seguinte consulta a existência antes de criar. As chamadas ao
+provedor ocorrem fora da transação do banco.
+
+A opção rápida exige uma chave administrativa explícita `AV_EVOLUTION_API_KEY`
+no ambiente privado do aplicativo. O token individual `EVOLUTION_API_KEY` dos
+avisos não autoriza criar outra instância e nunca é usado como alternativa para
+essa preparação. A chave global da Evolution corresponde a
+`AUTHENTICATION_API_KEY`; seu valor não entra em código, GET, documentação ou chat.
+A [autenticação da versão 2.3.7](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/guards/auth.guard.ts)
+confere privilégios diferentes para criação e rotas de uma instância existente.
+
+A opção rápida usa essa configuração privada somente quando a instância
+legada possui vínculo único com a organização autenticada e o operador tem
+`crm.gerenciar` na unidade do atendimento e `assistente.conectar` no escopo da
+conexão original (inclusive acesso de rede se ela for global). O identificador
+e o segredo da nova instância de clientes são gerados no servidor. A chave nunca
+é devolvida ao navegador e a instância antiga não é reaproveitada. A preparação
+cria uma conta inativa; teste e ativação continuam explícitos. Timeout de criação
+não repete POST automaticamente: a próxima tentativa começa pela consulta.
 
 Use uma instância **exclusiva para clientes**. As instâncias `EVOLUTION_INSTANCIA` dos avisos internos e `COMPRAS_EVOLUTION_INSTANCIA` de Compras são recusadas no mesmo servidor. Essa proteção também é revalidada antes de acessar o provedor. Se necessário, crie a nova instância com o botão do painel (a chave precisa de permissão de criação), configure o webhook e gere o QR privado. Não desconectamos nem substituímos a instância da equipe. O QR expira na interface e não deve ser compartilhado em prints.
 

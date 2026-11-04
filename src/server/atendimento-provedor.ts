@@ -14,15 +14,18 @@ export type LiveChannelConfig = ChannelScope & {
     | { provider: "EVOLUTION"; settings: EvolutionChannelSettings }
     | { provider: "META"; settings: MetaChannelSettings }
   );
+export type ChannelConnectionQr = {
+  state: "CONNECTED" | "QR" | "CONNECTING" | "UNAVAILABLE";
+  qrDataUrl: string | null;
+  expiresAt: string | null;
+  status: string;
+};
 export interface ChannelManagement extends AtendimentoChannelAdapter {
   createInstance?(): Promise<void>;
+  ensureInstance?(): Promise<void>;
   verify(): Promise<{ connected: boolean }>;
   webhook(url: string, replace: boolean): Promise<void>;
-  qr(): Promise<{
-    qrDataUrl: string | null;
-    expiresAt: string | null;
-    status: string;
-  }>;
+  qr(): Promise<ChannelConnectionQr>;
 }
 export type ChannelManagementFactory = (
   accountId: string,

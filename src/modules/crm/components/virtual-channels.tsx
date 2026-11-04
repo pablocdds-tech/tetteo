@@ -2,7 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
 import {
@@ -11,9 +17,31 @@ import {
   type VirtualChannelsResult,
 } from "../client/virtual-channel-context";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
-import styles from "./virtual.module.css";
+import common from "./virtual.module.css";
+import styles from "./virtual-channels.module.css";
 
 type Provider = "EVOLUTION" | "META";
+type ConnectionResult = {
+  state: "CONNECTED" | "QR" | "CONNECTING" | "UNAVAILABLE";
+  qrDataUrl: string | null;
+  expiresAt: string | null;
+  status: string;
+};
+type ConnectionAttempt = {
+  accountId: string;
+  startedAt: number;
+  result: ConnectionResult;
+};
+type ChannelAction =
+  | "connect"
+  | "status"
+  | "verify"
+  | "createInstance"
+  | "webhook"
+  | "activate"
+  | "sendTest"
+  | "ackTest"
+  | "reconcileTest";
 const subscribe = () => () => {};
 const secureOrigin = () =>
   location.protocol === "https:" ||
@@ -21,18 +49,18 @@ const secureOrigin = () =>
 const errorText = (failure: unknown) =>
   failure instanceof Error
     ? failure.message
-    : "Não foi possível confirmar a operação do canal.";
+    : "Não foi possível confirmar a operação. Tente atualizar o status.";
 const TEST_STATE = {
   SENDING: "Envio solicitado",
-  ACCEPTED: "Aceito pelo provedor",
+  ACCEPTED: "Aceito pelo provedor; entrega pendente",
   DELIVERED: "Entrega confirmada pelo provedor",
-  FAILED: "Falhou",
+  FAILED: "O envio falhou",
   UNCERTAIN: "Resultado incerto; consulte o status",
 };
 const CONNECTION = {
-  PENDING: "Verificação pendente",
+  PENDING: "Aguardando conexão",
   VERIFIED: "Conexão verificada",
-  FAILED: "Verificação falhou",
+  FAILED: "Conexão precisa de atenção",
 };
 function randomSecret() {
   return Array.from(crypto.getRandomValues(new Uint8Array(32)), (value) =>
@@ -41,34 +69,48 @@ function randomSecret() {
 }
 
 export default function VirtualChannelsPage({
-  provider,
+  provider = "EVOLUTION",
 }: {
-  provider: Provider;
+  provider?: Provider;
 }) {
   const { selectedStoreId: storeId } = useAuth();
   return (
     <ChannelsForStore
       key={`${storeId}:${provider}`}
-      provider={provider}
+      initialProvider={provider}
       storeId={storeId}
     />
   );
 }
 
 function ChannelsForStore({
-  provider,
+  initialProvider,
   storeId,
 }: {
-  provider: Provider;
+  initialProvider: Provider;
   storeId: string;
 }) {
   const { user } = useAuth();
   const { refreshAccounts, setSelectedAccountId } = useVirtualAccount();
   const manageable = user.role === "MANAGER";
+  const secure = useSyncExternalStore(subscribe, secureOrigin, () => false);
+  const [provider, setProvider] = useState(initialProvider);
   const [data, setData] = useState<VirtualChannelsResult | null>(null);
-  const [selected, setSelected] = useState("");
+  // null selects an existing account; an empty string explicitly starts a new one.
+  const [selected, setSelected] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [initialConnection, setInitialConnection] =
+    useState<ConnectionAttempt | null>(null);
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
   useEffect(() => {
     let alive = true;
     void api
@@ -89,134 +131,269 @@ function ChannelsForStore({
     };
   }, [storeId, revision]);
   const accounts =
-    data?.accounts.filter((account) => account.provider === provider) ?? [];
-  const account = accounts.find((item) => item.id === selected) ?? null;
-  function result(value: VirtualChannelsResult, savedId?: string) {
-    setData(value);
-    refreshAccounts();
-    if (savedId) {
-      setSelected(savedId);
-      setSelectedAccountId(savedId);
+    data?.accounts.filter((item) => item.provider === provider) ?? [];
+  const account =
+    selected === ""
+      ? null
+      : (accounts.find((item) => item.id === selected) ?? accounts[0] ?? null);
+  const accountId = account?.id;
+  useEffect(() => {
+    if (accountId) setSelectedAccountId(accountId);
+  }, [accountId, setSelectedAccountId]);
+  const onResult = useCallback(
+    (value: VirtualChannelsResult, savedId?: string) => {
+      if (!live.current) return;
+      setData(value);
+      refreshAccounts();
+      if (savedId) {
+        setSelected(savedId);
+        setSelectedAccountId(savedId);
+      }
+    },
+    [refreshAccounts, setSelectedAccountId],
+  );
+
+  async function quickConnect() {
+    if (quickBusy || !data?.managedEvolutionAvailable || !secure) return;
+    setQuickBusy(true);
+    setError("");
+    try {
+      const setup = await api.post<VirtualChannelsResult>(
+        "/api/crm/virtual/channels",
+        { storeId, action: "quickSetup", name: quickName.trim() || undefined },
+      );
+      if (!live.current) return;
+      const saved = setup.accounts.find(
+        (item) => item.id === setup.createdAccountId,
+      );
+      if (!saved)
+        throw new Error("A conta não foi identificada. Atualize as conexões.");
+      // Keep the saved account if preparing its QR fails; retry connects it.
+      onResult(setup, saved.id);
+      const startedAt = Date.now();
+      const result = await api.post<ConnectionResult>(
+        "/api/crm/virtual/channels",
+        {
+          storeId,
+          accountId: saved.id,
+          revision: saved.revision,
+          action: "connect",
+        },
+      );
+      if (live.current) {
+        setInitialConnection({ accountId: saved.id, startedAt, result });
+        if (result.state === "CONNECTED") {
+          const current = await api.get<VirtualChannelsResult>(
+            `/api/crm/virtual/channels?storeId=${encodeURIComponent(storeId)}`,
+          );
+          if (live.current) onResult(current);
+        }
+      }
+    } catch (failure) {
+      if (live.current) setError(errorText(failure));
+    } finally {
+      if (live.current) setQuickBusy(false);
     }
   }
+
   return (
-    <main className={styles.page}>
-      <VirtualHeader section={provider === "EVOLUTION" ? "evolution" : "meta"}>
-        <div className={styles.actions}>
+    <main className={`${common.page} ${styles.page}`}>
+      <VirtualHeader
+        section={provider === "EVOLUTION" ? "evolution" : "meta"}
+      />
+      <div className={styles.methods} aria-label="Como conectar o WhatsApp">
+        {(
+          [
+            [
+              "EVOLUTION",
+              "Ler QR no celular",
+              "Conectar pelo WhatsApp do aparelho",
+            ],
+            [
+              "META",
+              "API oficial (Meta)",
+              "Usar uma conta WhatsApp Business Platform",
+            ],
+          ] as const
+        ).map(([value, label, description]) => (
           <button
-            className="btn"
-            onClick={() => setRevision((value) => value + 1)}
+            className={styles.method}
+            type="button"
+            key={value}
+            aria-pressed={provider === value}
+            disabled={quickBusy}
+            onClick={() => {
+              setProvider(value);
+              setSelected(null);
+              setError("");
+              setInitialConnection(null);
+              setQuickName("");
+            }}
           >
-            Atualizar contas
+            <strong>{label}</strong>
+            <span>{description}</span>
           </button>
-          {manageable && (
-            <button className="btn btn-primary" onClick={() => setSelected("")}>
-              Nova conta {provider === "META" ? "Meta" : "Evolution"}
-            </button>
-          )}
-        </div>
-      </VirtualHeader>
+        ))}
+      </div>
       {error && (
-        <p className={styles.error} role="alert">
+        <p className={common.error} role="alert">
           {error}
         </p>
       )}
-      <section className={styles.panel}>
-        <h2>
-          {provider === "META"
-            ? "WhatsApp Business Platform oficial"
-            : "Contas Evolution do atendimento"}
-        </h2>
-        <p>
-          {provider === "META"
-            ? "Configure o aplicativo e a conta empresarial autorizados na Meta. Cada número possui credenciais, webhook e teste de entrega próprios."
-            : "Use uma instância dedicada ao atendimento dos clientes. A Evolution não equivale à aprovação da plataforma Meta; a conexão dos avisos da equipe permanece separada."}
-        </p>
-        <p>
-          <a
-            className={styles.textLink}
-            href={
-              provider === "META"
-                ? "https://developers.facebook.com/docs/whatsapp/"
-                : "https://doc.evolution-api.com/v2/pt/"
-            }
-            target="_blank"
-            rel="noreferrer"
-          >
-            Documentação do provedor
-          </a>
-        </p>
-        {provider === "EVOLUTION" && data?.legacyReservedInstance && (
-          <p className={styles.muted}>
-            Instância reservada para a equipe: {data.legacyReservedInstance}.
-          </p>
-        )}
-      </section>
       {!data && !error && (
-        <p className={styles.empty}>Consultando contas desta unidade…</p>
+        <p className={common.empty}>Consultando conexões desta unidade…</p>
       )}
       {data && (
         <>
-          <section className={styles.panel}>
-            <h2>Contas configuradas</h2>
-            {accounts.length ? (
-              <div className={styles.accountCards}>
-                {accounts.map((item) => (
-                  <button
-                    className={styles.accountCard}
-                    aria-pressed={item.id === selected}
-                    key={item.id}
-                    onClick={() => {
-                      setSelected(item.id);
-                      setSelectedAccountId(item.id);
-                    }}
-                  >
-                    <strong>{item.name}</strong>
-                    <span>
-                      {item.settings.instance ?? item.settings.phoneNumberId}
-                    </span>
-                    <span className={styles.badges}>
-                      <span
-                        className={`${styles.badge} ${item.active ? styles.success : styles.warning}`}
-                      >
-                        {item.active ? "Ativada" : "Pausada"}
-                      </span>
-                      <span className={styles.badge}>
-                        {CONNECTION[item.connectionState]}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
+          <div className={styles.accountBar}>
+            {accounts.length > 0 ? (
+              <label className={common.field}>
+                WhatsApp desta unidade
+                <select
+                  value={account?.id ?? ""}
+                  disabled={quickBusy}
+                  onChange={(event) => {
+                    setSelected(event.target.value);
+                    setInitialConnection(null);
+                    setError("");
+                  }}
+                >
+                  {selected === "" && <option value="">Nova conexão</option>}
+                  {accounts.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             ) : (
-              <p>
-                Nenhuma conta {provider === "META" ? "Meta" : "Evolution"}{" "}
-                cadastrada nesta unidade.
+              <p className={common.muted}>
+                {provider === "EVOLUTION"
+                  ? "Primeiro WhatsApp de clientes desta unidade"
+                  : "Cadastre a conta empresarial autorizada pela Meta."}
               </p>
             )}
-          </section>
+            <div className={common.actions}>
+              <button
+                className="btn"
+                disabled={quickBusy}
+                onClick={() => setRevision((value) => value + 1)}
+              >
+                Atualizar
+              </button>
+              {manageable && accounts.length > 0 && account && (
+                <button
+                  className="btn"
+                  disabled={quickBusy}
+                  onClick={() => {
+                    setSelected("");
+                    setInitialConnection(null);
+                    setError("");
+                  }}
+                >
+                  Adicionar WhatsApp
+                </button>
+              )}
+            </div>
+          </div>
           {manageable ? (
-            <ChannelManager
-              key={`${provider}:${account?.id ?? "new"}:${account?.revision ?? 0}`}
-              provider={provider}
-              account={account}
-              data={data}
-              storeId={storeId}
-              onResult={result}
-            />
+            <>
+              {!account &&
+                provider === "EVOLUTION" &&
+                data.managedEvolutionAvailable &&
+                secure && (
+                  <section className={styles.quickSetup}>
+                    <div>
+                      <h2>Conecte o WhatsApp pelo QR Code</h2>
+                      <p>
+                        Use a configuração privada do restaurante. Gere o código
+                        e leia pelo celular que usa esse número.
+                      </p>
+                      <form
+                        className={styles.quickForm}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void quickConnect();
+                        }}
+                      >
+                        <label className={common.field}>
+                          Nome para identificar este WhatsApp (opcional)
+                          <input
+                            value={quickName}
+                            maxLength={100}
+                            disabled={quickBusy}
+                            placeholder="Ex.: Atendimento da unidade Centro"
+                            onChange={(event) =>
+                              setQuickName(event.target.value)
+                            }
+                          />
+                        </label>
+                        <button
+                          className="btn btn-primary"
+                          disabled={quickBusy}
+                        >
+                          {quickBusy ? "Preparando QR Code…" : "Gerar QR Code"}
+                        </button>
+                      </form>
+                    </div>
+                    <PhoneInstructions />
+                  </section>
+                )}
+              <ChannelManager
+                key={`${provider}:${account?.id ?? "new"}:${account?.revision ?? 0}`}
+                provider={provider}
+                account={account}
+                data={data}
+                storeId={storeId}
+                onResult={onResult}
+                initialConnection={initialConnection}
+                connecting={quickBusy}
+              />
+            </>
           ) : (
-            <section className={styles.panel}>
-              <h2>Configuração pela gestão</h2>
+            <section className={styles.section}>
+              <h2>Conexão pela gestão</h2>
               <p>
-                Seu perfil pode acompanhar as contas. A gestão configura
-                credenciais, testa e ativa cada conexão.
+                {account
+                  ? `${account.name}: ${CONNECTION[account.connectionState]}. Atendimento automático ${account.active ? "ativo" : "pausado"}.`
+                  : "Nenhum WhatsApp cadastrado nesta opção."}{" "}
+                A gestão pode conectar o número, testar e ativar o atendimento.
               </p>
             </section>
           )}
+          <p className={styles.providerNote}>
+            {provider === "EVOLUTION"
+              ? "Conexão por Evolution, separada dos avisos da equipe. Não equivale à aprovação da API oficial da Meta."
+              : "A API oficial é configurada com as credenciais da conta empresarial. Esta opção não usa QR Code."}{" "}
+            <a
+              href={
+                provider === "META"
+                  ? "https://developers.facebook.com/docs/whatsapp/"
+                  : "https://doc.evolution-api.com/v2/pt/"
+              }
+              target="_blank"
+              rel="noreferrer"
+            >
+              Documentação do provedor
+            </a>
+          </p>
         </>
       )}
       <VirtualCredit />
     </main>
+  );
+}
+
+function PhoneInstructions() {
+  return (
+    <div className={styles.phoneInstructions}>
+      <h3>No celular do restaurante</h3>
+      <ol>
+        <li>Abra o WhatsApp.</li>
+        <li>Entre em Dispositivos conectados.</li>
+        <li>Toque em Conectar dispositivo e leia o QR Code.</li>
+      </ol>
+    </div>
   );
 }
 
@@ -226,12 +403,16 @@ function ChannelManager({
   data,
   storeId,
   onResult,
+  initialConnection,
+  connecting,
 }: {
   provider: Provider;
   account: VirtualChannelAccount | null;
   data: VirtualChannelsResult;
   storeId: string;
   onResult: (result: VirtualChannelsResult, savedId?: string) => void;
+  initialConnection: ConnectionAttempt | null;
+  connecting: boolean;
 }) {
   const secure = useSyncExternalStore(subscribe, secureOrigin, () => false);
   const [name, setName] = useState(account?.name ?? "");
@@ -260,17 +441,21 @@ function ChannelManager({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [qr, setQr] = useState<{
-    qrDataUrl: string | null;
-    expiresAt: string | null;
-    status: string;
-  } | null>(null);
+  const [attempt, setAttempt] = useState<ConnectionAttempt | null>(null);
+  const [pollNote, setPollNote] = useState("");
+  const live = useRef(true);
   const testRequest = useRef<{
     accountId: string;
     revision: number;
     recipient: string;
     requestId: string;
   } | null>(null);
+  const activeAttempt =
+    attempt ??
+    (initialConnection?.accountId === account?.id ? initialConnection : null);
+  const connection = activeAttempt?.result ?? null;
+  const blocked = Boolean(busy) || connecting;
+  const creating = !account;
   const edited = Boolean(
     account &&
     (name !== account.name ||
@@ -288,18 +473,122 @@ function ChannelManager({
   const reserved =
     provider === "EVOLUTION" &&
     Boolean(instance && instance === data.legacyReservedInstance);
-  const creating = !account;
   useEffect(() => {
-    if (!qr?.expiresAt) return;
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+  const accountId = account?.id;
+  const accountRevision = account?.revision;
+  const startedAt = activeAttempt?.startedAt;
+  const expiresAt = connection?.expiresAt;
+  const connectionState = connection?.state;
+  useEffect(() => {
+    if (
+      !accountId ||
+      accountRevision === undefined ||
+      !startedAt ||
+      busy ||
+      !connectionState ||
+      connectionState === "CONNECTED" ||
+      connectionState === "UNAVAILABLE"
+    )
+      return;
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = Math.min(
+      startedAt + 45000,
+      expiresAt ? new Date(expiresAt).getTime() : Infinity,
+    );
+    const controller = new AbortController();
+    const cutoff = setTimeout(
+      () => {
+        alive = false;
+        controller.abort();
+        clearTimeout(timer);
+        setPollNote(
+          "Consulta automática encerrada. Você pode atualizar o status.",
+        );
+      },
+      Math.max(0, deadline - Date.now()),
+    );
+    async function poll() {
+      if (!alive) return;
+      if (Date.now() >= deadline) {
+        setPollNote(
+          "Consulta automática encerrada. Você pode atualizar o status.",
+        );
+        return;
+      }
+      try {
+        const result = await api.post<VirtualChannelsResult>(
+          "/api/crm/virtual/channels",
+          { storeId, accountId, revision: accountRevision, action: "status" },
+          { signal: controller.signal },
+        );
+        if (!alive) return;
+        onResult(result);
+        if (
+          result.accounts.find((item) => item.id === accountId)
+            ?.connectionState === "VERIFIED"
+        ) {
+          setAttempt({
+            accountId: accountId!,
+            startedAt: startedAt!,
+            result: {
+              state: "CONNECTED",
+              qrDataUrl: null,
+              expiresAt: null,
+              status: "Número conectado ao WhatsApp.",
+            },
+          });
+          return;
+        }
+        timer = setTimeout(poll, 3000);
+      } catch (failure) {
+        if (alive) setPollNote(errorText(failure));
+      }
+    }
+    timer = setTimeout(poll, 3000);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      clearTimeout(cutoff);
+      controller.abort();
+    };
+  }, [
+    accountId,
+    accountRevision,
+    startedAt,
+    expiresAt,
+    connectionState,
+    busy,
+    storeId,
+    onResult,
+  ]);
+  useEffect(() => {
+    if (!expiresAt || !activeAttempt || connectionState !== "QR") return;
+    const savedAttempt = activeAttempt;
     const timer = setTimeout(
-      () => setQr(null),
-      Math.max(0, new Date(qr.expiresAt).getTime() - Date.now()),
+      () => {
+        setAttempt({
+          ...savedAttempt,
+          result: {
+            state: "UNAVAILABLE",
+            qrDataUrl: null,
+            expiresAt: null,
+            status: "O QR Code expirou. Gere outro para conectar o número.",
+          },
+        });
+      },
+      Math.max(0, new Date(expiresAt).getTime() - Date.now()),
     );
     return () => clearTimeout(timer);
-  }, [qr]);
+  }, [expiresAt, activeAttempt, connectionState]);
 
   async function save() {
-    if (!secure || busy) return;
+    if (!secure || blocked) return;
     setBusy("save");
     setError("");
     setNotice("");
@@ -333,6 +622,7 @@ function ChannelManager({
           ...settings,
         },
       );
+      if (!live.current) return;
       const saved = result.accounts.find(
         (item) =>
           item.provider === provider &&
@@ -342,36 +632,28 @@ function ChannelManager({
       );
       onResult(result, saved?.id);
       setNotice(
-        "Conta salva. A conexão, o webhook e a entrega ainda precisam ser verificados antes da ativação.",
+        "Conexão salva. Agora conecte o número e faça o teste de entrega.",
       );
     } catch (failure) {
-      setError(errorText(failure));
+      if (live.current) setError(errorText(failure));
     } finally {
       setApiKey("");
       setWebhookSecret("");
       setAccessToken("");
       setAppSecret("");
       setVerifyToken("");
-      setBusy(null);
+      if (live.current) setBusy(null);
     }
   }
-
   async function act(
-    action:
-      | "verify"
-      | "createInstance"
-      | "webhook"
-      | "qr"
-      | "activate"
-      | "sendTest"
-      | "ackTest"
-      | "reconcileTest",
+    action: ChannelAction,
     extra: Record<string, unknown> = {},
   ) {
-    if (!account || busy) return;
+    if (!account || blocked || !secure) return;
     setBusy(action);
     setError("");
     setNotice("");
+    setPollNote("");
     try {
       if (action === "sendTest") {
         if (
@@ -392,593 +674,737 @@ function ChannelManager({
           confirmedTestNumber: confirmedNumber,
         };
       }
-      const result = await api.post<
-        | VirtualChannelsResult
-        | { qrDataUrl: string | null; expiresAt: string | null; status: string }
-      >("/api/crm/virtual/channels", {
-        storeId,
-        accountId: account.id,
-        action,
-        revision: account.revision,
-        ...extra,
-      });
-      if ("qrDataUrl" in result) setQr(result);
-      else onResult(result);
-      setNotice(
-        action === "activate"
-          ? extra.enabled
-            ? "Conta ativada pelo servidor após validar os requisitos."
-            : "Conta pausada."
-          : action === "sendTest"
-            ? "Solicitação de teste registrada. Confira separadamente a aceitação, a entrega e a observação no número de teste."
-            : action === "ackTest"
-              ? "Observação do teste registrada para esta conta."
-              : action === "webhook"
-                ? "Configuração do webhook concluída. Aguarde uma entrada autêntica para confirmar o recebimento."
-                : action === "qr"
-                  ? "Estado de conexão consultado."
-                  : action === "createInstance"
-                    ? "Instância criada no Evolution. Configure o webhook e consulte o QR para conectar o número."
-                    : "Estado da conta atualizado. Confira os resultados abaixo.",
+      const startedAt = Date.now();
+      const result = await api.post<VirtualChannelsResult | ConnectionResult>(
+        "/api/crm/virtual/channels",
+        {
+          storeId,
+          accountId: account.id,
+          action,
+          revision: account.revision,
+          ...extra,
+        },
       );
+      if (!live.current) return;
+      if ("qrDataUrl" in result) {
+        setAttempt({ accountId: account.id, startedAt, result });
+        if (result.state === "CONNECTED") {
+          const current = await api.get<VirtualChannelsResult>(
+            `/api/crm/virtual/channels?storeId=${encodeURIComponent(storeId)}`,
+          );
+          if (live.current) onResult(current);
+        }
+      } else {
+        onResult(result);
+        if (action === "status" || action === "verify") {
+          const verified =
+            result.accounts.find((item) => item.id === account.id)
+              ?.connectionState === "VERIFIED";
+          if (verified || connection?.state === "CONNECTED")
+            setAttempt({
+              accountId: account.id,
+              startedAt,
+              result: {
+                state: verified ? "CONNECTED" : "UNAVAILABLE",
+                qrDataUrl: null,
+                expiresAt: null,
+                status: verified
+                  ? "Conexão verificada pelo provedor."
+                  : "O provedor ainda não confirmou a conexão do número.",
+              },
+            });
+        }
+        setNotice(
+          action === "activate"
+            ? extra.enabled
+              ? "Atendimento automático ativado após a validação do servidor."
+              : "Atendimento automático pausado."
+            : action === "sendTest"
+              ? "Teste solicitado. Aguarde a confirmação de entrega do provedor."
+              : action === "ackTest"
+                ? "Recebimento observado e registrado."
+                : action === "webhook"
+                  ? "Recebimento de mensagens configurado. Aguarde uma entrada autêntica."
+                  : action === "createInstance"
+                    ? "Instância criada. Gere o QR Code para conectar o número."
+                    : "Status atualizado pelo provedor.",
+        );
+      }
     } catch (failure) {
-      setError(errorText(failure));
+      if (live.current) setError(errorText(failure));
     } finally {
-      setBusy(null);
+      if (live.current) setBusy(null);
     }
   }
 
   if (!secure)
     return (
-      <section className={styles.panel}>
+      <section className={styles.section}>
         <h2>Conexão privada</h2>
-        <p className={styles.error}>
-          Abra o endereço HTTPS autenticado do sistema para configurar
-          credenciais e testar esta conta.
+        <p className={common.error}>
+          Abra o endereço HTTPS autenticado do sistema para conectar o WhatsApp.
         </p>
       </section>
     );
+  const numberConnected = connection
+    ? connection.state === "CONNECTED"
+    : account?.connectionState === "VERIFIED";
+  const canActivate = Boolean(
+    account &&
+    !edited &&
+    account.blockers.length === 0 &&
+    account.connectionState === "VERIFIED" &&
+    account.latestTest?.state === "DELIVERED" &&
+    account.latestTest.observedAt,
+  );
   return (
     <>
       {error && (
-        <p className={styles.error} role="alert">
+        <p className={common.error} role="alert">
           {error}
         </p>
       )}
       {notice && (
-        <p className={styles.notice} role="status">
+        <p className={common.notice} role="status">
           {notice}
         </p>
       )}
-      <section className={styles.panel}>
-        <h2>
-          {creating
-            ? "Nova conta de atendimento"
-            : `Configuração de ${account.name}`}
-        </h2>
-        <p>
-          Credenciais são preenchidas somente neste painel privado e não voltam
-          nas consultas. Campos privados em branco preservam o valor já salvo.
-        </p>
-        <form
-          autoComplete="off"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <fieldset
-            disabled={Boolean(busy)}
-            className={styles.fields}
-            style={{ border: 0, minWidth: 0 }}
-          >
-            <label className={styles.field}>
-              Nome da conta
-              <input
-                value={name}
-                required
-                minLength={2}
-                maxLength={100}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Nome para identificar o canal da unidade"
-              />
-            </label>
-            {provider === "EVOLUTION" ? (
-              <>
-                <label className={styles.field}>
-                  Servidor Evolution autorizado
-                  <select
-                    value={url}
-                    required
-                    disabled={!creating}
-                    onChange={(event) => setUrl(event.target.value)}
-                  >
-                    {!url && (
-                      <option value="">Nenhum servidor autorizado</option>
-                    )}
-                    {url && !data.allowedEvolutionOrigins.includes(url) && (
-                      <option value={url}>{url} · configuração salva</option>
-                    )}
-                    {data.allowedEvolutionOrigins.map((origin) => (
-                      <option key={origin} value={origin}>
-                        {origin}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className={styles.field}>
-                  Instância dedicada ao atendimento
-                  <input
-                    value={instance}
-                    required
-                    disabled={!creating}
-                    maxLength={100}
-                    onChange={(event) => setInstance(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  Chave da API Evolution
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={apiKey}
-                    required={creating}
-                    maxLength={1000}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder={
-                      account?.credentialPresent
-                        ? "Preencha para substituir a chave salva"
-                        : "Chave privada do servidor Evolution"
-                    }
-                  />
-                </label>
-                <label className={styles.field}>
-                  Segredo privado do webhook
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={webhookSecret}
-                    required={creating}
-                    minLength={32}
-                    maxLength={1000}
-                    onChange={(event) => setWebhookSecret(event.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => setWebhookSecret(randomSecret())}
-                  >
-                    Gerar segredo privado
-                  </button>
-                </label>
-                {!data.allowedEvolutionOrigins.length && (
-                  <p className={styles.warning}>
-                    Nenhum servidor Evolution está autorizado nesta instalação.
-                    A administração precisa liberar o endereço do servidor.
-                  </p>
-                )}
-                {reserved && (
-                  <p className={styles.error}>
-                    Esta instância está reservada para os avisos da equipe. Use
-                    outra instância para os clientes.
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <label className={styles.field}>
-                  ID do número de telefone na Meta
-                  <input
-                    value={phoneNumberId}
-                    required
-                    disabled={!creating}
-                    inputMode="numeric"
-                    pattern="[0-9]+"
-                    maxLength={40}
-                    onChange={(event) => setPhoneNumberId(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  ID da conta empresarial WhatsApp (WABA)
-                  <input
-                    value={businessAccountId}
-                    required
-                    disabled={!creating}
-                    inputMode="numeric"
-                    pattern="[0-9]+"
-                    maxLength={40}
-                    onChange={(event) =>
-                      setBusinessAccountId(event.target.value)
-                    }
-                  />
-                </label>
-                <label className={styles.field}>
-                  Versão da API
-                  <input
-                    value={apiVersion}
-                    required
-                    maxLength={20}
-                    onChange={(event) => setApiVersion(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  Token de acesso
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={accessToken}
-                    required={creating}
-                    maxLength={4000}
-                    onChange={(event) => setAccessToken(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  App Secret da Meta
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={appSecret}
-                    required={creating}
-                    maxLength={1000}
-                    onChange={(event) => setAppSecret(event.target.value)}
-                  />
-                </label>
-                <label className={styles.field}>
-                  Token de verificação do webhook
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={verifyToken}
-                    required={creating}
-                    minLength={16}
-                    maxLength={1000}
-                    onChange={(event) => setVerifyToken(event.target.value)}
-                  />
-                  <span className={styles.metadata}>
-                    Use este mesmo token na configuração do webhook da Meta.
-                    Registre-o no seu ambiente privado antes de salvar; o campo
-                    será limpo.
-                  </span>
-                </label>
-              </>
-            )}
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={
-                reserved ||
-                (provider === "EVOLUTION" &&
-                  creating &&
-                  !data.allowedEvolutionOrigins.length)
-              }
-            >
-              {busy === "save" ? "Salvando…" : "Salvar conta e credenciais"}
-            </button>
-          </fieldset>
-        </form>
-        {account && (
-          <p className={styles.muted} style={{ marginTop: 12 }}>
-            A vinculação física é preservada. Para trocar número, conta
-            empresarial ou instância, cadastre outra conta.
-          </p>
-        )}
-      </section>
       {account && (
         <>
-          <section className={styles.panel}>
-            <div className={styles.sectionHeading}>
-              <h2>Verificação da configuração salva</h2>
+          <section className={styles.connection} aria-label="Conectar número">
+            <div className={styles.connectionHeading}>
+              <div>
+                <h2>
+                  {numberConnected
+                    ? provider === "EVOLUTION"
+                      ? "Número conectado ao WhatsApp"
+                      : "Conexão com a Meta verificada"
+                    : provider === "EVOLUTION"
+                      ? "Conecte seu número pelo celular"
+                      : "Verifique a conexão com a Meta"}
+                </h2>
+                <p>
+                  {account.name}. Conectar o número e ativar o atendimento
+                  automático são etapas separadas.
+                </p>
+              </div>
               <span
-                className={`${styles.badge} ${account.connectionState === "VERIFIED" ? styles.success : styles.warning}`}
+                className={`${common.badge} ${account.active ? common.success : common.warning}`}
               >
-                {CONNECTION[account.connectionState]}
+                IA {account.active ? "ativa" : "pausada"}
               </span>
             </div>
-            <p>
-              Revisão {account.revision}.{" "}
-              {account.verifiedAt
-                ? `Verificada em ${new Date(account.verifiedAt).toLocaleString("pt-BR")}.`
-                : "Esta revisão ainda precisa ser verificada."}
-            </p>
-            {edited && (
-              <p className={styles.warning}>
-                Há alterações no formulário. Salve antes de verificar ou testar
-                a conexão.
-              </p>
-            )}
-            {account.lastError && (
-              <p className={styles.error}>{account.lastError}</p>
-            )}
-            <div className={styles.actions} style={{ marginTop: 16 }}>
-              <button
-                className="btn"
-                disabled={Boolean(busy) || edited}
-                onClick={() => void act("verify")}
-              >
-                Verificar conexão
-              </button>
-              {provider === "EVOLUTION" && (
-                <button
-                  className="btn"
-                  disabled={Boolean(busy) || edited}
-                  onClick={() => void act("createInstance")}
-                >
-                  Criar instância no Evolution
-                </button>
-              )}
-              {provider === "EVOLUTION" && (
-                <button
-                  className="btn"
-                  disabled={Boolean(busy) || edited}
-                  onClick={() => void act("qr")}
-                >
-                  Consultar QR e conexão
-                </button>
-              )}
-            </div>
-            {provider === "EVOLUTION" && (
-              <p className={styles.muted} style={{ marginTop: 12 }}>
-                Crie somente uma instância exclusiva para os clientes. A chave
-                do servidor precisa ter permissão de criação. Uma instância
-                existente deve ser verificada e conectada.
-              </p>
-            )}
-            {qr && (
-              <div className={styles.panel}>
-                <p>{qr.status}</p>
-                {qr.qrDataUrl && (
-                  <Image
-                    src={qr.qrDataUrl}
-                    width={256}
-                    height={256}
-                    unoptimized
-                    alt="QR privado para conectar esta instância Evolution"
-                  />
-                )}
-                {qr.expiresAt && (
-                  <p className={styles.muted}>
-                    Válido até {new Date(qr.expiresAt).toLocaleString("pt-BR")}.
+            <div className={styles.connectionGrid}>
+              <div>
+                <div className={common.actions}>
+                  {provider === "EVOLUTION" && (
+                    <button
+                      className={numberConnected ? "btn" : "btn btn-primary"}
+                      disabled={blocked || edited}
+                      onClick={() => void act("connect")}
+                    >
+                      {busy === "connect" || connecting
+                        ? "Preparando QR Code…"
+                        : "Gerar QR Code"}
+                    </button>
+                  )}
+                  <button
+                    className={
+                      provider === "META" && !numberConnected
+                        ? "btn btn-primary"
+                        : "btn"
+                    }
+                    disabled={blocked || edited}
+                    onClick={() => void act("status")}
+                  >
+                    {busy === "status"
+                      ? "Consultando…"
+                      : "Atualizar status da conexão"}
+                  </button>
+                </div>
+                {edited && (
+                  <p className={common.warning}>
+                    Salve as alterações em Editar conexão antes de continuar.
                   </p>
                 )}
+                {connection ? (
+                  <div className={styles.qrStage} role="status">
+                    <p
+                      className={
+                        connection.state === "CONNECTED" ? common.success : ""
+                      }
+                    >
+                      {connection.status}
+                    </p>
+                    {connection.qrDataUrl && (
+                      <Image
+                        className={styles.qr}
+                        src={connection.qrDataUrl}
+                        width={288}
+                        height={288}
+                        unoptimized
+                        alt="QR Code privado para conectar o WhatsApp desta unidade"
+                      />
+                    )}
+                    {connection.expiresAt && (
+                      <p>
+                        Válido até{" "}
+                        {new Date(connection.expiresAt).toLocaleTimeString(
+                          "pt-BR",
+                        )}
+                        .
+                      </p>
+                    )}
+                    {pollNote && <p>{pollNote}</p>}
+                  </div>
+                ) : (
+                  <p className={styles.connectionHint}>
+                    {connecting
+                      ? "Preparando a conexão. Aguarde o QR Code aparecer aqui."
+                      : numberConnected
+                        ? "A conexão foi verificada pelo provedor. Confira o teste de entrega antes de ativar a IA."
+                        : provider === "EVOLUTION"
+                          ? "Clique em Gerar QR Code. O código aparecerá aqui para você ler pelo celular."
+                          : "A consulta usa as credenciais salvas. Esta opção não usa QR Code."}
+                  </p>
+                )}
+                {account.lastError && (
+                  <p className={common.danger}>{account.lastError}</p>
+                )}
               </div>
-            )}
+              {provider === "EVOLUTION" ? (
+                <PhoneInstructions />
+              ) : (
+                <div className={styles.phoneInstructions}>
+                  <h3>Conta oficial da Meta</h3>
+                  <p>
+                    Depois de verificar a conexão, configure o recebimento de
+                    mensagens abaixo e teste a entrega no seu número de teste.
+                  </p>
+                </div>
+              )}
+            </div>
           </section>
-          <section className={styles.panel}>
-            <h2>Webhook desta conta</h2>
-            <p className={styles.callbackUrl}>{account.webhookUrl}</p>
-            <p>
-              Último recebimento autêntico:{" "}
-              {account.webhookSeenAt
-                ? new Date(account.webhookSeenAt).toLocaleString("pt-BR")
-                : "ainda não registrado"}
-              .
-            </p>
-            {provider === "META" && (
+          <ol className={styles.progress} aria-label="Etapas do atendimento">
+            <li>
+              <strong>Conexão cadastrada</strong>
+              <span>Credenciais salvas</span>
+            </li>
+            <li>
+              <strong>Conectar número</strong>
+              <span>{numberConnected ? "Verificado" : "Pendente"}</span>
+            </li>
+            <li>
+              <strong>Testar entrega</strong>
+              <span>
+                {account.latestTest?.state === "DELIVERED" &&
+                account.latestTest.observedAt
+                  ? "Confirmado e observado"
+                  : "Pendente"}
+              </span>
+            </li>
+            <li>
+              <strong>Ativar atendimento</strong>
+              <span>{account.active ? "IA ativa" : "IA pausada"}</span>
+            </li>
+          </ol>
+        </>
+      )}
+      <details
+        className={styles.disclosure}
+        open={
+          creating &&
+          !(provider === "EVOLUTION" && data.managedEvolutionAvailable)
+        }
+      >
+        <summary>
+          {account
+            ? "Editar conexão"
+            : provider === "META"
+              ? "Cadastrar conta da API oficial"
+              : data.managedEvolutionAvailable
+                ? "Usar outro servidor Evolution"
+                : "Configurar servidor Evolution"}
+        </summary>
+        <div className={styles.disclosureBody}>
+          {creating &&
+            provider === "EVOLUTION" &&
+            !data.managedEvolutionAvailable && (
               <p>
-                Configure esta URL de callback e o token de verificação no
-                aplicativo da Meta. Depois, registre a assinatura da conta
-                empresarial abaixo.
+                A conexão rápida ainda não está disponível nesta instalação.
+                Preencha os dados de um servidor Evolution autorizado para
+                continuar.
               </p>
             )}
-            {provider === "EVOLUTION" && (
-              <label className={styles.checkboxLabel} style={{ marginTop: 12 }}>
+          <p className={common.muted}>
+            Preencha credenciais somente neste painel privado. Campos privados
+            em branco preservam o valor salvo.
+          </p>
+          <form
+            autoComplete="off"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save();
+            }}
+          >
+            <fieldset disabled={blocked} className={styles.fields}>
+              <label className={common.field}>
+                Nome deste WhatsApp
                 <input
-                  type="checkbox"
-                  checked={replaceWebhook}
-                  onChange={(event) => setReplaceWebhook(event.target.checked)}
-                />{" "}
-                Conferi o webhook atual no provedor e autorizo sua substituição
-                por esta URL.
+                  value={name}
+                  required
+                  minLength={2}
+                  maxLength={100}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Ex.: Atendimento Centro"
+                />
               </label>
-            )}
-            <button
-              className="btn"
-              style={{ marginTop: 16 }}
-              disabled={Boolean(busy) || edited}
-              onClick={() =>
-                void act(
-                  "webhook",
-                  provider === "EVOLUTION"
-                    ? { replaceExistingWebhook: replaceWebhook }
-                    : {},
-                )
-              }
-            >
-              {provider === "META"
-                ? "Assinar webhook da conta empresarial"
-                : "Configurar webhook desta instância"}
-            </button>
-          </section>
-          <section className={styles.panel}>
-            <h2>Teste autorizado de entrega</h2>
-            {provider === "META" && (
-              <p>
-                Antes do teste, envie “Oi” do seu número de teste para o número
-                comercial no WhatsApp. Faça o teste dentro da janela de
-                atendimento de 24 horas.
-              </p>
-            )}
-            <p>
-              Use somente um número de teste sob seu controle. O botão envia uma
-              mensagem fixa por esta conta; aceitação pelo provedor e entrega
-              são estados separados.
-            </p>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void act("sendTest");
-              }}
-            >
-              <fieldset
+              {provider === "EVOLUTION" ? (
+                <>
+                  <label className={common.field}>
+                    Servidor Evolution autorizado
+                    <select
+                      value={url}
+                      required
+                      disabled={!creating}
+                      onChange={(event) => setUrl(event.target.value)}
+                    >
+                      {!url && (
+                        <option value="">Nenhum servidor autorizado</option>
+                      )}
+                      {url && !data.allowedEvolutionOrigins.includes(url) && (
+                        <option value={url}>{url} · configuração salva</option>
+                      )}
+                      {data.allowedEvolutionOrigins.map((origin) => (
+                        <option key={origin} value={origin}>
+                          {origin}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className={common.field}>
+                    Instância exclusiva para os clientes
+                    <input
+                      value={instance}
+                      required
+                      disabled={!creating}
+                      maxLength={100}
+                      onChange={(event) => setInstance(event.target.value)}
+                    />
+                  </label>
+                  <label className={common.field}>
+                    Chave da API Evolution
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={apiKey}
+                      required={creating}
+                      maxLength={1000}
+                      onChange={(event) => setApiKey(event.target.value)}
+                      placeholder={
+                        account?.credentialPresent
+                          ? "Preencha apenas para substituir"
+                          : "Chave privada do servidor"
+                      }
+                    />
+                  </label>
+                  <label className={common.field}>
+                    Segredo privado para receber mensagens
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={webhookSecret}
+                      required={creating}
+                      minLength={32}
+                      maxLength={1000}
+                      onChange={(event) => setWebhookSecret(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className={`btn ${styles.fitButton}`}
+                      onClick={() => setWebhookSecret(randomSecret())}
+                    >
+                      Gerar segredo privado
+                    </button>
+                  </label>
+                  {!data.allowedEvolutionOrigins.length && (
+                    <p className={common.warning}>
+                      A administração precisa autorizar o endereço do servidor
+                      Evolution no ambiente privado do projeto.
+                    </p>
+                  )}
+                  {reserved && (
+                    <p className={common.error}>
+                      Esta instância está reservada para os avisos da equipe.
+                      Use outra para atender clientes.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <label className={common.field}>
+                    ID do número de telefone na Meta
+                    <input
+                      value={phoneNumberId}
+                      required
+                      disabled={!creating}
+                      inputMode="numeric"
+                      pattern="[0-9]+"
+                      maxLength={40}
+                      onChange={(event) => setPhoneNumberId(event.target.value)}
+                    />
+                  </label>
+                  <label className={common.field}>
+                    ID da conta empresarial WhatsApp (WABA)
+                    <input
+                      value={businessAccountId}
+                      required
+                      disabled={!creating}
+                      inputMode="numeric"
+                      pattern="[0-9]+"
+                      maxLength={40}
+                      onChange={(event) =>
+                        setBusinessAccountId(event.target.value)
+                      }
+                    />
+                  </label>
+                  <label className={common.field}>
+                    Versão da API
+                    <input
+                      value={apiVersion}
+                      required
+                      pattern="v[0-9]+\.[0-9]+"
+                      maxLength={12}
+                      onChange={(event) => setApiVersion(event.target.value)}
+                    />
+                  </label>
+                  <label className={common.field}>
+                    Token de acesso
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={accessToken}
+                      required={creating}
+                      maxLength={2000}
+                      onChange={(event) => setAccessToken(event.target.value)}
+                    />
+                  </label>
+                  <label className={common.field}>
+                    App Secret da Meta
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={appSecret}
+                      required={creating}
+                      maxLength={1000}
+                      onChange={(event) => setAppSecret(event.target.value)}
+                    />
+                  </label>
+                  <label className={common.field}>
+                    Token de verificação para receber mensagens
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={verifyToken}
+                      required={creating}
+                      minLength={16}
+                      maxLength={1000}
+                      onChange={(event) => setVerifyToken(event.target.value)}
+                    />
+                    <span className={common.muted}>
+                      Use este token na configuração do webhook da Meta.
+                      Guarde-o no ambiente privado antes de salvar; o campo será
+                      limpo.
+                    </span>
+                  </label>
+                </>
+              )}
+            </fieldset>
+            <div className={styles.formFooter}>
+              <button
+                className="btn btn-primary"
                 disabled={
-                  Boolean(busy) ||
-                  edited ||
-                  account.connectionState !== "VERIFIED"
+                  blocked ||
+                  reserved ||
+                  (provider === "EVOLUTION" &&
+                    creating &&
+                    !data.allowedEvolutionOrigins.length)
                 }
-                className={styles.fields}
-                style={{ border: 0, minWidth: 0 }}
               >
-                <label className={styles.field}>
-                  Número de teste internacional
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    autoComplete="off"
-                    value={recipient}
-                    required
-                    pattern="\+[1-9][0-9]{7,14}"
-                    onChange={(event) => {
-                      setRecipient(event.target.value);
-                      setConfirmedNumber(false);
-                    }}
-                    placeholder="+55 DDD número"
-                  />
-                </label>
-                <label className={styles.checkboxLabel}>
+                {busy === "save" ? "Salvando…" : "Salvar conexão"}
+              </button>
+              {account && (
+                <p>
+                  Para trocar o número, a conta empresarial ou a instância,
+                  adicione outra conexão.
+                </p>
+              )}
+            </div>
+          </form>
+        </div>
+      </details>
+      {account && (
+        <>
+          <details className={styles.disclosure}>
+            <summary>Recebimento de mensagens e opções avançadas</summary>
+            <div className={styles.disclosureBody}>
+              <h3>Receber mensagens nesta conta</h3>
+              {account.webhookUrl ? (
+                <p className={styles.callback}>{account.webhookUrl}</p>
+              ) : (
+                <p className={common.warning}>
+                  O endereço HTTPS público do sistema precisa ser configurado
+                  pela administração antes de registrar o recebimento.
+                </p>
+              )}
+              <p>
+                Última mensagem autêntica recebida:{" "}
+                {account.webhookSeenAt
+                  ? new Date(account.webhookSeenAt).toLocaleString("pt-BR")
+                  : "ainda não registrada"}
+                .
+              </p>
+              {provider === "META" ? (
+                <p>
+                  Cadastre a URL acima e o token de verificação no aplicativo da
+                  Meta. Depois, registre a assinatura da conta empresarial.
+                </p>
+              ) : (
+                <label className={common.checkboxLabel}>
                   <input
                     type="checkbox"
-                    checked={confirmedNumber}
-                    required
+                    checked={replaceWebhook}
                     onChange={(event) =>
-                      setConfirmedNumber(event.target.checked)
+                      setReplaceWebhook(event.target.checked)
                     }
-                  />{" "}
-                  Este número é de teste, está sob meu controle e autorizo o
-                  envio de uma mensagem.
+                  />
+                  Conferi o webhook no provedor e autorizo substituir o endereço
+                  existente.
                 </label>
+              )}
+              <div className={styles.advancedActions}>
                 <button
                   className="btn"
-                  type="submit"
-                  disabled={!confirmedNumber || !recipient}
+                  disabled={blocked || edited || !account.webhookUrl}
+                  onClick={() =>
+                    void act(
+                      "webhook",
+                      provider === "EVOLUTION"
+                        ? { replaceExistingWebhook: replaceWebhook }
+                        : {},
+                    )
+                  }
                 >
-                  Enviar uma mensagem de teste
+                  {provider === "META"
+                    ? "Registrar recebimento na Meta"
+                    : "Configurar recebimento de mensagens"}
                 </button>
-              </fieldset>
-            </form>
-            {account.latestTest && (
-              <article className={styles.panel}>
-                <div className={styles.badges}>
-                  <span
-                    className={`${styles.badge} ${account.latestTest.state === "DELIVERED" ? styles.success : styles.warning}`}
+                <button
+                  className="btn"
+                  disabled={blocked || edited}
+                  onClick={() => void act("verify")}
+                >
+                  Verificar credenciais e conexão
+                </button>
+                {provider === "EVOLUTION" && (
+                  <button
+                    className="btn"
+                    disabled={blocked || edited}
+                    onClick={() => void act("createInstance")}
                   >
-                    {TEST_STATE[account.latestTest.state]}
-                  </span>
-                </div>
-                <p>
-                  Destino: {account.latestTest.recipientMasked}. Solicitado em{" "}
-                  {new Date(account.latestTest.createdAt).toLocaleString(
-                    "pt-BR",
-                  )}
-                  .
-                </p>
-                {account.latestTest.error && (
-                  <p className={styles.error}>{account.latestTest.error}</p>
+                    Criar instância no Evolution
+                  </button>
                 )}
-                {account.latestTest.observedAt ? (
-                  <p className={styles.success}>
-                    Recebimento observado e registrado por uma pessoa em{" "}
-                    {new Date(account.latestTest.observedAt).toLocaleString(
+              </div>
+              {provider === "EVOLUTION" && (
+                <p className={common.muted}>
+                  Gerar QR Code já prepara a instância exclusiva dos clientes e
+                  o recebimento de mensagens. A opção acima cria somente a
+                  instância; exige uma chave com permissão de criação.
+                </p>
+              )}
+              <p className={common.muted}>
+                Revisão {account.revision}.{" "}
+                {account.verifiedAt
+                  ? `Verificada em ${new Date(account.verifiedAt).toLocaleString("pt-BR")}.`
+                  : "Verificação pendente."}
+              </p>
+            </div>
+          </details>
+          <details className={styles.disclosure}>
+            <summary>
+              Testar entrega e confirmar recebimento
+              <span className={styles.summaryState}>
+                {account.latestTest?.observedAt &&
+                account.latestTest.state === "DELIVERED"
+                  ? "Concluído"
+                  : "Pendente"}
+              </span>
+            </summary>
+            <div className={styles.disclosureBody}>
+              <p>
+                Envie uma mensagem fixa para um número de teste sob seu
+                controle. O teste não ativa o atendimento automático.
+              </p>
+              {provider === "META" && (
+                <p>
+                  Antes, envie “Oi” do número de teste para o número comercial.
+                  Faça o teste na janela de atendimento de 24 horas.
+                </p>
+              )}
+              {!numberConnected && (
+                <p className={common.warning}>
+                  Conecte e verifique o número antes de testar a entrega.
+                </p>
+              )}
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void act("sendTest");
+                }}
+              >
+                <fieldset
+                  disabled={
+                    blocked || edited || account.connectionState !== "VERIFIED"
+                  }
+                  className={styles.testFields}
+                >
+                  <label className={common.field}>
+                    Número de teste com código do país
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      value={recipient}
+                      required
+                      pattern="\+[1-9][0-9]{7,14}"
+                      onChange={(event) => {
+                        setRecipient(event.target.value);
+                        setConfirmedNumber(false);
+                      }}
+                      placeholder="+55 DDD número"
+                    />
+                  </label>
+                  <label className={common.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={confirmedNumber}
+                      required
+                      onChange={(event) =>
+                        setConfirmedNumber(event.target.checked)
+                      }
+                    />
+                    Este número é de teste, está sob meu controle e autorizo uma
+                    mensagem.
+                  </label>
+                  <button
+                    className={`btn ${styles.fitButton}`}
+                    disabled={!confirmedNumber || !recipient}
+                  >
+                    Enviar mensagem de teste
+                  </button>
+                </fieldset>
+              </form>
+              {account.latestTest && (
+                <div className={styles.testResult}>
+                  <strong>{TEST_STATE[account.latestTest.state]}</strong>
+                  <p>
+                    Destino: {account.latestTest.recipientMasked}. Solicitado em{" "}
+                    {new Date(account.latestTest.createdAt).toLocaleString(
                       "pt-BR",
                     )}
                     .
                   </p>
-                ) : (
-                  <>
-                    <label className={styles.checkboxLabel}>
-                      <input
-                        type="checkbox"
-                        checked={confirmedObserved}
-                        disabled={account.latestTest.state !== "DELIVERED"}
-                        onChange={(event) =>
-                          setConfirmedObserved(event.target.checked)
+                  {account.latestTest.error && (
+                    <p className={common.danger}>{account.latestTest.error}</p>
+                  )}
+                  {account.latestTest.observedAt ? (
+                    <p className={common.success}>
+                      Recebimento observado e registrado em{" "}
+                      {new Date(account.latestTest.observedAt).toLocaleString(
+                        "pt-BR",
+                      )}
+                      .
+                    </p>
+                  ) : (
+                    <>
+                      <label className={common.checkboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={confirmedObserved}
+                          disabled={account.latestTest.state !== "DELIVERED"}
+                          onChange={(event) =>
+                            setConfirmedObserved(event.target.checked)
+                          }
+                        />
+                        Observei esta mensagem no número de teste.
+                      </label>
+                      <button
+                        className="btn"
+                        disabled={
+                          blocked ||
+                          !confirmedObserved ||
+                          account.latestTest.state !== "DELIVERED"
                         }
-                      />{" "}
-                      Observei no número de teste o recebimento desta mensagem.
-                    </label>
-                    <button
-                      className="btn"
-                      disabled={
-                        Boolean(busy) ||
-                        !confirmedObserved ||
-                        account.latestTest.state !== "DELIVERED"
-                      }
-                      onClick={() =>
-                        void act("ackTest", {
-                          testId: account.latestTest!.id,
-                          confirmedObserved,
-                        })
-                      }
-                    >
-                      Registrar observação do teste
-                    </button>
-                  </>
-                )}
-                <button
-                  className="btn"
-                  style={{ marginTop: 12 }}
-                  disabled={Boolean(busy) || edited}
-                  onClick={() => void act("reconcileTest")}
-                >
-                  Consultar estado do teste
-                </button>
-              </article>
-            )}
-          </section>
-          <section className={styles.panel}>
-            <div className={styles.sectionHeading}>
-              <h2>Ativação do atendimento</h2>
-              <span
-                className={`${styles.badge} ${account.active ? styles.success : styles.warning}`}
-              >
-                {account.active ? "Conta ativada" : "Conta pausada"}
-              </span>
+                        onClick={() =>
+                          void act("ackTest", {
+                            testId: account.latestTest!.id,
+                            confirmedObserved,
+                          })
+                        }
+                      >
+                        Registrar recebimento observado
+                      </button>
+                    </>
+                  )}
+                  <button
+                    className="btn"
+                    disabled={blocked || edited}
+                    onClick={() => void act("reconcileTest")}
+                  >
+                    Consultar estado do teste
+                  </button>
+                </div>
+              )}
             </div>
-            {account.blockers.length ? (
-              <ul className={styles.checklist}>
-                {account.blockers.map((blocker) => (
-                  <li key={blocker}>{blocker}</li>
-                ))}
-              </ul>
-            ) : (
+          </details>
+          <section className={styles.activation}>
+            <div>
+              <h2>Atendimento automático</h2>
               <p>
-                Os requisitos registrados desta conta estão disponíveis para
-                validação pelo servidor.
+                {account.active
+                  ? "A IA está ativa nesta conta."
+                  : "A IA continua pausada até concluir os requisitos abaixo."}
               </p>
-            )}
-            <p>
-              O atendimento também exige{" "}
-              <Link
-                className={styles.textLink}
-                href="/assistente/configuracao#gemini"
-              >
-                Gemini ativo
-              </Link>{" "}
-              e{" "}
-              <Link
-                className={styles.textLink}
-                href="/assistente/configuracao#informacoes"
-              >
-                base operacional real aprovada para esta conta
-              </Link>
-              .
-            </p>
+              {account.blockers.length > 0 && (
+                <details className={styles.requirements}>
+                  <summary>
+                    {account.blockers.length} requisito(s) para ativar
+                  </summary>
+                  <ul>
+                    {account.blockers.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              <p className={styles.setupLinks}>
+                <Link href="/assistente/configuracao#gemini">
+                  Configurar Gemini
+                </Link>
+                <Link href="/assistente/configuracao/informacoes">
+                  Revisar informações do restaurante
+                </Link>
+              </p>
+            </div>
             <button
               className={account.active ? "btn" : "btn btn-primary"}
-              disabled={
-                Boolean(busy) ||
-                (!account.active &&
-                  (edited ||
-                    account.blockers.length > 0 ||
-                    account.connectionState !== "VERIFIED" ||
-                    account.latestTest?.state !== "DELIVERED" ||
-                    !account.latestTest.observedAt))
-              }
-              style={{ marginTop: 16 }}
+              disabled={blocked || (!account.active && !canActivate)}
               onClick={() => void act("activate", { enabled: !account.active })}
             >
               {account.active
-                ? "Pausar esta conta"
-                : "Ativar atendimento desta conta"}
+                ? "Pausar atendimento automático"
+                : "Ativar atendimento automático"}
             </button>
           </section>
         </>

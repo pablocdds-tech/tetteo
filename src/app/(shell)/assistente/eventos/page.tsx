@@ -68,7 +68,7 @@ export default async function PaginaEventos({
   ]);
 
   const href = (p: Periodo, t: FiltroDeEventos) =>
-    `/assistente/eventos?periodo=${p}&tipo=${t}`;
+    `/assistente/equipe/eventos?periodo=${p}&tipo=${t}`;
   const apoio = `últimas ${PERIODOS[periodo].rotulo} · o que a Evolution contou`;
   const comparar = (n: number) => `${n} no período anterior`;
 

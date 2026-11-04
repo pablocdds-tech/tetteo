@@ -1,5 +1,25 @@
 # Design do Tetteo
 
+## Severina — conexão e navegação em 03/11/2026
+
+A Severina mantém a fonte do sistema e os tokens Aurora. A revisão de uso reduz
+a lateral para seis tarefas: Início, Atendimentos, Conectar WhatsApp, Assistente,
+Monitoramento e Equipe e avisos. As páginas usam abas apenas dentro da tarefa,
+sem repetir a lateral no conteúdo. Conversas e pendências compartilham uma área;
+IA, informações, tom de voz e limites possuem suas próprias abas.
+
+Conectar WhatsApp é a ação principal do início. A conexão por QR aparece primeiro,
+com o código e as três instruções do celular no mesmo painel; credenciais e ajustes
+técnicos ficam recolhidos. A API oficial é uma alternativa claramente nomeada e não
+apresenta um QR inexistente. O pareamento do número, o teste de entrega e a ativação
+da IA são estados distintos e visíveis. A consulta de conexão só começa após a ação
+do usuário, expira e é interrompida ao trocar de unidade ou número.
+
+O início prioriza a próxima tarefa e conversas reais recentes. Métricas e registros
+técnicos ficam em Monitoramento. As funções anteriores permanecem acessíveis pelos
+agrupamentos e pelos endereços antigos. Celular usa fluxo vertical com QR de até
+288 px e ações de pelo menos 44 px; nenhum segredo ou QR real entra nas capturas.
+
 ## Atendimento virtual — 02/11/2026
 
 O atendimento do CRM usa as prévias ilustrativas Kairu como referência de fluxo:

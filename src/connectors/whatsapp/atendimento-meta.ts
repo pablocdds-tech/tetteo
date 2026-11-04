@@ -36,6 +36,7 @@ export function metaAttendance(
     },
     async qr() {
       return {
+        state: "UNAVAILABLE",
         qrDataUrl: null,
         expiresAt: null,
         status:

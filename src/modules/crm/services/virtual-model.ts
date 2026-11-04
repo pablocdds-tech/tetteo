@@ -86,7 +86,7 @@ export async function safeVirtualModelStatus(
           ? []
           : ["O modelo está desativado no ambiente."]
         : [
-            "Cadastre a chave do Gemini em Conexões e execute o teste com mensagem fictícia.",
+            "Cadastre a chave do Gemini em Assistente e faça o teste com mensagem fictícia.",
           ],
     };
   }
