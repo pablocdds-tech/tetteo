@@ -90,6 +90,7 @@ async function detectVirtualConversationLoop(
       conversationId,
       createdAt: { gte: since },
       author: { in: ["CUSTOMER", "AGENT"] },
+      source: "LIVE",
     },
     orderBy: { sequence: "desc" },
     take: 100,
@@ -514,6 +515,23 @@ export async function receiveVirtualInbound(
         },
       });
       return { duplicate: false, conversationId: null };
+    }
+    const imported = await tx.avMessage.findUnique({
+      where: {
+        accountId_externalId: { accountId, externalId: data.externalId },
+      },
+      select: { id: true, conversationId: true },
+    });
+    if (imported) {
+      await tx.avInboundEvent.update({
+        where: { id: event.id },
+        data: {
+          status: "IGNORED",
+          error: "MESSAGE_ALREADY_STORED",
+          processedAt: new Date(),
+        },
+      });
+      return { duplicate: true, conversationId: imported.conversationId };
     }
     if (account.mode !== "DEMO") {
       const recipientHash = channelRecipientHash(scope, data.senderKey);

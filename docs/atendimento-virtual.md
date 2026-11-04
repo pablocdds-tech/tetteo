@@ -135,6 +135,44 @@ Os dois adaptadores estão implementados. Credenciais e testes reais permanecem 
 
 ### Evolution
 
+**Atendimentos → WhatsApp** prioriza uma conta real conectada, inclusive quando a
+IA está pausada. Exemplos ficam somente na aba **Demonstração**. Em uma conta
+Evolution verificada, **Sincronizar histórico** importa as mensagens disponíveis
+no provedor; não exige ativar a IA. A operação tem progresso durável por conta e
+continua com o navegador fechado. A tela acompanha por até 90 segundos; reabrir
+ou atualizar o status recupera o progresso sem reiniciar o pedido.
+
+O importador lê páginas de 100 mensagens recebidas e enviadas, preserva o horário
+original e deduplica pelo ID do provedor na mesma conta, inclusive quando um
+webhook chega depois da importação. As mensagens são marcadas **Histórico** e
+processadas somente para exibição: não criam turnos, reservas, alertas, janela de
+envio ou respostas automáticas. Conversas já existentes conservam seu controle;
+novas conversas históricas começam com IA pausada. O operador pode retomar a IA
+explicitamente. Conversas com mais de 200 mensagens têm **Carregar mensagens
+anteriores**, com paginação no servidor e acesso restrito à unidade.
+
+Cada etapa limita a importação a 1000 páginas. Se houver mais, o estado é parcial
+e o gestor pode continuar a partir do progresso salvo. Erro, página repetida,
+troca de revisão ou perda de permissão não produzem sucesso fictício; tentativas
+e lease recuperável ficam persistidos. Credenciais e conteúdo não entram na
+auditoria. Grupos não autorizados, status, remetentes ambíguos e arquivos de mídia
+não são importados; áudios/anexos aparecem com indicação de conferência humana.
+
+O limite é o que a Evolution armazenou, e não todo o conteúdo existente no
+celular. Na versão 2.3.7, **Sync Full History** no Manager e
+`DATABASE_SAVE_DATA_HISTORIC=true` no ambiente da Evolution cumprem funções
+diferentes. O primeiro solicita sincronização durante o pareamento; o segundo
+permite persistir esse histórico. Habilitar a gravação depois não recupera
+automaticamente dados que já foram descartados. A API oficial Meta permanece
+com recepção a partir da configuração do webhook, sem importação retroativa por
+esta função.
+
+O worker próprio usa `AV_HISTORY_WORKER_ENABLED` e independe da ativação da IA.
+Testes e QA devem desativá-lo junto dos demais workers. Migração aditiva:
+`20261103150000_whatsapp_history`. Contrato verificado no código da
+[Evolution 2.3.7 — consulta paginada](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/services/channel.service.ts)
+e [sincronização e persistência histórica](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts).
+
 O botão **Gerar QR Code** confirma se a instância existe, cria somente uma instância
 ausente, prepara o recebimento de mensagens e pede o QR. Um destino de eventos de
 outro sistema é recusado. O código aparece junto das instruções

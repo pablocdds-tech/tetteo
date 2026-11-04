@@ -1,0 +1,80 @@
+.history {
+  padding: 20px;
+  margin: 0 0 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.heading,
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.heading h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.history p {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+  max-width: 80ch;
+}
+.heading {
+  margin-bottom: 12px;
+}
+.actions {
+  justify-content: flex-start;
+  align-items: center;
+}
+.history .status {
+  font-weight: 600;
+}
+.counts {
+  display: flex;
+  gap: 12px 32px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.counts div {
+  display: flex;
+  gap: 8px;
+  font-size: 0.8125rem;
+}
+.counts dt {
+  color: var(--ink-3);
+}
+.counts dd {
+  font-weight: 600;
+}
+.history .limit {
+  margin-top: 12px;
+  color: var(--ink-3);
+  font-size: 0.8125rem;
+}
+.history .error {
+  color: var(--bad);
+  margin: 8px 0;
+}
+.accountNotice {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+.accountNotice strong {
+  font-weight: 600;
+}
+@media (max-width: 640px) {
+  .history {
+    padding: 16px;
+  }
+  .counts {
+    display: grid;
+    gap: 8px;
+  }
+}

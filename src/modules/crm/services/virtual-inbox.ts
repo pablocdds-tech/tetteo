@@ -20,6 +20,7 @@ import {
 } from "./virtual-runtime";
 import { ensureVirtualDemoKnowledge } from "./virtual-knowledge";
 import { safeVirtualModelStatus } from "./virtual-model";
+import { virtualMessageCursor } from "./virtual-message-page";
 
 const listSchema = z
   .object({
@@ -33,7 +34,10 @@ const listSchema = z
   .strict();
 const withList = {
   account: { select: { name: true, mode: true } },
-  messages: { orderBy: { sequence: "desc" as const }, take: 1 },
+  messages: {
+    orderBy: [{ createdAt: "desc" as const }, { sequence: "desc" as const }],
+    take: 1,
+  },
   pauses: {
     where: { resumedAt: null },
     orderBy: { createdAt: "desc" as const },
@@ -211,8 +215,8 @@ export async function getVirtualConversation(
   ] = await Promise.all([
     db.avMessage.findMany({
       where: { ...full, conversationId: id },
-      orderBy: { sequence: "desc" },
-      take: 200,
+      orderBy: [{ createdAt: "desc" }, { sequence: "desc" }],
+      take: 201,
     }),
     db.avAgentPause.findFirst({
       where: { ...full, conversationId: id, resumedAt: null },
@@ -258,20 +262,28 @@ export async function getVirtualConversation(
   ]);
   return {
     conversation: itemDto(c, scope.unit.nome, users),
+    olderCursor:
+      messages.length > 200 ? virtualMessageCursor(messages[199]) : null,
     messages: [
-      ...messages.map((m) => ({
-        id: m.id,
-        text: m.text,
-        direction: m.direction,
-        author: m.author,
-        kind: m.kind,
-        status:
-          m.direction === "INBOUND"
-            ? "RECEIVED"
-            : (outbox.find((o) => o.providerId === m.externalId)?.state ??
-              "ACCEPTED"),
-        createdAt: m.createdAt.toISOString(),
-      })),
+      ...messages
+        .slice(0, 200)
+        .reverse()
+        .map((m) => ({
+          id: m.id,
+          text: m.text,
+          direction: m.direction,
+          author: m.author,
+          kind: m.kind,
+          source: m.source as "LIVE" | "HISTORY",
+          status:
+            m.source === "HISTORY"
+              ? "HISTORY"
+              : m.direction === "INBOUND"
+                ? "RECEIVED"
+                : (outbox.find((o) => o.providerId === m.externalId)?.state ??
+                  "ACCEPTED"),
+          createdAt: m.createdAt.toISOString(),
+        })),
       ...outbox
         .filter(
           (o) =>

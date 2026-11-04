@@ -25,6 +25,7 @@ model AvChannelAccount {
   customerPreferences AvCustomerPreference[]
   reservations AvReservation[]
   connection AvChannelConnection?
+  historySync AvChannelHistorySync?
   channelTests AvChannelTest[]
   serviceWindows AvChannelWindow[]
   @@index([organizationId, storeId, mode])
@@ -100,6 +101,7 @@ model AvMessage {
   author String
   text String
   kind String @default("TEXT")
+  source String @default("LIVE")
   transcriptionCertain Boolean @default(true)
   actorId String?
   sequence Int @default(autoincrement())
@@ -107,6 +109,7 @@ model AvMessage {
   processedAt DateTime?
   @@unique([accountId, externalId])
   @@index([conversationId, sequence])
+  @@index([conversationId, createdAt, sequence])
 }
 
 model AvAgentRun {

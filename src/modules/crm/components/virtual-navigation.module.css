@@ -47,6 +47,34 @@
   min-height: 40px;
   max-width: 100%;
 }
+.accountModes {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.accountModes button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--ink-2);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.accountModes button[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--surface);
+}
+.accountModes button:hover {
+  color: var(--accent);
+}
+.accountModes button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
 .team {
   max-width: 1120px;
   margin-inline: auto;
@@ -65,6 +93,9 @@
   text-underline-offset: 4px;
 }
 @media (max-width: 640px) {
+  .accountModes button {
+    min-height: 44px;
+  }
   .tabs {
     gap: 20px;
     margin-bottom: 20px;

@@ -20,10 +20,11 @@ Comando da integração:
 
 ```powershell
 $env:AV_WORKER_ENABLED = 'false'
-node node_modules/tsx/dist/cli.mjs --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 src/modules/crm/services/virtual.integracao.ts src/modules/crm/services/virtual-model.integracao.ts src/modules/crm/services/virtual-channel.integracao.ts src/modules/crm/services/virtual-temporal.integracao.ts src/app/api/atendimento/_costura/receber-live.integracao.ts src/modules/crm/services/virtual-evolution-config.integracao.ts src/modules/crm/services/virtual-channel-setup.integracao.ts
+$env:AV_HISTORY_WORKER_ENABLED = 'false'
+node node_modules/tsx/dist/cli.mjs --import ./scripts/ambiente-de-teste.ts --test --test-concurrency=1 src/modules/crm/services/virtual.integracao.ts src/modules/crm/services/virtual-model.integracao.ts src/modules/crm/services/virtual-channel.integracao.ts src/modules/crm/services/virtual-temporal.integracao.ts src/app/api/atendimento/_costura/receber-live.integracao.ts src/modules/crm/services/virtual-evolution-config.integracao.ts src/modules/crm/services/virtual-channel-setup.integracao.ts src/modules/crm/services/virtual-history.integracao.ts src/modules/crm/services/virtual-message-page.integracao.ts
 ```
 
-Resultado agregado em 03/11/2026: **84 cenários aprovados**: 32 de atendimento/outbox, 10 do modelo privado, 15 de canais/política/qualidade, 3 das rotas reais, 5 temporais, 7 de autorização da configuração privada e 12 de preparação/conexão. Incluem agente, serviços e PostgreSQL real. As fixtures desativam suas contas ao final; adaptadores de canal não acessam rede. A prova dos modos reais é feita com contas fictícias META/EVOLUTION no banco local, sem credencial real. Servidor de desenvolvimento e workers externos ao ensaio devem ficar desligados para não consumir a mesma fila de fixtures.
+Resultado agregado em 03/11/2026: **99 cenários aprovados**: 32 de atendimento/outbox, 10 do modelo privado, 15 de canais/política/qualidade, 3 das rotas reais, 5 temporais, 7 de autorização da configuração privada, 12 de preparação/conexão, 13 de importação histórica e 2 de paginação cronológica. A suíte conjunta dos oito primeiros arquivos passou em 97/97; os dois casos de paginação passaram separadamente no mesmo banco e revisão de código. Incluem agente, serviços e PostgreSQL real. As fixtures desativam suas contas ou encerram suas filas ao final; adaptadores de canal não acessam rede. A prova dos modos reais é feita com contas fictícias META/EVOLUTION no banco local, sem credencial real. Servidor de desenvolvimento e workers externos ao ensaio devem ficar desligados para não consumir a mesma fila de fixtures.
 
 Também foi validada a continuação com respostas isoladas (“19” e “4”): o servidor associa o campo à pergunta anterior. Uma pergunta de cardápio durante a reserva recebe a informação pública e invalida o resumo antigo; um “sim” posterior não cria reserva até existir um novo resumo para confirmação.
 
@@ -107,6 +108,14 @@ As rotas também foram testadas diretamente: desafio Meta correto não autentica
 Os cinco cenários temporais preservam a referência de “amanhã” enviada às 23:59 quando o complemento chega às 00:01, inclusive com recepção fora de ordem. Texto e horário de origem seguem juntos. Evento histórico com mais de 24 horas fica durável como IGNORED/STALE_EVENT; mensagem real sem horário de origem fica IGNORED/MISSING_EVENT_TIME. Ambos não geram chamada ao modelo, resposta ou reserva automática. Um “confirmo” de 60 segundos antes do resumo atual não aprova a reserva: recebe novo resumo/token. A comparação temporal tem tolerância de um segundo pela precisão do timestamp do provedor.
 
 Os casos chamam serviços de verdade e transações PostgreSQL, com `ChannelManagementFactory` fictícia. Não constituem homologação dos servidores Evolution/Meta nem autorização para mensagens a clientes.
+
+## Histórico do WhatsApp
+
+A migração aditiva `20261103150000_whatsapp_history` foi aplicada somente no PostgreSQL local exclusivo. Os 13 casos de `virtual-history.integracao.ts` verificam importação em conta inativa; isolamento e permissão; revogação durante HTTP; direções, datas e sigilo; preservação do controle humano e da fila live já existente; deduplicação nos dois sentidos entre histórico e webhook, incluindo saídas do sistema; replay atual/antigo e continuação parcial; páginas repetidas e três tentativas; duas réplicas; recuperação e fencing de lease; mudança de revisão; linhas sem remetente/data confiáveis; e atualização monotônica de `lastMessageAt` sob disputa real pelo lock PostgreSQL.
+
+Mensagens importadas ficam `source=HISTORY` e `processedAt` preenchido. O ensaio verifica ausência de execução do agente, reserva, outbox, janela de atendimento e identidade CRM criada pela importação. Conversas novas ficam abertas com IA desativada; conversas existentes conservam estado, responsável, versão e agendamento. `COMPLETE` descreve as páginas disponibilizadas pelo servidor, sem garantir que ele preserve todo o histórico do aparelho.
+
+Os dois casos de `virtual-message-page.integracao.ts` usam 251 mensagens, inclusive datas iguais. A primeira página contém as 200 mais recentes e o cursor recupera as 51 anteriores em ordem, sem lacunas ou duplicatas. Preview da conversa continua cronológico; cursor inválido e conta de outra organização são recusados.
 
 ## Limites da evidência
 

@@ -32,6 +32,8 @@ export function VirtualHeader({
   const {
     accounts,
     selectedAccountId,
+    accountMode,
+    setAccountMode,
     setSelectedAccountId,
     account,
     loading,
@@ -45,6 +47,12 @@ export function VirtualHeader({
     "limites",
     "qualidade",
   ].includes(section);
+  const separateDemonstration = ["inbox", "escalacoes"].includes(section);
+  const visibleAccounts = separateDemonstration
+    ? accounts.filter(
+        (item) => (item.provider === "DEMO") === (accountMode === "DEMO"),
+      )
+    : accounts;
   const titles: Record<Section, string> = {
     overview: "Severina",
     inbox: "Atendimentos",
@@ -145,19 +153,51 @@ export function VirtualHeader({
       )}
       {chooseAccount && (
         <div className={navigation.accountRow}>
+          {separateDemonstration && (
+            <div
+              className={navigation.accountModes}
+              role="group"
+              aria-label="Origem das conversas"
+            >
+              <button
+                type="button"
+                aria-pressed={accountMode === "REAL"}
+                disabled={loading}
+                onClick={() => setAccountMode("REAL")}
+              >
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                aria-pressed={accountMode === "DEMO"}
+                disabled={loading}
+                onClick={() => setAccountMode("DEMO")}
+              >
+                Demonstração
+              </button>
+            </div>
+          )}
           <label className={styles.field}>
-            WhatsApp ou demonstração
+            {separateDemonstration
+              ? accountMode === "DEMO"
+                ? "Demonstração Kairu"
+                : "WhatsApp desta unidade"
+              : "WhatsApp ou demonstração"}
             <select
               value={selectedAccountId}
-              disabled={loading || accounts.length === 0}
+              disabled={loading || visibleAccounts.length === 0}
               onChange={(event) => setSelectedAccountId(event.target.value)}
             >
-              {accounts.length === 0 && (
+              {visibleAccounts.length === 0 && (
                 <option value="">
-                  {loading ? "Carregando…" : "Nenhum WhatsApp cadastrado"}
+                  {loading
+                    ? "Carregando…"
+                    : accountMode === "DEMO"
+                      ? "Nenhum exemplo preparado"
+                      : "Nenhum WhatsApp cadastrado"}
                 </option>
               )}
-              {accounts.map((item) => (
+              {visibleAccounts.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
                   {item.provider === "DEMO" ? " (demonstração)" : ""}
@@ -172,8 +212,8 @@ export function VirtualHeader({
               {account.provider === "DEMO"
                 ? "Demonstração Kairu"
                 : account.active
-                  ? "Atendimento ativo"
-                  : "Atendimento pausado"}
+                  ? "IA ativa"
+                  : "IA pausada"}
             </span>
           )}
           {error && (

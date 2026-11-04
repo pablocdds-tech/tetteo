@@ -6,12 +6,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { api } from "./api";
 import { useAuth } from "./context";
 
 export type VirtualChannelProvider = "DEMO" | "META" | "EVOLUTION";
+type AccountMode = "REAL" | "DEMO";
 export type VirtualChannelAccount = {
   id: string;
   name: string;
@@ -55,10 +57,24 @@ type AccountContextValue = {
   account: VirtualChannelAccount | null;
   loading: boolean;
   error: string;
-  setSelectedAccountId: (id: string) => void;
+  accountMode: AccountMode;
+  setAccountMode: (mode: AccountMode) => void;
+  setSelectedAccountId: (id: string, mode?: AccountMode) => void;
   refreshAccounts: () => void;
 };
 const AccountContext = createContext<AccountContextValue | null>(null);
+
+const modeOf = (account: VirtualChannelAccount): AccountMode =>
+  account.provider === "DEMO" ? "DEMO" : "REAL";
+function preferredAccount(accounts: VirtualChannelAccount[]) {
+  return (
+    accounts.find(
+      (item) => item.provider !== "DEMO" && item.connectionState === "VERIFIED",
+    ) ??
+    accounts.find((item) => item.provider !== "DEMO") ??
+    accounts[0]
+  );
+}
 
 export function VirtualAccountProvider({
   children,
@@ -70,13 +86,42 @@ export function VirtualAccountProvider({
     storeId: string;
     result: VirtualChannelsResult;
   } | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selection, setSelection] = useState<{
+    id: string;
+    mode: AccountMode;
+    explicit: boolean;
+  }>({ id: "", mode: "REAL", explicit: false });
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
   const accounts = useMemo(
     () => (data?.storeId === storeId ? data.result.accounts : []),
     [data, storeId],
   );
+  const accountSnapshot = useRef(accounts);
+  useEffect(() => {
+    accountSnapshot.current = accounts;
+  }, [accounts]);
+  const setSelectedAccountId = useCallback((id: string, mode?: AccountMode) => {
+    const account = accountSnapshot.current.find((item) => item.id === id);
+    setSelection({
+      id,
+      mode: mode ?? (account ? modeOf(account) : "REAL"),
+      explicit: true,
+    });
+  }, []);
+  const setAccountMode = useCallback((mode: AccountMode) => {
+    const available = accountSnapshot.current.filter(
+      (item) => modeOf(item) === mode,
+    );
+    setSelection((current) => ({
+      id:
+        available.find((item) => item.id === current.id)?.id ??
+        preferredAccount(available)?.id ??
+        "",
+      mode,
+      explicit: true,
+    }));
+  }, []);
   const refreshAccounts = useCallback(
     () => setRevision((value) => value + 1),
     [],
@@ -91,11 +136,20 @@ export function VirtualAccountProvider({
         if (!alive) return;
         setData({ storeId, result });
         setError("");
-        setSelectedAccountId((current) =>
-          result.accounts.some((account) => account.id === current)
-            ? current
-            : (result.accounts[0]?.id ?? ""),
-        );
+        setSelection((current) => {
+          const available = current.explicit
+            ? result.accounts.filter((item) => modeOf(item) === current.mode)
+            : result.accounts;
+          const preferred =
+            (current.explicit
+              ? available.find((item) => item.id === current.id)
+              : undefined) ?? preferredAccount(available);
+          return {
+            id: preferred?.id ?? "",
+            mode: preferred ? modeOf(preferred) : current.mode,
+            explicit: current.explicit,
+          };
+        });
       })
       .catch((failure) => {
         if (alive)
@@ -118,15 +172,25 @@ export function VirtualAccountProvider({
   const value = useMemo(
     () => ({
       accounts,
-      selectedAccountId,
-      account:
-        accounts.find((account) => account.id === selectedAccountId) ?? null,
+      selectedAccountId: selection.id,
+      accountMode: selection.mode,
+      setAccountMode,
+      account: accounts.find((account) => account.id === selection.id) ?? null,
       loading: data?.storeId !== storeId,
       error,
       setSelectedAccountId,
       refreshAccounts,
     }),
-    [accounts, selectedAccountId, data, storeId, error, refreshAccounts],
+    [
+      accounts,
+      selection,
+      data,
+      storeId,
+      error,
+      refreshAccounts,
+      setAccountMode,
+      setSelectedAccountId,
+    ],
   );
   return (
     <AccountContext.Provider value={value}>{children}</AccountContext.Provider>

@@ -20,12 +20,40 @@ export type ChannelConnectionQr = {
   expiresAt: string | null;
   status: string;
 };
+/** Historical data never authorizes an automatic reply or opens a service window. */
+export type ChannelHistoryMessage = {
+  externalId: string;
+  senderKey: string;
+  trustedPhone: string;
+  fromSelf: boolean;
+  kind: "TEXT" | "AUDIO" | "IMAGE";
+  text: string;
+  occurredAt: string;
+  transcriptionCertain: boolean;
+  displayName?: string;
+};
+export type ChannelHistoryQuery = {
+  page: number;
+  pageSize: number;
+  since: string;
+  until: string;
+};
+export type ChannelHistoryPage = {
+  messages: ChannelHistoryMessage[];
+  page: number;
+  pageSize: number;
+  total: number;
+  pages: number;
+  nextPage: number | null;
+  skipped: number;
+};
 export interface ChannelManagement extends AtendimentoChannelAdapter {
   createInstance?(): Promise<void>;
   ensureInstance?(): Promise<void>;
   verify(): Promise<{ connected: boolean }>;
   webhook(url: string, replace: boolean): Promise<void>;
   qr(): Promise<ChannelConnectionQr>;
+  readHistoryPage?(query: ChannelHistoryQuery): Promise<ChannelHistoryPage>;
 }
 export type ChannelManagementFactory = (
   accountId: string,

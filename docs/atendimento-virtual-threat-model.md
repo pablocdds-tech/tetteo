@@ -44,6 +44,33 @@ ausência, sem depender de idempotência oferecida pelo Evolution.
 
 ## System model
 
+### Importação histórica de WhatsApp
+
+O gestor solicita uma importação apenas da conta Evolution verificada da unidade
+ativa (`virtual-history.ts`). O worker revalida ator, organização, unidade e
+revisão antes e depois da leitura externa. O adaptador confirma o UUID/nome da
+instância e recusa registros de outra origem. HTTP ocorre fora da transação;
+lease, requestId e revisão cercam a gravação. Repetir um requestId já auditado é
+inerte, inclusive após outro pedido. Página repetida ou sem avanço interrompe o
+processo; teto por etapa e três tentativas limitam consumo de recursos.
+
+A fronteira histórica não usa `receiveVirtualInbound`. Mensagens recebem
+`source=HISTORY` e `processedAt`, conservam o timestamp e não agendam o agente,
+criam janela de envio, identidade CRM verificada ou efeitos externos. Uma fala
+antiga contendo uma ordem continua sendo dado de histórico. O webhook reconhece
+uma mensagem já importada e não a enfileira novamente. A importação usa os locks
+da conta/conversa; preserva takeover, pausas, estado e versão existentes, e não
+regride o horário da última mensagem. IDs de saída brutos já gravados pela outbox
+também entram na deduplicação. A leitura de páginas anteriores valida escopo no
+servidor e cursor estrito, sem acesso a outra conversa ou unidade.
+
+O painel separa a demonstração dos números reais e marca mensagens importadas
+sem atribuir entrega ou leitura. Grupos, LID não resolvido e conteúdo de arquivos
+não atravessam essa fronteira. Segredos são mascarados antes de persistir texto;
+logs e auditoria registram estado/contagens, sem corpo ou credenciais. O histórico
+que a Evolution não persistiu não pode ser considerado recuperado. Esses limites
+são exibidos junto da sincronização, independentemente da ativação da IA.
+
 ### Primary components
 
 Next.js serve a interface autenticada e a API CRM; serviços do CRM controlam a conversa, a fila persistida, os fatos e as reservas. PostgreSQL mantém eventos, leases, versões, efeitos, outbox e auditoria. O canal de demonstração aceita somente identificadores fictícios. O extrator de intenção opcional fica no servidor, separado do renderizador que forma respostas a partir de resultados reais. Evidências: `src/app/api/crm/virtual/[[...path]]/route.ts`, `src/modules/crm/services/virtual-agent.ts`, `src/server/ia/atendimento.ts`.

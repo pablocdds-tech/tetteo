@@ -1,0 +1,36 @@
+// Importação somente de leitura do provedor; nunca agenda atendimento de mensagens antigas.
+model AvChannelHistorySync {
+  id String @id @default(uuid())
+  organizationId String
+  storeId String
+  accountId String @unique
+  account AvChannelAccount @relation(fields:[organizationId,storeId,accountId],references:[organizationId,storeId,id],onDelete:Restrict)
+  revision Int
+  requestedById String
+  requestId String
+  state String @default("RUNNING")
+  nextPage Int @default(1)
+  pageSize Int @default(100)
+  pagesProcessed Int @default(0)
+  since DateTime
+  until DateTime
+  startedAt DateTime @default(now())
+  finishedAt DateTime?
+  importedConversations Int @default(0)
+  importedMessages Int @default(0)
+  skippedMessages Int @default(0)
+  coverageFrom DateTime?
+  coverageUntil DateTime?
+  complete Boolean @default(false)
+  limitReason String?
+  error String?
+  leaseOwner String?
+  leaseUntil DateTime?
+  attempts Int @default(0)
+  lastPageHash String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([organizationId,storeId,accountId])
+  @@index([state,leaseUntil,updatedAt])
+  @@map("av_channel_history_sync")
+}

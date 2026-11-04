@@ -32,6 +32,11 @@ import {
 } from "@/modules/crm/services/virtual-policy";
 import { virtualQuality } from "@/modules/crm/services/virtual-quality";
 import { bindVirtualCustomer } from "@/modules/crm/services/virtual-identity";
+import { getVirtualMessagePage } from "@/modules/crm/services/virtual-message-page";
+import {
+  getVirtualHistory,
+  startVirtualHistory,
+} from "@/modules/crm/services/virtual-history";
 import {
   managementFor,
   channelFor,
@@ -100,6 +105,15 @@ async function handle(
           ? await changeVirtualChannel(context, body, managementFor)
           : await virtualChannels(context, storeId),
       );
+    if (path.length === 1 && path[0] === "history") {
+      if (writing) return json(await startVirtualHistory(context, body), 202);
+      if (!accountId)
+        return json(
+          { error: "Selecione o WhatsApp para consultar o histórico." },
+          400,
+        );
+      return json(await getVirtualHistory(context, storeId, accountId));
+    }
     if (path.length === 1 && path[0] === "policy")
       return json(
         writing
@@ -144,6 +158,20 @@ async function handle(
       );
     if (path.length === 1 && path[0] === "demo" && writing)
       return json(await simulateVirtualMessage(context, body), 202);
+    if (
+      path.length === 2 &&
+      path[1] === "messages" &&
+      !writing &&
+      z.string().uuid().safeParse(path[0]).success
+    )
+      return json(
+        await getVirtualMessagePage(
+          context,
+          storeId,
+          path[0],
+          query.before ?? "",
+        ),
+      );
     if (path.length === 1 && z.string().uuid().safeParse(path[0]).success)
       return json(
         writing

@@ -44,6 +44,7 @@ export type VirtualInboxResult = {
   counts: Record<VirtualStatus, number>;
 };
 export type VirtualConversationDetail = {
+  olderCursor?: string | null;
   conversation: VirtualInboxItem;
   messages: {
     id: string;
@@ -51,6 +52,7 @@ export type VirtualConversationDetail = {
     direction: string;
     author: string;
     kind: string;
+    source?: "LIVE" | "HISTORY";
     status: string;
     createdAt: string;
   }[];
@@ -89,6 +91,10 @@ export type VirtualConversationDetail = {
     createdAt: string;
   }[];
   summary: string | null;
+};
+export type VirtualMessagesPage = {
+  messages: VirtualConversationDetail["messages"];
+  olderCursor: string | null;
 };
 export type VirtualHealth = {
   engine?: VirtualModelStatus;

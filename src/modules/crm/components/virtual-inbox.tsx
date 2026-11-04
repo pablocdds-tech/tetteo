@@ -1,6 +1,13 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
 import { useVirtualAccount } from "../client/virtual-channel-context";
@@ -8,11 +15,14 @@ import type {
   VirtualConversationDetail,
   VirtualEscalation,
   VirtualInboxResult,
+  VirtualMessagesPage,
   VirtualOperatorAction,
   VirtualStatus,
 } from "../virtual-types";
 import { VirtualCredit, VirtualHeader } from "./virtual-header";
 import VirtualCustomerBinding from "./virtual-customer-binding";
+import VirtualHistory from "./virtual-history";
+import historyStyles from "./virtual-history.module.css";
 import styles from "./virtual.module.css";
 
 const LABELS: Record<VirtualStatus, string> = {
@@ -27,7 +37,7 @@ const DELIVERY: Record<string, string> = {
   PENDING: "Na fila",
   SENDING: "Enviando",
   ACCEPTED: "Aceita pelo canal",
-  DELIVERED: "Entregue no canal local",
+  DELIVERED: "Entrega confirmada pelo canal",
   FAILED: "Falha de envio",
   CANCELLED: "Envio descartado",
   RECEIVED: "Recebida",
@@ -52,6 +62,7 @@ const RESERVATION_STATUS: Record<string, string> = {
   CONFIRMED: "Confirmada",
   CANCELLED: "Cancelada",
 };
+const EMPTY_MESSAGES: VirtualConversationDetail["messages"] = [];
 const when = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("pt-BR", {
@@ -70,6 +81,17 @@ const amount = (micros: number) =>
     currency: "USD",
     minimumFractionDigits: 4,
   }).format(micros / 1_000_000);
+
+function mergeMessages(
+  previous: VirtualConversationDetail["messages"],
+  incoming: VirtualConversationDetail["messages"],
+) {
+  return [
+    ...new Map(
+      [...previous, ...incoming].map((message) => [message.id, message]),
+    ).values(),
+  ].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
 
 function MessageText({ text }: { text: string }) {
   return text.split(/(https?:\/\/[^\s]+)/g).map((part, index) =>
@@ -146,10 +168,10 @@ export default function VirtualInbox({
 }: {
   escalations?: boolean;
 }) {
-  const { selectedAccountId } = useVirtualAccount();
+  const { selectedAccountId, accountMode } = useVirtualAccount();
   return (
     <VirtualInboxForAccount
-      key={selectedAccountId}
+      key={`${accountMode}:${selectedAccountId}`}
       escalations={escalations}
       accountId={selectedAccountId}
     />
@@ -164,7 +186,13 @@ function VirtualInboxForAccount({
   accountId: string;
 }) {
   const { selectedStoreId: storeId, user, can } = useAuth();
-  const { refreshAccounts, setSelectedAccountId } = useVirtualAccount();
+  const {
+    refreshAccounts,
+    setSelectedAccountId,
+    account,
+    accountMode,
+    loading: accountsLoading,
+  } = useVirtualAccount();
   const editable = can("CRM", "EDIT");
   const [status, setStatus] = useState<VirtualStatus | "">("");
   const [searchDraft, setSearchDraft] = useState("");
@@ -172,6 +200,7 @@ function VirtualInboxForAccount({
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState("");
   const [revision, setRevision] = useState(0);
+  const reloadInbox = useCallback(() => setRevision((value) => value + 1), []);
   const [list, setList] = useState<{
     key: string;
     data: VirtualInboxResult;
@@ -179,6 +208,18 @@ function VirtualInboxForAccount({
   const [detail, setDetail] = useState<{
     key: string;
     data: VirtualConversationDetail;
+  } | null>(null);
+  const [loadedMessages, setLoadedMessages] = useState<{
+    key: string;
+    messages: VirtualConversationDetail["messages"];
+    olderCursor: string | null;
+  } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState("");
+  const olderRequest = useRef(0);
+  const scrollRestore = useRef<{
+    conversationId: string;
+    distanceFromBottom: number;
   } | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -196,6 +237,11 @@ function VirtualInboxForAccount({
   const messagesRef = useRef<HTMLDivElement>(null);
   const scrollPosition = useRef({ conversationId: "", nearBottom: true });
   const choose = useCallback((id: string) => {
+    olderRequest.current += 1;
+    scrollRestore.current = null;
+    setLoadedMessages(null);
+    setLoadingOlder(false);
+    setOlderError("");
     selectionRef.current = id;
     setSelected(id);
     setReply("");
@@ -211,6 +257,12 @@ function VirtualInboxForAccount({
     : "";
   const detailKey = `${storeId}:${activeId}`;
   const currentDetail = detail?.key === detailKey ? detail.data : null;
+  const loadedPage = loadedMessages?.key === detailKey ? loadedMessages : null;
+  const visibleMessages =
+    loadedPage?.messages ?? currentDetail?.messages ?? EMPTY_MESSAGES;
+  const olderCursor = loadedPage
+    ? loadedPage.olderCursor
+    : (currentDetail?.olderCursor ?? null);
   const conversation = currentDetail?.conversation;
   const lastMessageId = currentDetail?.messages.at(-1)?.id;
   const activeEscalations =
@@ -223,6 +275,21 @@ function VirtualInboxForAccount({
     : (activeEscalations[0]?.id ?? "");
   const unitName =
     user.stores.find((store) => store.id === storeId)?.name ?? "Unidade ativa";
+
+  useEffect(
+    () => () => {
+      olderRequest.current += 1;
+    },
+    [],
+  );
+  useLayoutEffect(() => {
+    const restore = scrollRestore.current;
+    const pane = messagesRef.current;
+    if (restore?.conversationId === activeId && pane) {
+      pane.scrollTop = pane.scrollHeight - restore.distanceFromBottom;
+      scrollRestore.current = null;
+    }
+  }, [activeId, visibleMessages]);
 
   useEffect(() => {
     const pane = messagesRef.current;
@@ -290,7 +357,17 @@ function VirtualInboxForAccount({
         `/api/crm/virtual/${encodeURIComponent(activeId)}?storeId=${encodeURIComponent(storeId)}`,
       )
       .then((data) => {
-        if (alive) setDetail({ key: detailKey, data });
+        if (alive) {
+          setDetail({ key: detailKey, data });
+          setLoadedMessages((current) =>
+            current?.key === detailKey
+              ? {
+                  ...current,
+                  messages: mergeMessages(current.messages, data.messages),
+                }
+              : current,
+          );
+        }
       })
       .catch((failure) => {
         if (alive) setError(errorText(failure));
@@ -299,6 +376,56 @@ function VirtualInboxForAccount({
       alive = false;
     };
   }, [activeId, storeId, detailKey, revision]);
+
+  async function loadOlderMessages() {
+    if (!currentDetail || !activeId || !olderCursor || loadingOlder) return;
+    const request = ++olderRequest.current;
+    const conversationId = activeId;
+    setLoadingOlder(true);
+    setOlderError("");
+    // Capture the current window before polling can advance its latest 200.
+    setLoadedMessages((current) =>
+      current?.key === detailKey
+        ? current
+        : {
+            key: detailKey,
+            messages: currentDetail.messages,
+            olderCursor,
+          },
+    );
+    try {
+      const query = new URLSearchParams({ storeId, before: olderCursor });
+      const page = await api.get<VirtualMessagesPage>(
+        `/api/crm/virtual/${encodeURIComponent(conversationId)}/messages?${query}`,
+      );
+      if (
+        request !== olderRequest.current ||
+        selectionRef.current !== conversationId
+      )
+        return;
+      const pane = messagesRef.current;
+      if (pane)
+        scrollRestore.current = {
+          conversationId,
+          distanceFromBottom: pane.scrollHeight - pane.scrollTop,
+        };
+      scrollPosition.current.nearBottom = false;
+      setLoadedMessages((current) => ({
+        key: detailKey,
+        messages: mergeMessages(
+          page.messages,
+          current?.key === detailKey
+            ? current.messages
+            : currentDetail.messages,
+        ),
+        olderCursor: page.olderCursor,
+      }));
+    } catch (failure) {
+      if (request === olderRequest.current) setOlderError(errorText(failure));
+    } finally {
+      if (request === olderRequest.current) setLoadingOlder(false);
+    }
+  }
 
   async function act(
     action: VirtualOperatorAction,
@@ -330,7 +457,9 @@ function VirtualInboxForAccount({
       if (action === "resume") setSummary("");
       setNotice(
         action === "reply"
-          ? "Resposta registrada na fila do canal local."
+          ? conversation.demo
+            ? "Resposta registrada no canal de demonstração."
+            : "Resposta registrada na fila do WhatsApp. Acompanhe o estado do envio no histórico."
           : "Atendimento atualizado.",
       );
       setRevision((value) => value + 1);
@@ -363,7 +492,7 @@ function VirtualInboxForAccount({
         },
       );
       if (!text) {
-        if (result.accountId) setSelectedAccountId(result.accountId);
+        if (result.accountId) setSelectedAccountId(result.accountId, "DEMO");
         refreshAccounts();
       }
       setSimulation("");
@@ -389,13 +518,13 @@ function VirtualInboxForAccount({
   return (
     <main className={styles.page}>
       <VirtualHeader section={escalations ? "escalacoes" : "inbox"}>
-        {editable && (
+        {editable && accountMode === "DEMO" && (
           <button className="btn" disabled={busy} onClick={() => void demo()}>
             {busy ? "Aguarde…" : "Preparar exemplos fictícios"}
           </button>
         )}
       </VirtualHeader>
-      {conversation?.demo && (
+      {accountMode === "DEMO" && (
         <div className={styles.demo} style={{ marginTop: 16 }}>
           <strong>Conversa de demonstração</strong>
           <span>
@@ -403,6 +532,29 @@ function VirtualInboxForAccount({
             estes envios.
           </span>
         </div>
+      )}
+      {account && account.provider !== "DEMO" && (
+        <p className={historyStyles.accountNotice}>
+          <strong>{account.name}.</strong>{" "}
+          {account.active
+            ? "Conversas deste WhatsApp."
+            : "A IA está pausada. Você pode acompanhar as mensagens e consultar o histórico sem ativá-la."}
+        </p>
+      )}
+      {!escalations && account?.provider === "EVOLUTION" && (
+        <VirtualHistory
+          key={`${storeId}:${account.id}`}
+          storeId={storeId}
+          accountId={account.id}
+          manageable={user.role === "MANAGER"}
+          onUpdated={reloadInbox}
+        />
+      )}
+      {!escalations && account?.provider === "META" && (
+        <p className={historyStyles.accountNotice}>
+          A API oficial da Meta mostra novas mensagens recebidas após a conexão.
+          Ela não oferece a importação retroativa do histórico do celular.
+        </p>
       )}
       {error && (
         <div className={styles.error} role="alert">
@@ -475,7 +627,11 @@ function VirtualInboxForAccount({
           >
             {!accountId && (
               <p className={styles.empty}>
-                Configure uma conta ou prepare exemplos fictícios para começar.
+                {accountsLoading
+                  ? "Carregando contas…"
+                  : accountMode === "DEMO"
+                    ? "Prepare os exemplos fictícios para experimentar o atendimento."
+                    : "Conecte um WhatsApp desta unidade para acompanhar as conversas."}
               </p>
             )}
             {accountId && !currentList && !error && (
@@ -535,7 +691,13 @@ function VirtualInboxForAccount({
                 <p>
                   {search || status
                     ? "Ajuste a busca ou escolha outro estado."
-                    : "Prepare os exemplos fictícios para experimentar o atendimento."}
+                    : accountMode === "DEMO"
+                      ? "Prepare os exemplos fictícios para experimentar o atendimento."
+                      : escalations
+                        ? "Não há solicitações pendentes da equipe nesta conta."
+                        : account?.provider === "EVOLUTION"
+                          ? "Nenhuma conversa salva neste WhatsApp. Use Sincronizar histórico ou aguarde novas mensagens."
+                          : "Nenhuma conversa salva neste WhatsApp. As novas mensagens aparecerão aqui após o recebimento pelo sistema."}
                 </p>
               </div>
             )}
@@ -636,20 +798,39 @@ function VirtualInboxForAccount({
                       <br />
                       {currentDetail.pause
                         ? `${currentDetail.pause.actor}: ${currentDetail.pause.reason}`
-                        : "A conversa está sob controle da equipe."}
+                        : "O atendimento automático está desativado nesta conversa."}
                     </div>
                   )}
                   <div className={styles.messageNavigation}>
+                    {olderCursor && (
+                      <button
+                        className="btn"
+                        disabled={loadingOlder}
+                        onClick={() => void loadOlderMessages()}
+                      >
+                        {loadingOlder
+                          ? "Carregando mensagens…"
+                          : "Carregar mensagens anteriores"}
+                      </button>
+                    )}
                     <button
                       className="btn"
                       onClick={() => {
                         const pane = messagesRef.current;
                         if (pane) pane.scrollTop = pane.scrollHeight;
+                        scrollPosition.current.nearBottom = true;
                       }}
                     >
                       Ir para última mensagem
                     </button>
                   </div>
+                  {olderError && (
+                    <p className={styles.error} role="alert">
+                      Não foi possível carregar as mensagens anteriores.{" "}
+                      {olderError} Use “Carregar mensagens anteriores” para
+                      tentar novamente.
+                    </p>
+                  )}
                   <div
                     className={styles.messages}
                     ref={messagesRef}
@@ -664,28 +845,34 @@ function VirtualInboxForAccount({
                     }}
                     aria-label="Histórico de mensagens"
                   >
-                    {currentDetail.messages.map((item) => (
+                    {visibleMessages.map((item) => (
                       <article
                         key={item.id}
                         className={styles.message}
                         data-direction={item.direction}
                       >
                         <span className={styles.metadata}>
-                          {AUTHOR[item.author] ?? item.author} ·{" "}
-                          {when(item.createdAt)}
+                          {item.source === "HISTORY"
+                            ? item.author === "HUMAN"
+                              ? "WhatsApp · histórico"
+                              : "Cliente · histórico"
+                            : (AUTHOR[item.author] ?? item.author)}{" "}
+                          · {when(item.createdAt)}
                         </span>
                         <p>
                           <MessageText text={item.text} />
                         </p>
                         <span className={styles.metadata}>
-                          {DELIVERY[item.status] ?? item.status}
+                          {item.source === "HISTORY"
+                            ? "Mensagem histórica importada"
+                            : (DELIVERY[item.status] ?? item.status)}
                           {item.kind !== "TEXT"
                             ? ` · ${item.kind === "AUDIO" ? "Áudio" : item.kind}`
                             : ""}
                         </span>
                       </article>
                     ))}
-                    {currentDetail.messages.length === 0 && (
+                    {visibleMessages.length === 0 && (
                       <p className={styles.muted}>
                         Nenhuma mensagem registrada.
                       </p>
@@ -709,7 +896,9 @@ function VirtualInboxForAccount({
                             placeholder={
                               conversation?.agentEnabled
                                 ? "Assuma o atendimento para responder."
-                                : "Escreva uma resposta para o canal local…"
+                                : conversation?.demo
+                                  ? "Escreva uma resposta de demonstração…"
+                                  : "Escreva uma resposta para o WhatsApp…"
                             }
                             disabled={
                               conversation?.agentEnabled ||
