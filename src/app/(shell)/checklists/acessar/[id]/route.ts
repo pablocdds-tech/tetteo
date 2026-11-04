@@ -18,6 +18,7 @@ export async function GET(
     request.url,
     request.headers,
     dominiosPublicos(),
+    process.env.APP_URL,
   );
   if (!publica)
     return new NextResponse("Domínio de acesso não reconhecido.", {

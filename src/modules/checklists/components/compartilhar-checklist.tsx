@@ -41,6 +41,7 @@ export function CompartilharChecklist({
         O link exige login. Cada resposta registra a conta de quem preencheu.
       </p>
       <form
+        onReset={(evento) => evento.preventDefault()}
         action={async (dados) => {
           dados.set(
             "prazoEm",

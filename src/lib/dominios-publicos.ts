@@ -63,15 +63,23 @@ export function urlDaRequisicaoPublica(
   url: string,
   h: Pick<Headers, "get">,
   c: DominiosPublicos | null,
+  dominioUnico?: string,
 ) {
   const ambiente = ambienteDaRequisicao(h, c);
   if (!ambiente) return null;
+  const unica = !c && dominioUnico ? new URL(origem(dominioUnico)) : null;
+  if (unica) {
+    const host = h.get("host")?.toLowerCase();
+    const encaminhado = h.get("x-forwarded-host")?.toLowerCase();
+    if (host !== unica.host || (encaminhado && encaminhado !== host))
+      return null;
+  }
   const publica = new URL(url);
-  if (c) {
-    const origem = new URL(c[ambiente]);
-    publica.protocol = origem.protocol;
-    publica.hostname = origem.hostname;
-    publica.port = origem.port;
+  const destino = c ? new URL(c[ambiente]) : unica;
+  if (destino) {
+    publica.protocol = destino.protocol;
+    publica.hostname = destino.hostname;
+    publica.port = destino.port;
     publica.username = "";
     publica.password = "";
   }

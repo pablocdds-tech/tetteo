@@ -60,17 +60,26 @@ export function EditorDeItens({
   modeloId: string;
   itens: ItemDoModelo[];
 }) {
-  const [estado, acao, enviando] = useActionState<EstadoChecklist, FormData>(
-    async (anterior, dados) =>
-      dados.get("itemId")
-        ? atualizarItemAcao(anterior, dados)
-        : adicionarItemAcao(anterior, dados),
-    {},
-  );
   const [tipo, setTipo] = useState<ItemDoModelo["tipo"]>("SIM_NAO");
   const [analisarIA, setAnalisarIA] = useState(false);
   const [editando, setEditando] = useState<ItemDoModelo | null>(null);
+  const [versaoFormulario, setVersaoFormulario] = useState(0);
   const formulario = useRef<HTMLFormElement>(null);
+  const [estado, acao, enviando] = useActionState<EstadoChecklist, FormData>(
+    async (anterior, dados) => {
+      const resultado = await (dados.get("itemId")
+        ? atualizarItemAcao(anterior, dados)
+        : adicionarItemAcao(anterior, dados));
+      if (resultado.ok) {
+        setEditando(null);
+        setTipo("SIM_NAO");
+        setAnalisarIA(false);
+        setVersaoFormulario((versao) => versao + 1);
+      }
+      return resultado;
+    },
+    {},
+  );
 
   // Sugere o bloco do último item: quem escreve a seção "Cozinha" costuma
   // escrever mais cinco perguntas de cozinha em seguida.
@@ -185,9 +194,18 @@ export function EditorDeItens({
         )}
       </section>
 
+      {estado.ok && (
+        <p
+          role="status"
+          className="bg-ok-sub text-ok rounded-md px-3 py-2 text-sm"
+        >
+          {estado.ok}
+        </p>
+      )}
       <form
-        key={editando?.id ?? "novo"}
+        key={`${editando?.id ?? "novo"}:${versaoFormulario}`}
         ref={formulario}
+        onReset={(evento) => evento.preventDefault()}
         action={acao}
         className="border-line bg-surface-2 flex flex-col gap-4 rounded-xl border p-4"
       >
