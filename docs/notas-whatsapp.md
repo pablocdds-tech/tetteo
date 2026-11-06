@@ -35,10 +35,15 @@ no atendimento público não inicia lançamento financeiro.
    instância. Use uma instância interna dedicada quando o atendimento de clientes
    estiver conectado a outro webhook da mesma Evolution.
 4. Em **Pessoas e números** (`/assistente/equipe/vinculos`), vincule o telefone ao
-   usuário correto e use **Autorizar para avisos**. Esse vínculo autorizado é a
-   adesão do responsável; as permissões financeiras e de estoque continuam
-   obrigatórias.
-5. Confirme que o relógio `/api/severina/tick` está sendo chamado a cada minuto,
+   usuário correto. Isso não libera o cadastro de notas.
+5. Abra **Notas pelo WhatsApp** (`/assistente/equipe/notas`) na unidade correta.
+   Confira o número receptor, o agente de notas e a lista de pessoas. Use
+   **Autorizar notas** para cada número que poderá enviar e confirmar documentos.
+   A permissão administrativa é `assistente.autorizar_notas`; o destinatário
+   continua precisando das permissões financeiras e de estoque. Receber avisos
+   é uma autorização independente. Nenhum usuário é migrado automaticamente da
+   autorização de avisos para notas, nem mesmo diretor.
+6. Confirme que o relógio `/api/severina/tick` está sendo chamado a cada minuto,
    com sua autenticação privada. Ele recupera mensagens pendentes quando o
    processamento inicial é interrompido. Consulte o procedimento em
    [WhatsApp — operação](operacao/whatsapp/README.md).
@@ -54,14 +59,15 @@ pela pessoa não depende de liberar disparos agendados.
 O usuário deve estar ativo e ter acesso à unidade do número. O servidor verifica
 esse acesso novamente no processamento e na confirmação.
 
-| Uso                                   | Permissões                                                                |
-| ------------------------------------- | ------------------------------------------------------------------------- |
-| Conferir e lançar a nota              | `assistente.ver`, `estoque.lancar`, `financeiro.ver`, `financeiro.lancar` |
-| Registrar compra já paga              | Também `financeiro.quitar`                                                |
-| Confirmar um insumo novo              | Também `cardapio.editar`                                                  |
-| Administrar números e sua autorização | `assistente.vincular` e `assistente.autorizar`                            |
-| Configurar a conexão interna          | `assistente.conectar` no escopo da conexão                                |
-| Configurar a IA                       | `crm.gerenciar` na unidade                                                |
+| Uso                                    | Permissões                                                                |
+| -------------------------------------- | ------------------------------------------------------------------------- |
+| Conferir e lançar a nota               | `assistente.ver`, `estoque.lancar`, `financeiro.ver`, `financeiro.lancar` |
+| Registrar compra já paga               | Também `financeiro.quitar`                                                |
+| Confirmar um insumo novo               | Também `cardapio.editar`                                                  |
+| Vincular números e autorizar avisos    | `assistente.vincular` e `assistente.autorizar`                            |
+| Autorizar ou revogar notas por unidade | `assistente.autorizar_notas`                                              |
+| Configurar a conexão interna           | `assistente.conectar` no escopo da conexão                                |
+| Configurar a IA                        | `crm.gerenciar` na unidade                                                |
 
 Antes do primeiro lançamento, mantenha ativos:
 
@@ -148,6 +154,28 @@ Code pede o XML para continuar sem OCR.
 O código vale por 30 minutos após o envio aceito do resumo. Uma correção ou um
 novo resumo muda o código e invalida o anterior. `Sim`, uma mensagem anterior ao
 resumo ou um código antigo não autorizam o lançamento.
+
+## Autorizações de notas e avisos
+
+Em **Severina → Equipe e avisos → Notas pelo WhatsApp**, o número receptor vem da
+conexão interna configurada e aparece junto à unidade. O **Agente de notas da
+Severina** é o fluxo fixo de conferência, separado dos agentes de aviso. A página
+mostra os telefones vinculados, a liberação para notas e, separadamente, se a
+pessoa recebe avisos. Quem só envia notas vê apenas seu próprio vínculo.
+
+Use **Autorizar notas** ou **Revogar notas** por usuário e unidade. A autorização
+de avisos não é copiada: a migração começa sem nenhuma liberação de notas. Nem
+diretor contorna essa exigência para enviar documentos por WhatsApp. A permissão
+administrativa para alterar liberações é `assistente.autorizar_notas`; ela não
+substitui as permissões de Estoque e Financeiro de quem enviará os documentos.
+
+Revogar notas bloqueia novas entradas, processamento de rascunhos e entrega de
+respostas pendentes. A transação do lançamento relê a liberação com trava de
+linha. Remover ou restaurar um vínculo exige nova autorização; trocar usuário ou
+telefone invalida a identidade aprovada. Formulários antigos não podem autorizar
+outra unidade ou telefone, e alterações concorrentes são recusadas por versão.
+Cada liberação ou revogação tem autoria e auditoria. Nenhuma revogação desfaz uma
+nota já lançada. Autorizar avisos continua sendo uma decisão independente.
 
 ## Correções e retomada
 

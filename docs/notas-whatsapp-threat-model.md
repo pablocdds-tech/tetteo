@@ -199,6 +199,38 @@ original não são resolvidos pela leitura automática.
 
 ## Notes on use
 
+### Autorização própria de notas e painel
+
+Contexto confirmado pelo responsável: autorização separada de avisos, equipe
+interna e confirmação obrigatória antes de Estoque/Financeiro. A implementação
+adota liberação por unidade e opt-in, sem herdar `VinculoWhatsapp.autorizadoEm`.
+Fora do escopo: conceder automaticamente acesso a usuários reais ou alterar a
+conexão do WhatsApp. O painel não ativa consulta externa nem modelo pago.
+
+```mermaid
+flowchart LR
+  A["Responsável autenticado"] --> B["Autorizar notas na unidade"]
+  B --> C["Liberação e auditoria"]
+  D["Telefone vinculado"] --> E["Entrada e processamento"]
+  C --> E
+  E --> F["Resumo e confirmação com código"]
+  F --> G["Revalidar liberação e acesso"]
+  G --> H["Transação de estoque e financeiro"]
+```
+
+| Ameaça                                                            | Prioridade e motivo                                                         | Controle implementado e evidência                                                                                                                                                 | Risco residual                                                                                                |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| TM-013: autorização de avisos vira acesso fiscal                  | High: contato antes autorizado a receber avisos ganharia escrita financeira | `contexto-nota.ts` exige `AutorizacaoNotaWhatsapp` por organização/unidade/vínculo; migração vazia; direção também precisa de liberação explícita                                 | Responsável pode autorizar a pessoa errada; número/nome e auditoria ficam visíveis                            |
+| TM-014: formulário antigo autoriza outro telefone ou unidade      | High: mudaria quem pode lançar e em qual loja                               | `acoes-notas.ts` e `notas-autorizacao.ts`: sessão no servidor, permissão própria relida, comparação de unidade/usuário/telefone, versão e escopo                                  | Sessão ou aparelho comprometido conserva as permissões legítimas; revogar acesso/telefone continua necessário |
+| TM-015: revogação concorre com lançamento ou vínculo é restaurado | High: rascunho antigo poderia escrever após retirada da autorização         | Revalidação na entrada, no worker e antes dos efeitos; `lancar-nota.ts` chama validação sob `FOR SHARE` na transação serializável; remoção/restauração revoga e audita liberações | Operação que já concluiu antes da revogação não é desfeita                                                    |
+| TM-016: telefone de outra unidade exposto                         | Medium: lista de equipe é dado privado                                      | `obterPainelNotas` limita organização/unidade; sem gestão/vínculos mostra somente a própria pessoa; só DTO necessário é enviado ao navegador                                      | Autorizadores enxergam os números da sua unidade por necessidade operacional                                  |
+
+As ações de autorização não recebem permissão financeira do modelo nem criam
+notas. Identidade aprovada conserva usuário e telefone. Avisos e seus agendamentos
+continuam usando sua autorização anterior. A validação usa PostgreSQL local e
+Playwright com Chrome já instalado; usuários e telefones são sintéticos. Nenhum
+botão de autorização de usuário real é acionado pelos ensaios de publicação.
+
 ### Ampliação da leitura fiscal v2
 
 O escopo inclui XML, PDF, QR e pré-processamento. Decisões confirmadas: consulta

@@ -1,5 +1,18 @@
 # Design do Tetteo
 
+## Notas pelo WhatsApp — 06/11/2026
+
+Uma aba própria em Equipe e avisos reúne o número receptor em destaque, a unidade,
+o Agente de notas da Severina e a lista de usuários. A confirmação obrigatória
+aparece junto ao agente e em um fluxo de três etapas. As liberações de notas e
+avisos são rotuladas separadamente; autorizar/revogar notas são ações de cada
+pessoa, com estados pendente, sucesso, erro, bloqueado por acesso e não autorizado.
+Os botões de autorização usam peso secundário para não incentivar liberação em
+massa. A tela mantém Aurora: fundo `#f2f3f5`, superfície `#fdfdfe`, texto `#202124`,
+apoio `#646870`, ação `#0066cc` e fonte do sistema. Em 390 px, número, instruções e
+usuários seguem uma coluna, alvos têm ao menos 44 px e a página não transborda.
+As capturas de validação usam somente pessoas e números sintéticos locais.
+
 ## Checklists com evidências — 04/11/2026
 
 A folha conserva a Aurora: superfície `#fdfdfe`, fundo `#f2f3f5`, texto
