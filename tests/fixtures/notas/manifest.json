@@ -281,8 +281,7 @@
     },
     {
       "arquivo": "cupom-qr.png",
-      "metodo": "QR",
-      "pendencia": "DESATIVADA",
+      "metodo": "GEMINI",
       "proveniencia": "sintetica",
       "esperado": {
         "cnpj_emitente": "11222333000181",

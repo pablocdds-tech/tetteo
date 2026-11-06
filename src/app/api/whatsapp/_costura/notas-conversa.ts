@@ -26,6 +26,7 @@ import { db } from "@/server/db";
 import { gravarArquivoFiscal } from "@/server/notas/arquivos";
 import {
   lerDocumentoFiscal,
+  VERSAO_FLUXO_FOTO,
   type EventoPipeline,
 } from "@/server/notas/pipeline";
 import { lerFiscalComGemini } from "@/server/notas/orcamento";
@@ -163,19 +164,20 @@ async function responder(
   leaseDono?: string,
   mutar?: (tx: Prisma.TransactionClient) => Promise<unknown>,
 ) {
+  const idResposta = `resposta:${m.id}${m.tipo === "FOTO" ? `:${VERSAO_FLUXO_FOTO}` : ""}`;
   await alterar(m.conversaId, leaseDono, async (tx) => {
     if (mutar) await mutar(tx);
     await tx.mensagemNotaWhatsapp.upsert({
       where: {
         instanciaId_idExterno: {
           instanciaId: m.instanciaId,
-          idExterno: `resposta:${m.id}`,
+          idExterno: idResposta,
         },
       },
       create: {
         conversaId: m.conversaId,
         instanciaId: m.instanciaId,
-        idExterno: `resposta:${m.id}`,
+        idExterno: idResposta,
         direcao: "SAIDA",
         tipo: "TEXTO",
         texto,

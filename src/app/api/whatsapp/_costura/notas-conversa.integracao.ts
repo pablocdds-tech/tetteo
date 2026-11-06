@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Prisma } from "@prisma/client";
 import { gravarArquivoFiscal } from "@/server/notas/arquivos";
+import { encryptVirtualCredential } from "@/server/ia/credencial-atendimento";
+import { lerXmlFiscal } from "@/server/notas/xml";
+import { VERSAO_FLUXO_FOTO } from "@/server/notas/pipeline";
 import { after, test } from "node:test";
 import {
   hashPropostaNota,
@@ -422,6 +425,140 @@ test("XML passa pelo leitor, permanece pendente e só OK com código vigente lan
     "NotaEntrada",
   );
   assert.equal(rede.mock.callCount(), 0);
+});
+
+test("retomar foto guardada usa Gemini antes do QR, conserva resposta antiga e não lança nem repete geração", async (t) => {
+  const f = await fixture();
+  const scope = { organizationId: f.org.id, storeId: f.unidade.id };
+  await db.avModelConfiguration.create({
+    data: {
+      ...scope,
+      model: "gemini-ficticio",
+      encryptedKey: encryptVirtualCredential(scope, "chave-ficticia"),
+      enabled: true,
+      ratesConfirmed: true,
+      testState: "PASSED",
+      testedRevision: 1,
+      testedAt: new Date(),
+      updatedById: f.usuario.id,
+      inputMicrosPerMillion: 0,
+      outputMicrosPerMillion: 0,
+    },
+  });
+  const arquivo = await gravarArquivoFiscal({
+    organizacaoId: f.org.id,
+    unidadeId: f.unidade.id,
+    usuarioId: f.usuario.id,
+    bytes: await readFile("tests/fixtures/notas/cupom-qr.png"),
+    tipo: "image/png",
+    variante: "sintetico",
+  });
+  const dados = lerXmlFiscal(
+    await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
+  );
+  // Mantém uma pendência real: não pode completar quantidade por conta própria.
+  dados.itens[0].quantidade = null;
+  dados.itens[0].confianca.quantidade = 0;
+  let geracoes = 0;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, opcoes: RequestInit) => {
+      assert.ok(url.startsWith("https://generativelanguage.googleapis.com/"));
+      if (url.endsWith(":countTokens"))
+        return Response.json({ totalTokens: 800 });
+      geracoes++;
+      const pedido = JSON.parse(String(opcoes.body));
+      assert.equal(
+        pedido.contents[0].parts[0].text,
+        geracoes === 1 ? "Região: original." : "Região: pagina-1-cabecalho.",
+      );
+      return Response.json({
+        candidates: [
+          {
+            finishReason: "STOP",
+            content: { parts: [{ text: JSON.stringify(dados) }] },
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 800,
+          candidatesTokenCount: 200,
+          totalTokenCount: 1000,
+        },
+      });
+    },
+  );
+  const antiga = await db.mensagemNotaWhatsapp.create({
+    data: {
+      conversaId: f.conversa.id,
+      instanciaId: f.instancia.id,
+      idExterno: `resposta:${f.nota.mensagemId}`,
+      direcao: "SAIDA",
+      estado: "ENVIADA",
+      texto: "Antigo pedido de XML",
+      recebidoEm: new Date(),
+    },
+  });
+  // Simula a retomada operacional da mesma foto, ainda sem nenhuma tentativa de IA.
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: {
+      arquivoId: arquivo.id,
+      leitura: Prisma.DbNull,
+      rascunho: Prisma.DbNull,
+      pergunta: Prisma.DbNull,
+      estado: "RECEBIDA",
+      codigo: null,
+      resumoHash: null,
+      resumoEm: null,
+      expiraEm: null,
+    },
+  });
+  await tratarMensagemNota(f.nota.mensagemId);
+  const n = await f.atual();
+  assert.equal(n.metodoLeitura, "GEMINI");
+  assert.equal(n.estado, "REVISAO");
+  assert.equal(n.tentativasLeitura, 2);
+  assert.equal(n.confirmacaoId, null);
+  assert.equal(n.resultado, null);
+  assert.equal(geracoes, 2);
+  assert.equal(
+    (n.leitura as { conferida: typeof dados }).conferida.itens[0].quantidade,
+    null,
+  );
+  const nova = await db.mensagemNotaWhatsapp.findUniqueOrThrow({
+    where: {
+      instanciaId_idExterno: {
+        instanciaId: f.instancia.id,
+        idExterno: `resposta:${f.nota.mensagemId}:${VERSAO_FLUXO_FOTO}`,
+      },
+    },
+  });
+  assert.match(nova.texto!, /Leitura por GEMINI/);
+  assert.equal(
+    (
+      await db.mensagemNotaWhatsapp.findUniqueOrThrow({
+        where: { id: antiga.id },
+      })
+    ).texto,
+    "Antigo pedido de XML",
+  );
+  await tratarMensagemNota(f.nota.mensagemId);
+  assert.equal(geracoes, 2);
+  await tratarMensagemNota((await f.entrada("OK")).id);
+  await f.semEfeito();
+  assert.equal(
+    await db.fornecedor.count({ where: { organizacaoId: f.org.id } }),
+    0,
+  );
+  assert.ok(
+    await db.auditoria.count({
+      where: {
+        entidadeId: n.id,
+        valoresDepois: { path: ["etapa"], equals: "QR_ULTIMO_RECURSO" },
+      },
+    }),
+  );
 });
 
 test("código errado, confirmação anterior ao envio e hash alterado não lançam", async (t) => {

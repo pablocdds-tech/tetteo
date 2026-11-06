@@ -167,7 +167,7 @@ const casos = [
     "cupom-dobrado-simulado.png",
     "nfe-digitalizada-sintetica.pdf",
   ].map((arquivo) => ({ arquivo, metodo: "GEMINI" })),
-  { arquivo: "cupom-qr.png", metodo: "QR", pendencia: "DESATIVADA" },
+  { arquivo: "cupom-qr.png", metodo: "GEMINI" },
   { arquivo: "imagem-sem-detalhes.png", erro: "IMAGEM_RUIM" },
 ].map((c) => ({
   ...c,
