@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  documentoFiscalValido,
+  chaveFiscalValida,
+  dadosDaChave,
+  eanValido,
+  toleranciaFiscalCentavos,
+} from "@/lib/documento-fiscal";
+import { ratearCentavos } from "./notas/rateio";
 
 /** Recusa de validação anterior ao commit; permite corrigir a proposta. */
 export class NotaAssistidaRecusada extends Error {
@@ -33,6 +41,15 @@ const decimal = (casas: number, limite: number) =>
       `Informe um número positivo com até ${casas} casas decimais.`,
     );
 const dinheiro = decimal(2, 999_999_999_999.99);
+const valorItem = z
+  .number()
+  .finite()
+  .nonnegative()
+  .max(999_999_999_999.99)
+  .refine(
+    (v) => /^\d+(?:\.\d{1,2})?$/.test(String(v)),
+    "Informe centavos válidos.",
+  );
 
 /** Apenas valores validados pelo contrato; nenhuma conta em ponto flutuante. */
 export function centavosDaNota(valor: number): bigint {
@@ -42,18 +59,27 @@ export function centavosDaNota(valor: number): bigint {
 
 const item = z
   .object({
-    descricao: z.string().trim().min(1).max(200),
+    descricao: z.string().trim().min(1).max(240),
     insumoId: id.optional(),
     novoInsumo: z
       .object({
-        nome: z.string().trim().min(2).max(120),
+        nome: z.string().trim().min(2).max(160),
         unidadeMedida: z.enum(["KG", "L", "UN"]),
       })
       .strict()
       .optional(),
     quantidade: decimal(3, 99_999_999_999.999),
     fatorConversao: decimal(4, 9_999_999_999.9999),
-    valorTotal: dinheiro,
+    valorTotal: valorItem,
+    valorBruto: valorItem.optional(),
+    valorUnitarioImpresso: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(1_000_000_000)
+      .optional(),
+    codigoFornecedor: z.string().min(1).max(80).optional(),
+    ean: z.string().refine(eanValido, "EAN inválido.").optional(),
   })
   .strict()
   .refine((v) => Boolean(v.insumoId) !== Boolean(v.novoInsumo), {
@@ -68,7 +94,7 @@ export const notaAssistidaPronta = z
     arquivoId: id.optional(),
     fornecedor: z
       .object({
-        nome: z.string().trim().min(2).max(120),
+        nome: z.string().trim().min(2).max(160),
         documento: opcional(30)
           .refine(
             (v) => !v || /^[\d./ -]+$/.test(v),
@@ -76,16 +102,16 @@ export const notaAssistidaPronta = z
           )
           .transform((v) => v?.replace(/\D/g, ""))
           .refine(
-            (v) => !v || v.length === 11 || v.length === 14,
-            "CPF ou CNPJ precisa estar completo.",
+            (v) => !v || documentoFiscalValido(v),
+            "CPF ou CNPJ inválido. Confira os dígitos verificadores.",
           ),
       })
       .strict(),
-    numero: opcional(30),
-    serie: opcional(10),
+    numero: opcional(60),
+    serie: opcional(20),
     chaveAcesso: opcional(44).refine(
-      (v) => !v || /^\d{44}$/.test(v),
-      "A chave fiscal precisa ter 44 dígitos.",
+      (v) => !v || chaveFiscalValida(v),
+      "A chave fiscal precisa ter 44 dígitos válidos, com dígito verificador correto.",
     ),
     emitidaEm: dia,
     recebidaEm: dia,
@@ -94,6 +120,22 @@ export const notaAssistidaPronta = z
     categoriaId: id,
     valorTotal: dinheiro,
     itens: z.array(item).min(1).max(200),
+    fiscal: z
+      .object({
+        descontos: valorItem,
+        acrescimos: valorItem,
+        ajusteArredondamento: z
+          .number()
+          .finite()
+          .min(-0.05)
+          .max(0.05)
+          .refine(
+            (v) => Math.abs(v * 100 - Math.round(v * 100)) < 0.000001,
+            "Informe centavos válidos.",
+          ),
+      })
+      .strict()
+      .optional(),
     pagamento: z
       .object({
         situacao: z.enum(["PAGA", "A_PAGAR"]),
@@ -128,14 +170,85 @@ export const notaAssistidaPronta = z
           "Confira o número da nota ou cupom, ou informe a chave de acesso, para evitar duplicar a entrada.",
       });
     if (
-      ![
-        v.valorTotal,
-        ...v.itens.map((i) => i.valorTotal),
-        ...v.pagamento.parcelas.map((p) => p.valor),
-      ].every((n) => dinheiro.safeParse(n).success)
+      !dinheiro.safeParse(v.valorTotal).success ||
+      !v.itens.every((i) => valorItem.safeParse(i.valorTotal).success) ||
+      !v.pagamento.parcelas.every((p) => dinheiro.safeParse(p.valor).success)
     )
       return;
     const total = centavosDaNota(v.valorTotal);
+    const chave = v.chaveAcesso ? dadosDaChave(v.chaveAcesso) : null;
+    const normalizar = (s: string) => s.replace(/^0+(?=\d)/, "");
+    if (
+      chave &&
+      ((v.fornecedor.documento && v.fornecedor.documento !== chave.cnpj) ||
+        (v.numero && normalizar(v.numero) !== normalizar(chave.numero)) ||
+        (v.serie && normalizar(v.serie) !== normalizar(chave.serie)) ||
+        v.emitidaEm.slice(2, 7).replace("-", "") !== chave.anoMes)
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["chaveAcesso"],
+        message: "A chave diverge do emitente, número, série ou emissão.",
+      });
+    const tolerancia = toleranciaFiscalCentavos();
+    for (const [n, i] of v.itens.entries()) {
+      if (
+        i.valorUnitarioImpresso !== undefined &&
+        Math.abs(
+          Math.round(i.quantidade * i.valorUnitarioImpresso * 100) -
+            Number(centavosDaNota(i.valorBruto ?? i.valorTotal)),
+        ) > tolerancia
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["itens", n],
+          message: `Quantidade × preço do item ${n + 1} não confere com o total bruto.`,
+        });
+    }
+    if (v.fiscal) {
+      const f = v.fiscal;
+      if (v.itens.some((i) => i.valorBruto === undefined))
+        ctx.addIssue({
+          code: "custom",
+          path: ["fiscal"],
+          message:
+            "Conserve os totais brutos transcritos para validar o rateio.",
+        });
+      else {
+        const brutos = v.itens.map((i) =>
+            Number(centavosDaNota(i.valorBruto!)),
+          ),
+          soma = brutos.reduce((a, b) => a + b, 0);
+        const ajuste = Math.round(f.ajusteArredondamento * 100);
+        if (
+          Math.abs(ajuste) > tolerancia ||
+          soma -
+            Number(centavosDaNota(f.descontos)) +
+            Number(centavosDaNota(f.acrescimos)) +
+            ajuste !==
+            Number(total)
+        )
+          ctx.addIssue({
+            code: "custom",
+            path: ["fiscal"],
+            message:
+              "Itens, descontos e acréscimos não conferem com o total fiscal.",
+          });
+        if (soma > 0) {
+          const liquidos = ratearCentavos(brutos, Number(total));
+          if (
+            v.itens.some(
+              (i, n) => Number(centavosDaNota(i.valorTotal)) !== liquidos[n],
+            )
+          )
+            ctx.addIssue({
+              code: "custom",
+              path: ["itens"],
+              message: "O rateio líquido por item está divergente.",
+            });
+        }
+      }
+    }
     if (
       v.itens.reduce((s, i) => s + centavosDaNota(i.valorTotal), 0n) !== total
     )

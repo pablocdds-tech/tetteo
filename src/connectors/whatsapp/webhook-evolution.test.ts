@@ -194,7 +194,7 @@ test("foto própria, de grupo e mídia não suportada não são expostas para pr
   for (const [fromMe, remoteJid, mimetype] of [
     [true, "5511900000012@s.whatsapp.net", "image/jpeg"],
     [false, "120363000000000001@g.us", "image/png"],
-    [false, "5511900000012@s.whatsapp.net", "application/pdf"],
+    [true, "5511900000012@s.whatsapp.net", "application/pdf"],
   ] as const) {
     const r = interpretarWebhook(
       envelope("messages.upsert", {

@@ -54,7 +54,7 @@ export async function enfileirarNotaWhatsapp(
     if (
       !entrada.foto &&
       !anterior?.notaAtivaId &&
-      !/^(?:nota|ajuda|resumo|confirmar)\b/i.test(texto ?? "")
+      !/^(?:nota|ajuda|resumo|confirmar|ok)\b/i.test(texto ?? "")
     )
       return false;
     const tipo = entrada.foto ? "FOTO" : "TEXTO";

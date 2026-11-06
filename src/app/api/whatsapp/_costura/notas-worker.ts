@@ -6,7 +6,7 @@ import { contextoParaNota } from "@/modules/assistente/services/contexto-nota";
 import { db } from "@/server/db";
 import { tratarMensagemNota } from "./notas-conversa";
 
-const LEASE_MS = 120_000;
+const LEASE_MS = 240_000;
 const RITMO_MS = 4_000;
 const MAX_TENTATIVAS = 3;
 type Ambiente = Record<string, string | undefined>;

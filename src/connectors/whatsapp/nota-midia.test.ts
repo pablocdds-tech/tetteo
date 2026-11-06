@@ -81,14 +81,14 @@ test("limite é conferido durante stream mesmo com cabeçalho falso; erro não c
       new Response(
         new ReadableStream({
           start(controller) {
-            controller.enqueue(new Uint8Array(7 * 1024 * 1024 + 70 * 1024));
+            controller.enqueue(new Uint8Array(29 * 1024 * 1024));
             controller.close();
           },
         }),
         { headers: { "content-length": "1" } },
       ),
   );
-  await assert.rejects(baixarFotoNota("FOTO-1", ambiente), /até 5 MB/);
+  await assert.rejects(baixarFotoNota("FOTO-1", ambiente), /até 20 MB/);
 });
 
 test("falha e timeout são apresentados sem detalhes privados", async (t) => {

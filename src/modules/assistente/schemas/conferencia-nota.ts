@@ -1,4 +1,9 @@
 import { createHash } from "node:crypto";
+import {
+  casarProdutoFiscal,
+  casarFornecedorFiscal,
+  type VinculoFiscal,
+} from "@/server/notas/casamento";
 
 import {
   notaAssistidaPronta,
@@ -14,6 +19,10 @@ export type ItemConferido = {
   novoInsumo?: { nome: string; unidadeMedida: "KG" | "L" | "UN" };
   fatorConversao?: number;
   exigirVinculo?: boolean;
+  valorBruto?: number;
+  valorUnitarioImpresso?: number;
+  codigoFornecedor?: string;
+  ean?: string;
 };
 export type RascunhoNota = {
   operacaoId: string;
@@ -29,6 +38,12 @@ export type RascunhoNota = {
   localId?: string;
   empresaId?: string;
   categoriaId?: string;
+  fiscal?: {
+    descontos: number;
+    acrescimos: number;
+    ajusteArredondamento: number;
+  };
+  fornecedorNovo?: boolean;
   pagamento: {
     situacao?: "PAGA" | "A_PAGAR";
     forma?: NotaAssistidaPronta["pagamento"]["forma"];
@@ -56,6 +71,13 @@ export type CatalogoNota = {
     unidadeMedida: string;
   }[];
   podeCriarInsumo: boolean;
+  vinculos?: VinculoFiscal[];
+  fornecedores?: {
+    id: string;
+    nome: string;
+    documento: string | null;
+    ativo: boolean;
+  }[];
 };
 
 export function normalizarDescricaoNota(v: string): string {
@@ -141,6 +163,20 @@ export function prepararConferencia(
       texto:
         "Não consegui ler o número fiscal. Qual é o número da nota ou cupom? Ele ajuda a impedir lançamentos repetidos.",
     };
+  if (r.fiscal) {
+    const fornecedor = casarFornecedorFiscal(
+      r.fornecedor.documento,
+      r.fornecedor.nome,
+      c.fornecedores ?? [],
+    );
+    r.fornecedorNovo = fornecedor.estado === "NOVO";
+    if (!["NOVO", "EXISTENTE"].includes(fornecedor.estado))
+      return {
+        campo: "conferencia",
+        texto:
+          "A identidade do fornecedor precisa de revisão. Confira o CNPJ e os cadastros ativos no sistema; depois responda RESUMO.",
+      };
+  }
   for (const [campo, lista, titulo] of [
     ["empresaId", c.empresas, "Qual empresa/CNPJ comprou?"],
     ["localId", c.locais, "Onde os produtos recebidos foram guardados?"],
@@ -170,7 +206,26 @@ export function prepararConferencia(
     }
     if (item.novoInsumo && !c.podeCriarInsumo) delete item.novoInsumo;
     if (!item.insumoId && !item.novoInsumo) {
+      const casamento = r.fiscal
+        ? casarProdutoFiscal(
+            {
+              descricao: item.descricao,
+              unidade: item.unidade,
+              codigoFornecedor: item.codigoFornecedor,
+              ean: item.ean,
+            },
+            r.fornecedor.documento ?? "",
+            c.insumos,
+            c.vinculos ?? [],
+          )
+        : null;
+      if (!item.exigirVinculo && casamento?.vinculo) {
+        item.insumoId = casamento.vinculo.insumoId;
+        if (!casamento.confirmarConversao)
+          item.fatorConversao = casamento.vinculo.fator;
+      }
       const exato =
+        !r.fiscal &&
         !item.exigirVinculo &&
         c.insumos.find(
           (s) =>
@@ -178,7 +233,7 @@ export function prepararConferencia(
             normalizarDescricaoNota(item.descricao),
         );
       if (exato) item.insumoId = exato.id;
-      else {
+      else if (!item.insumoId) {
         const termos = normalizarDescricaoNota(item.descricao)
           .split(" ")
           .filter((t) => t.length > 2);
@@ -192,7 +247,7 @@ export function prepararConferencia(
           .filter((s) => s.score > 0)
           .sort((a, b) => b.score - a.score || a.nome.localeCompare(b.nome))
           .slice(0, 8);
-        const opcoes = parecidos.map((s) => ({
+        const opcoes = (casamento?.candidatos ?? parecidos).map((s) => ({
           nome: `${s.nome} (${s.unidadeMedida})`,
           valor: s.id,
         }));
@@ -286,8 +341,10 @@ export function prepararConferencia(
 }
 
 export function propostaDaConferencia(r: RascunhoNota): unknown {
+  const { fornecedorNovo: _fornecedorNovo, ...dados } = r;
+  void _fornecedorNovo;
   return {
-    ...r,
+    ...dados,
     itens: r.itens.map((i) => ({
       descricao: i.descricao,
       insumoId: i.insumoId,
@@ -295,6 +352,12 @@ export function propostaDaConferencia(r: RascunhoNota): unknown {
       quantidade: i.quantidade,
       fatorConversao: i.fatorConversao,
       valorTotal: i.valorTotal,
+      ...(i.valorBruto === undefined ? {} : { valorBruto: i.valorBruto }),
+      ...(i.valorUnitarioImpresso === undefined
+        ? {}
+        : { valorUnitarioImpresso: i.valorUnitarioImpresso }),
+      ...(i.codigoFornecedor ? { codigoFornecedor: i.codigoFornecedor } : {}),
+      ...(i.ean ? { ean: i.ean } : {}),
     })),
   };
 }
@@ -505,7 +568,7 @@ export function resumoConferencia(r: RascunhoNota, c: CatalogoNota): string {
     `Emissão: ${r.emitidaEm ? dia(r.emitidaEm) : "a conferir"} · Unidade: ${c.unidade}`,
     ...r.itens.map(
       (i, n) =>
-        `${n + 1}. ${i.descricao}: ${i.quantidade} ${i.unidade} · ${moeda(i.valorTotal)}${i.novoInsumo ? " · NOVO CADASTRO" : ""}${i.fatorConversao ? ` → ${Number((i.quantidade * i.fatorConversao).toFixed(3))} ${i.novoInsumo?.unidadeMedida ?? c.insumos.find((s) => s.id === i.insumoId)?.unidadeMedida ?? ""} de ${i.novoInsumo?.nome ?? c.insumos.find((s) => s.id === i.insumoId)?.nome ?? "produto a conferir"}` : ""}`,
+        `${n + 1}. ${i.descricao}: ${i.quantidade} ${i.unidade} · ${moeda(i.valorTotal)}${i.valorBruto !== undefined ? ` líquido rateado (bruto impresso ${moeda(i.valorBruto)})` : ""}${i.novoInsumo ? " · NOVO CADASTRO" : ""}${i.fatorConversao ? ` → ${Number((i.quantidade * i.fatorConversao).toFixed(3))} ${i.novoInsumo?.unidadeMedida ?? c.insumos.find((s) => s.id === i.insumoId)?.unidadeMedida ?? ""} de ${i.novoInsumo?.nome ?? c.insumos.find((s) => s.id === i.insumoId)?.nome ?? "produto a conferir"}` : ""}`,
     ),
     `Total: ${moeda(r.valorTotal)}`,
     `Empresa: ${nome(c.empresas, r.empresaId)} · Categoria: ${nome(c.categorias, r.categoriaId)}`,
@@ -515,6 +578,35 @@ export function resumoConferencia(r: RascunhoNota, c: CatalogoNota): string {
       (p, i) => `Parcela ${i + 1}: ${moeda(p.valor)} · ${dia(p.vencimento)}`,
     ),
   ].join("\n");
+}
+
+export function resumoCurtoConferencia(
+  r: RascunhoNota,
+  c: CatalogoNota,
+): string {
+  const nome = (lista: Opcao[], id?: string) =>
+    lista.find((v) => v.valor === id)?.nome ?? "a definir";
+  return [
+    `Conferência da nota${r.numero ? ` ${r.numero}` : ""}`,
+    `Fornecedor: ${r.fornecedor.nome}${r.fornecedor.documento ? ` (${r.fornecedor.documento})` : ""}${r.fornecedorNovo ? " · NOVO CADASTRO na confirmação" : ""}`,
+    `Itens: ${r.itens.length} · Novos produtos: ${r.itens.filter((i) => i.novoInsumo).length} · Total: ${moeda(r.valorTotal)}`,
+    ...(r.fiscal
+      ? [
+          `Descontos: ${moeda(r.fiscal.descontos)} · Acréscimos: ${moeda(r.fiscal.acrescimos)}${r.fiscal.ajusteArredondamento ? ` · Arredondamento: ${moeda(r.fiscal.ajusteArredondamento)}` : ""}`,
+        ]
+      : []),
+    `Financeiro: ${r.pagamento.situacao === "PAGA" ? "já paga" : r.pagamento.situacao === "A_PAGAR" ? "a pagar" : "a conferir"} · Forma: ${r.pagamento.forma ?? "a conferir"} · Parcelas: ${r.pagamento.parcelas?.length ?? "a definir"}`,
+    ...(r.pagamento.parcelas ?? []).map(
+      (p, i) => `${i + 1}: ${moeda(p.valor)} · ${dia(p.vencimento)}`,
+    ),
+    `Unidade: ${c.unidade} · Empresa: ${nome(c.empresas, r.empresaId)} · Local: ${nome(c.locais, r.localId)}`,
+    r.pagamento.situacao === "PAGA"
+      ? `Conta: ${nome(c.contas, r.pagamento.contaId)} · Pagamento: ${r.pagamento.dataPagamento ? dia(r.pagamento.dataPagamento) : "a conferir"}`
+      : "",
+    "Para conferir todos os itens, quantidades e conversões, responda ITENS. A confirmação declara que os produtos foram recebidos.",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function confirmacaoVigente(d: {
@@ -529,7 +621,9 @@ export function confirmacaoVigente(d: {
 }): boolean {
   return (
     !!d.codigo &&
-    d.texto.trim().toUpperCase() === `CONFIRMAR ${d.codigo}` &&
+    [`CONFIRMAR ${d.codigo}`, `OK ${d.codigo}`].includes(
+      d.texto.trim().toUpperCase(),
+    ) &&
     !!d.resumoEm &&
     !!d.expiraEm &&
     d.recebidoEm > d.resumoEm &&

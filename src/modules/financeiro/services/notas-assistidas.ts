@@ -135,8 +135,8 @@ async function pessoaDaNota(
       );
     if (
       documento &&
-      existente.documento &&
-      existente.documento.replace(/\D/g, "") !== documento
+      (!existente.documento ||
+        existente.documento.replace(/\D/g, "") !== documento)
     )
       throw new NotaAssistidaRecusada(
         "O documento não confere com a pessoa financeira cadastrada.",

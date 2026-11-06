@@ -135,6 +135,6 @@ test("documento sem número e sem chave fica pendente para evitar duplicação",
   assert.equal(
     notaAssistidaPronta.safeParse({ ...nota, chaveAcesso: "1".repeat(44) })
       .success,
-    true,
+    false,
   );
 });

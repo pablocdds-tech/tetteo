@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { Prisma } from "@prisma/client";
+import { gravarArquivoFiscal } from "@/server/notas/arquivos";
 import { after, test } from "node:test";
 import {
   hashPropostaNota,
@@ -136,7 +139,7 @@ async function fixture(paga = false) {
   const notaId = randomUUID();
   const rascunho: RascunhoNota = {
     operacaoId: notaId,
-    fornecedor: { nome: "Fornecedor fictício", documento: "44555666000190" },
+    fornecedor: { nome: "Fornecedor fictício", documento: "11444777000161" },
     numero: "123",
     serie: "1",
     emitidaEm: "2026-11-04",
@@ -301,7 +304,7 @@ test("confirmação da conversa lança estoque e parcelas, aprende o vínculo e 
   });
   assert.equal(vinculo.insumoId, f.insumo.id);
   assert.equal(String(vinculo.fator), "3");
-  assert.equal(vinculo.fornecedor, "44555666000190");
+  assert.equal(vinculo.fornecedor, "11444777000161");
   assert.equal(vinculo.confirmadoPorId, f.usuario.id);
   assert.equal(
     (
@@ -329,6 +332,85 @@ test("confirmação da conversa lança estoque e parcelas, aprende o vínculo e 
   });
   assert.match(resposta.texto!, /cadastrada com sucesso/);
   assert.match(resposta.texto!, new RegExp(resultado.notaId));
+});
+test("XML passa pelo leitor, permanece pendente e só OK com código vigente lança financeiro e estoque", async (t) => {
+  const f = await fixture();
+  const rede = t.mock.method(globalThis, "fetch", async () => {
+    throw Error("XML não deve usar rede ou Gemini");
+  });
+  const arquivo = await gravarArquivoFiscal({
+    organizacaoId: f.org.id,
+    unidadeId: f.unidade.id,
+    usuarioId: f.usuario.id,
+    bytes: await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
+    tipo: "application/xml",
+    variante: "sintetico",
+  });
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: {
+      arquivoId: arquivo.id,
+      rascunho: Prisma.DbNull,
+      codigo: null,
+      resumoHash: null,
+      resumoEm: null,
+      expiraEm: null,
+      estado: "RECEBIDA",
+    },
+  });
+  await tratarMensagemNota(f.nota.mensagemId);
+  let n = await f.atual();
+  assert.equal(n.metodoLeitura, "XML");
+  assert.equal(n.estado, "REVISAO");
+  assert.equal(n.tentativasLeitura, 0);
+  await f.semEfeito();
+  await tratarMensagemNota((await f.entrada("OK")).id);
+  await f.semEfeito();
+  assert.equal(
+    await db.fornecedor.count({ where: { organizacaoId: f.org.id } }),
+    0,
+  );
+  await tratarMensagemNota((await f.entrada("CONFERI LEITURA")).id);
+  n = await f.atual();
+  const r = n.rascunho as unknown as RascunhoNota;
+  assert.equal(r.fiscal?.descontos, 1);
+  assert.deepEqual(
+    r.itens.map((i) => i.valorTotal),
+    [9.33, 4.67],
+  );
+  r.itens.forEach((i) => {
+    i.insumoId = f.insumo.id;
+    i.fatorConversao = 1;
+  });
+  r.pagamento = {
+    situacao: "A_PAGAR",
+    forma: "BOLETO",
+    parcelas: [{ valor: 14, vencimento: "2026-11-10" }],
+  };
+  await db.notaFiscalWhatsapp.update({
+    where: { id: n.id },
+    data: { rascunho: json(r) },
+  });
+  await tratarMensagemNota((await f.entrada("RESUMO")).id);
+  n = await f.atual();
+  assert.equal(n.estado, "PRONTA");
+  await f.semEfeito();
+  await f.marcarResumoEnviado();
+  await tratarMensagemNota((await f.entrada(`OK ${n.codigo}`)).id);
+  n = await f.atual();
+  assert.equal(n.estado, "LANCADA");
+  assert.equal(await f.saldo(), "3");
+  const lancamentos = await db.lancamento.findMany({
+    where: { unidadeId: f.unidade.id },
+  });
+  assert.equal(lancamentos.length, 1);
+  assert.equal(String(lancamentos[0].valor), "14");
+  assert.equal(
+    (await db.arquivo.findUniqueOrThrow({ where: { id: arquivo.id } }))
+      .entidade,
+    "NotaEntrada",
+  );
+  assert.equal(rede.mock.callCount(), 0);
 });
 
 test("código errado, confirmação anterior ao envio e hash alterado não lançam", async (t) => {

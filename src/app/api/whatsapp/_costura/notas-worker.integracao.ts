@@ -275,8 +275,8 @@ test("envio incerto não encontrado e ENVIANDO abandonado nunca são reenviados"
   const abandonada = await f.saida(`Envio interrompido ${randomUUID()}`, {
     estado: "ENVIANDO",
     tentativas: 1,
-    enviadaEm: new Date(Date.now() - 180_000),
-    atualizadoEm: new Date(Date.now() - 180_000),
+    enviadaEm: new Date(Date.now() - 300_000),
+    atualizadoEm: new Date(Date.now() - 300_000),
   });
   await f.rodar();
   assert.equal(

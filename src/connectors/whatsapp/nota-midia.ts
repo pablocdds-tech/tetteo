@@ -1,4 +1,8 @@
-import { LIMITE_BYTES, tipoPelaAssinatura } from "@/server/tipo-de-arquivo";
+import {
+  LIMITE_DOCUMENTO_NOTA as LIMITE_BYTES,
+  tipoDocumentoNota as tipoPelaAssinatura,
+  type TipoDocumentoNota,
+} from "@/server/notas/documento";
 
 import { configuracaoEvolution } from "./configuracao";
 
@@ -13,7 +17,7 @@ const LIMITE_JSON = Math.ceil(LIMITE_BYTES / 3) * 4 + 64 * 1024;
 export async function baixarFotoNota(
   idMensagem: string,
   env: Record<string, string | undefined> = process.env,
-): Promise<{ bytes: Uint8Array; tipo: string }> {
+): Promise<{ bytes: Uint8Array; tipo: TipoDocumentoNota }> {
   if (!/^[\w-]{1,200}$/.test(idMensagem))
     throw new Error("Identificador da foto inválido.");
   const config = configuracaoEvolution(env);
@@ -35,7 +39,7 @@ export async function baixarFotoNota(
   }
   const falha = () =>
     new Error(
-      "Não consegui baixar a foto. Envie novamente uma imagem JPG, PNG ou WebP de até 5 MB.",
+      "Não consegui baixar o arquivo. Envie XML, PDF, JPG, PNG ou WebP de até 20 MB. Para fotos, prefira enviar como documento, sem compressão.",
     );
   try {
     const resposta = await fetch(
@@ -89,7 +93,10 @@ export async function baixarFotoNota(
       bytes.length === 0 ||
       bytes.length > LIMITE_BYTES ||
       bytes.toString("base64") !== bruto.base64 ||
-      (bruto.mimetype !== undefined && bruto.mimetype !== tipo)
+      (bruto.mimetype !== undefined &&
+        bruto.mimetype !== tipo &&
+        bruto.mimetype !== "application/octet-stream" &&
+        !(tipo === "application/xml" && bruto.mimetype === "text/xml"))
     )
       throw falha();
     return { bytes, tipo };

@@ -159,7 +159,17 @@ function conteudoDeEntrada(message: Record<string, unknown> | undefined) {
       : null;
   const temFoto =
     !!foto &&
-    ["image/jpeg", "image/png", "image/webp"].includes(String(foto.mimetype));
+    ([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf",
+      "application/xml",
+      "text/xml",
+    ].includes(String(foto.mimetype)) ||
+      (foto.mimetype === "application/octet-stream" &&
+        typeof foto.fileName === "string" &&
+        /\.(?:xml|pdf)$/i.test(foto.fileName)));
   const estendido = atual.extendedTextMessage as { text?: unknown } | undefined;
   const texto =
     atual.conversation ??

@@ -65,7 +65,7 @@ async function fornecedor(
         "O fornecedor está inativo. Revise seu cadastro no sistema.",
       );
     const docExistente = existente.documento?.replace(/\D/g, "");
-    if (documento && docExistente && documento !== docExistente)
+    if (documento && (!docExistente || documento !== docExistente))
       throw new NotaAssistidaRecusada(
         "O documento da nota é diferente do fornecedor cadastrado com esse nome.",
       );

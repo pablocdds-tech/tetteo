@@ -1,3 +1,4 @@
+import { digitoChaveFiscal } from "@/lib/documento-fiscal";
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { randomUUID } from "node:crypto";
@@ -100,7 +101,7 @@ async function fixture() {
   });
   const nota: NotaAssistidaPronta = {
     operacaoId: randomUUID(),
-    fornecedor: { nome: "Fornecedor fictício", documento: "44555666000190" },
+    fornecedor: { nome: "Fornecedor fictício", documento: "11444777000161" },
     numero: "123",
     serie: "1",
     chaveAcesso: undefined,
@@ -244,16 +245,16 @@ test("reenvio com outra operação recusa nota já existente mesmo sem série e 
   assert.equal(await f.saldo(), "16");
 });
 
-test("chave fiscal repetida impede entrada mesmo quando número e nome lidos mudam", async () => {
+test("chave fiscal repetida impede entrada em outra operação", async () => {
   const f = await fixture();
-  const chaveAcesso = "1".repeat(44);
+  const baseChave = "3526111144477700016155001000000123112345678";
+  const chaveAcesso = baseChave + digitoChaveFiscal(baseChave);
   await lancarNotaAssistida(f.ctx, { ...f.nota, chaveAcesso });
   await assert.rejects(
     () =>
       lancarNotaAssistida(f.ctx, {
         ...f.nota,
         chaveAcesso,
-        numero: "999",
         operacaoId: randomUUID(),
       }),
     /já está cadastrada/,
@@ -461,7 +462,7 @@ test("nota manual preexistente é reconhecida pelo documento formatado do fornec
     data: {
       organizacaoId: f.org.id,
       nome: "Nome antigo do fornecedor",
-      documento: "44.555.666/0001-90",
+      documento: "11.444.777/0001-61",
     },
   });
   await db.notaEntrada.create({

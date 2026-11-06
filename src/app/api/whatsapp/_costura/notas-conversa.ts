@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { Prisma, type AcaoAuditoria } from "@prisma/client";
+import { vincularArquivos } from "@/server/arquivos";
 
 import { baixarFotoNota } from "@/connectors/whatsapp/nota-midia";
 import { configuracaoEvolution } from "@/connectors/whatsapp/configuracao";
@@ -14,14 +15,32 @@ import {
   propostaDaConferencia,
   responderConferencia,
   resumoConferencia,
+  resumoCurtoConferencia,
   type CatalogoNota,
   type PerguntaNota,
   type RascunhoNota,
 } from "@/modules/assistente/schemas/conferencia-nota";
 import { contextoParaNota } from "@/modules/assistente/services/contexto-nota";
-import { gravarArquivo, lerArquivo } from "@/server/arquivos";
+import { lerArquivo } from "@/server/arquivos";
 import { db } from "@/server/db";
-import { lerNotaFiscalFoto } from "@/server/ia/nota-fiscal";
+import { gravarArquivoFiscal } from "@/server/notas/arquivos";
+import {
+  lerDocumentoFiscal,
+  type EventoPipeline,
+} from "@/server/notas/pipeline";
+import { lerFiscalComGemini } from "@/server/notas/orcamento";
+import {
+  LeituraNotaRecusada,
+  type TipoDocumentoNota,
+} from "@/server/notas/documento";
+import {
+  conferenciaFiscal,
+  pendenciasDaConferenciaFiscal,
+  mensagemConferenciaFiscal,
+  responderLeituraFiscal,
+  rascunhoDaLeituraFiscal,
+  type ConferenciaFiscal,
+} from "@/modules/assistente/schemas/leitura-fiscal";
 import {
   notaAssistidaPronta,
   NotaAssistidaRecusada,
@@ -32,14 +51,22 @@ import { lancarNotaAssistida } from "./lancar-nota";
 const json = (v: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(v));
 const AJUDA =
-  "Envie uma foto nítida da nota fiscal ou cupom, mostrando fornecedor, data, itens e total. Vou conferir com você antes de dar entrada no estoque e no financeiro. Uma nota por vez. Você pode responder por números às opções, pedir RESUMO, CORRIGIR ITEM 1 QUANTIDADE 2, ALTERAR PAGAMENTO ou CANCELAR.";
+  "Envie o XML da NF-e/NFC-e ou um PDF com texto. Para fotos, envie o cupom esticado, com boa luz e inteiro, de preferência como documento sem compressão. Uma nota por vez, até 20 MB. Vou conferir os dados com você antes de qualquer lançamento. Você pode pedir RESUMO, ITENS, corrigir campos ou CANCELAR. A consulta externa por QR está desativada até escolhermos o provedor.";
 const enderecoNota = (id: string) =>
   `${process.env.APP_URL?.trim().replace(/\/+$/, "") ?? ""}/estoque/entradas/${encodeURIComponent(id)}`;
 
 async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
   const unidadeId = ctx.unidadeAtiva!.id;
   const organizacaoId = ctx.organizacao.id;
-  const [empresas, categorias, locais, contas, insumos] = await Promise.all([
+  const [
+    empresas,
+    categorias,
+    locais,
+    contas,
+    insumos,
+    fornecedores,
+    vinculos,
+  ] = await Promise.all([
     db.empresaFinanceira.findMany({
       where: { organizacaoId, unidadeId, ativa: true },
       select: { id: true, nome: true, cnpj: true },
@@ -70,6 +97,22 @@ async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
       select: { id: true, nome: true, unidadeMedida: true },
       orderBy: { nome: "asc" },
     }),
+    db.fornecedor.findMany({
+      where: { organizacaoId, excluidoEm: null },
+      select: { id: true, nome: true, documento: true, ativo: true },
+    }),
+    db.vinculoItemNotaWhatsapp.findMany({
+      where: { organizacaoId, unidadeId },
+      select: {
+        insumoId: true,
+        fornecedor: true,
+        descricao: true,
+        unidadeNota: true,
+        fator: true,
+        codigoFornecedor: true,
+        ean: true,
+      },
+    }),
   ]);
   return {
     unidade: ctx.unidadeAtiva!.nome,
@@ -85,6 +128,8 @@ async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
       empresaId: e.empresaId,
     })),
     insumos,
+    fornecedores,
+    vinculos: vinculos.map((v) => ({ ...v, fator: Number(v.fator) })),
     podeCriarInsumo: pode(ctx, "cardapio.editar"),
   };
 }
@@ -173,7 +218,9 @@ async function mostrar(
   aviso?: string,
 ) {
   const pergunta = prepararConferencia(r, c);
-  const resumo = resumoConferencia(r, c);
+  const resumo = r.fiscal
+    ? resumoCurtoConferencia(r, c)
+    : resumoConferencia(r, c);
   // Nunca trunca itens: uma confirmação precisa conter todos os dados.
   if (resumo.length > 48_000)
     throw new Error(
@@ -213,7 +260,7 @@ async function mostrar(
       resumo,
       pergunta
         ? perguntaComOpcoes(pergunta)
-        : `Está tudo correto e os produtos já foram recebidos?\nResponda CONFIRMAR ${codigo} para cadastrar os itens indicados, dar entrada no estoque e registrar o financeiro acima. Esse código vale por 30 minutos após o envio.\nPara ajustar, responda CORRIGIR ITEM 1 QUANTIDADE 2, ALTERAR PAGAMENTO, ALTERAR LOCAL ou CANCELAR.`,
+        : `Está tudo correto e os produtos já foram recebidos?\nResponda OK ${codigo} ou CONFIRMAR ${codigo} para cadastrar os itens indicados, dar entrada no estoque e registrar o financeiro acima. Esse código vale por 30 minutos após o envio.\nPara ajustar, responda CORRIGIR ITEM 1 QUANTIDADE 2, ALTERAR PAGAMENTO, ALTERAR LOCAL ou CANCELAR.`,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -295,6 +342,38 @@ async function executar(
     return;
   }
   await alterar(m.conversaId, leaseDono, async (tx) => {
+    const derivados = Array.isArray(nota.arquivosDerivados)
+      ? nota.arquivosDerivados.flatMap((v) =>
+          v &&
+          typeof v === "object" &&
+          !Array.isArray(v) &&
+          typeof v.id === "string"
+            ? [v.id]
+            : [],
+        )
+      : [];
+    if (derivados.length) {
+      const livres = await tx.arquivo.findMany({
+        where: {
+          id: { in: derivados },
+          organizacaoId: ctx.organizacao.id,
+          unidadeId: ctx.unidadeAtiva!.id,
+          enviadoPorId: ctx.usuario.id,
+          entidade: null,
+        },
+        select: { id: true },
+      });
+      await vincularArquivos(
+        tx,
+        livres.map((v) => v.id),
+        {
+          organizacaoId: ctx.organizacao.id,
+          enviadoPorId: ctx.usuario.id,
+          entidade: "NotaEntrada",
+          entidadeId: resultado.notaId,
+        },
+      );
+    }
     await tx.notaFiscalWhatsapp.update({
       where: { id: notaId },
       data: { estado: "LANCADA", resultado: json(resultado) },
@@ -335,11 +414,19 @@ async function executar(
           unidadeNota: item.unidade.toUpperCase(),
           insumoId,
           fator: item.fatorConversao!,
+          ...(item.codigoFornecedor
+            ? { codigoFornecedor: item.codigoFornecedor }
+            : {}),
+          ...(item.ean ? { ean: item.ean } : {}),
           confirmadoPorId: ctx.usuario.id,
         },
         update: {
           insumoId,
           fator: item.fatorConversao!,
+          ...(item.codigoFornecedor
+            ? { codigoFornecedor: item.codigoFornecedor }
+            : {}),
+          ...(item.ean ? { ean: item.ean } : {}),
           confirmadoPorId: ctx.usuario.id,
         },
       });
@@ -393,11 +480,151 @@ async function executar(
   });
 }
 
+async function avancarLeituraFiscal(
+  m: Mensagem,
+  notaId: string,
+  c: ConferenciaFiscal,
+  ctx: ContextoSessao,
+  leaseDono?: string,
+) {
+  const nota = await db.notaFiscalWhatsapp.findUniqueOrThrow({
+    where: { id: notaId },
+  });
+  const pendencias = pendenciasDaConferenciaFiscal(c);
+  if (
+    c.conferida.chave_acesso &&
+    (await db.notaEntrada.count({
+      where: {
+        unidadeId: ctx.unidadeAtiva!.id,
+        chaveAcesso: c.conferida.chave_acesso,
+      },
+    }))
+  ) {
+    await responder(
+      m,
+      "Esta chave fiscal já está cadastrada nesta unidade. Confira a nota existente.",
+      leaseDono,
+      async (tx) => {
+        await tx.notaFiscalWhatsapp.update({
+          where: { id: notaId },
+          data: {
+            estado: "DUPLICADA",
+            codigo: null,
+            resumoHash: null,
+            expiraEm: null,
+          },
+        });
+        await tx.conversaNotaWhatsapp.update({
+          where: { id: m.conversaId },
+          data: { notaAtivaId: null },
+        });
+        await auditar(tx, m, notaId, "ALTEROU", { etapa: "NOTA_DUPLICADA" });
+      },
+    );
+    return;
+  }
+  if (pendencias.length) {
+    const aguardandoXml = c.extras.some((e) =>
+      ["DESATIVADA", "INDISPONIVEL", "NAO_AUTORIZADA"].includes(e.codigo),
+    );
+    await responder(m, mensagemConferenciaFiscal(c), leaseDono, async (tx) => {
+      await tx.notaFiscalWhatsapp.update({
+        where: { id: notaId },
+        data: {
+          estado: aguardandoXml ? "AGUARDANDO_XML" : "REVISAO",
+          leitura: json(c),
+          validacoes: json(pendencias),
+          pergunta: json({ campo: "leituraFiscal" }),
+          codigo: null,
+          resumoHash: null,
+          resumoEm: null,
+          expiraEm: null,
+        },
+      });
+      await tx.mensagemNotaWhatsapp.updateMany({
+        where: { notaId, direcao: "SAIDA", tipo: "RESUMO", estado: "PENDENTE" },
+        data: { estado: "CANCELADA" },
+      });
+      await auditar(tx, m, notaId, "ALTEROU", {
+        etapa: "LEITURA_PENDENTE",
+        codigos: pendencias.map((p) => p.codigo),
+        metodo: c.metodo,
+      });
+    });
+    return;
+  }
+  const unidade = await db.unidade.findUniqueOrThrow({
+    where: { id: ctx.unidadeAtiva!.id },
+    select: { fusoHorario: true },
+  });
+  const anterior = nota.rascunho as unknown as RascunhoNota | undefined;
+  const origem = await db.mensagemNotaWhatsapp.findUniqueOrThrow({
+    where: { id: nota.mensagemId },
+    select: { recebidoEm: true },
+  });
+  const r = rascunhoDaLeituraFiscal(
+    c,
+    {
+      operacaoId: notaId,
+      arquivoId: nota.arquivoId!,
+      recebidaEm: new Intl.DateTimeFormat("en-CA", {
+        timeZone: unidade.fusoHorario,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(origem.recebidoEm),
+    },
+    anterior ?? undefined,
+  );
+  const padroes = m.conversa.padroes as {
+    empresaId?: string;
+    localId?: string;
+    categoriaId?: string;
+    fornecedor?: string;
+  } | null;
+  if (!anterior && padroes) {
+    r.empresaId = padroes.empresaId;
+    r.localId = padroes.localId;
+    if (
+      padroes.fornecedor ===
+      normalizarDescricaoNota(r.fornecedor.documento || r.fornecedor.nome)
+    )
+      r.categoriaId = padroes.categoriaId;
+  }
+  await alterar(m.conversaId, leaseDono, (tx) =>
+    tx.notaFiscalWhatsapp.update({
+      where: { id: notaId },
+      data: { leitura: json(c), validacoes: json([]) },
+    }),
+  );
+  await mostrar(
+    m,
+    notaId,
+    r,
+    await catalogo(ctx),
+    leaseDono,
+    `Leitura fiscal conferida (${c.metodo}). Cadastros e lançamentos dependem da confirmação final.`,
+  );
+}
+
 async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
   const existente = await db.notaFiscalWhatsapp.findUnique({
     where: { mensagemId: m.id },
   });
   if (existente?.rascunho) return; // Repetição depois de salvar a leitura não chama novamente a IA.
+  const leituraExistente = existente
+    ? conferenciaFiscal(existente.leitura)
+    : null;
+  if (existente && leituraExistente) {
+    await avancarLeituraFiscal(
+      m,
+      existente.id,
+      leituraExistente,
+      ctx,
+      leaseDono,
+    );
+    return;
+  }
   const ativa =
     m.conversa.notaAtivaId &&
     (await db.notaFiscalWhatsapp.findUnique({
@@ -406,7 +633,14 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
   if (
     ativa &&
     ativa.id !== existente?.id &&
-    !["LANCADA", "CANCELADA", "FALHOU"].includes(ativa.estado)
+    !["LANCADA", "CANCELADA", "FALHOU", "AGUARDANDO_XML"].includes(
+      ativa.estado,
+    ) &&
+    !(
+      ativa.estado === "REVISAO" &&
+      conferenciaFiscal(ativa.leitura) &&
+      pendenciasDaConferenciaFiscal(conferenciaFiscal(ativa.leitura)!).length
+    )
   ) {
     await responder(
       m,
@@ -418,6 +652,25 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
   const nota =
     existente ??
     (await alterar(m.conversaId, leaseDono, async (tx) => {
+      if (ativa && !["LANCADA", "CANCELADA", "FALHOU"].includes(ativa.estado)) {
+        await tx.notaFiscalWhatsapp.update({
+          where: { id: ativa.id },
+          data: {
+            estado: "SUBSTITUIDA",
+            codigo: null,
+            resumoHash: null,
+            expiraEm: null,
+          },
+        });
+        await tx.mensagemNotaWhatsapp.updateMany({
+          where: { notaId: ativa.id, direcao: "SAIDA", estado: "PENDENTE" },
+          data: { estado: "CANCELADA" },
+        });
+        await auditar(tx, m, ativa.id, "ALTEROU", {
+          estado: "SUBSTITUIDA",
+          origem: "novo-documento",
+        });
+      }
       const n = await tx.notaFiscalWhatsapp.create({
         data: {
           organizacaoId: ctx.organizacao.id,
@@ -477,13 +730,13 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
           "Esta foto já foi lançada. Confira a nota existente no sistema.",
         );
       arquivoId = (
-        await gravarArquivo({
+        await gravarArquivoFiscal({
           organizacaoId: ctx.organizacao.id,
           unidadeId: ctx.unidadeAtiva!.id,
-          enviadoPorId: ctx.usuario.id,
+          usuarioId: ctx.usuario.id,
           bytes: foto.bytes,
-          nomeOriginal: "nota-whatsapp",
-          permissaoLeitura: "estoque.ver",
+          tipo: foto.tipo as TipoDocumentoNota,
+          variante: "original",
         })
       ).id;
       await alterar(m.conversaId, leaseDono, (tx) =>
@@ -493,117 +746,78 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
         }),
       );
     }
-    const leitura = await lerNotaFiscalFoto(
-      {
-        organizationId: ctx.organizacao.id,
-        storeId: ctx.unidadeAtiva!.id,
-        solicitacaoId: nota.id,
+    const derivados: { id: string; variante: string }[] = [];
+    const registrar = async (e: EventoPipeline) =>
+      alterar(m.conversaId, leaseDono, async (tx) => {
+        await tx.notaFiscalWhatsapp.update({
+          where: { id: nota.id },
+          data: {
+            versaoLeitor: "fiscal-2.0",
+            ...(e.metodo ? { metodoLeitura: e.metodo } : {}),
+            arquivosDerivados: json(derivados),
+          },
+        });
+        await auditar(tx, m, nota.id, "ALTEROU", {
+          ...e,
+          versao: "fiscal-2.0",
+          arquivoOriginalId: arquivoId,
+        });
+      });
+    const resultado = await lerDocumentoFiscal(foto.bytes, {
+      organizacaoId: ctx.organizacao.id,
+      unidadeId: ctx.unidadeAtiva!.id,
+      registrar,
+      salvar: async (imagem) => {
+        const a = await gravarArquivoFiscal({
+          organizacaoId: ctx.organizacao.id,
+          unidadeId: ctx.unidadeAtiva!.id,
+          usuarioId: ctx.usuario.id,
+          bytes: imagem.bytes,
+          tipo: imagem.tipo as TipoDocumentoNota,
+          variante: imagem.variante,
+        });
+        derivados.push({ id: a.id, variante: imagem.variante });
+        return a.id;
       },
-      foto,
-    );
-    const unidade = await db.unidade.findUniqueOrThrow({
-      where: { id: ctx.unidadeAtiva!.id },
-      select: { fusoHorario: true },
+      gemini: (imagens, recortes) =>
+        lerFiscalComGemini(
+          {
+            organizationId: ctx.organizacao.id,
+            storeId: ctx.unidadeAtiva!.id,
+            solicitacaoId: nota.id,
+          },
+          imagens,
+          recortes,
+          registrar,
+        ),
     });
-    const recebidaEm = new Intl.DateTimeFormat("en-CA", {
-      timeZone: unidade.fusoHorario,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(m.recebidoEm);
-    const r: RascunhoNota = {
-      operacaoId: nota.id,
-      arquivoId: arquivoId!,
-      fornecedor: leitura.fornecedor,
-      numero: leitura.numero,
-      serie: leitura.serie,
-      chaveAcesso: leitura.chaveAcesso,
-      emitidaEm: leitura.emitidaEm,
-      recebidaEm,
-      valorTotal: leitura.total,
-      itens: leitura.itens,
-      pagamento: {},
+    const conferencia: ConferenciaFiscal = {
+      versao: "fiscal-2.0",
+      metodo: resultado.metodo,
+      original: structuredClone(resultado.dados),
+      conferida: structuredClone(resultado.dados),
+      extras: resultado.extras,
+      alertasConferidos: false,
     };
-    // Informações impressas são sugestões visíveis no resumo, nunca baixa
-    // automática. Tudo continua sujeito à confirmação humana final.
-    const situacao = leitura.pagamento?.paga;
-    if (typeof situacao === "boolean")
-      r.pagamento.situacao = situacao ? "PAGA" : "A_PAGAR";
-    const forma = leitura.pagamento?.forma?.toUpperCase();
-    const formas = [
-      "PIX",
-      "BOLETO",
-      "DINHEIRO",
-      "CREDITO",
-      "DEBITO",
-      "TED",
-      "DEBITO_CONTA",
-      "VA",
-      "VR",
-      "OUTRO",
-    ];
-    if (forma && formas.includes(forma))
-      r.pagamento.forma = forma as NonNullable<
-        RascunhoNota["pagamento"]["forma"]
-      >;
-    if (leitura.pagamento?.parcelas)
-      r.pagamento.parcelas = leitura.pagamento.parcelas;
-    const fornecedor = normalizarDescricaoNota(
-      leitura.fornecedor.documento || leitura.fornecedor.nome,
-    );
-    const padroes = m.conversa.padroes as {
-      empresaId?: string;
-      localId?: string;
-      categoriaId?: string;
-      fornecedor?: string;
-    } | null;
-    if (padroes) {
-      r.empresaId = padroes.empresaId;
-      r.localId = padroes.localId;
-      if (padroes.fornecedor === fornecedor)
-        r.categoriaId = padroes.categoriaId;
-    }
-    const vinculos = await db.vinculoItemNotaWhatsapp.findMany({
-      where: {
-        organizacaoId: ctx.organizacao.id,
-        unidadeId: ctx.unidadeAtiva!.id,
-        fornecedor,
-      },
-    });
-    for (const item of r.itens) {
-      const v = vinculos.find(
-        (v) =>
-          v.descricao === normalizarDescricaoNota(item.descricao) &&
-          v.unidadeNota === item.unidade.toUpperCase(),
-      );
-      if (v) {
-        item.insumoId = v.insumoId;
-        item.fatorConversao = Number(v.fator);
-      }
-    }
     await alterar(m.conversaId, leaseDono, (tx) =>
       tx.notaFiscalWhatsapp.update({
         where: { id: nota.id },
-        data: { leitura: json(leitura) },
+        data: {
+          leitura: json(conferencia),
+          metodoLeitura: resultado.metodo,
+          versaoLeitor: resultado.versao,
+          arquivosDerivados: json(derivados),
+          validacoes: json(resultado.pendencias),
+        },
       }),
     );
-    await mostrar(
-      m,
-      nota.id,
-      r,
-      await catalogo(ctx),
-      leaseDono,
-      [
-        "Li a foto. Confira os dados abaixo.",
-        ...leitura.alertas.map((a) => `Atenção: ${a}`),
-      ].join("\n"),
-    );
+    await avancarLeituraFiscal(m, nota.id, conferencia, ctx, leaseDono);
   } catch (e) {
     // Erros da rede/Prisma nunca são devolvidos com payload ou credenciais.
     const mensagem =
-      e instanceof Error && !/Prisma|fetch|ECONN|timeout|NOTA_/i.test(e.message)
-        ? e.message.slice(0, 300)
-        : "Não consegui ler todos os dados com segurança. Confira a conexão de IA na Severina ou envie uma foto mais nítida.";
+      e instanceof LeituraNotaRecusada
+        ? e.message
+        : "Não consegui concluir a leitura com segurança. Confira a conexão de IA e o armazenamento na Severina ou envie o XML original.";
     await responder(
       m,
       `${mensagem}\nNenhum lançamento foi realizado no estoque ou financeiro.`,
@@ -611,7 +825,18 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
       async (tx) => {
         await tx.notaFiscalWhatsapp.update({
           where: { id: nota.id },
-          data: { estado: "FALHOU", erro: mensagem },
+          data: {
+            estado: "FALHOU",
+            erro: mensagem,
+            validacoes: json([
+              {
+                codigo:
+                  e instanceof LeituraNotaRecusada
+                    ? e.codigo
+                    : "LEITURA_INTERNA",
+              },
+            ]),
+          },
         });
         await tx.conversaNotaWhatsapp.update({
           where: { id: m.conversaId },
@@ -674,8 +899,9 @@ export async function tratarMensagemNota(
   }
   if (
     !nota ||
-    ["LANCADA", "CANCELADA", "FALHOU"].includes(nota.estado) ||
-    !nota.rascunho
+    ["LANCADA", "CANCELADA", "FALHOU", "SUBSTITUIDA", "DUPLICADA"].includes(
+      nota.estado,
+    )
   ) {
     await responder(m, AJUDA, leaseDono);
     return;
@@ -708,8 +934,55 @@ export async function tratarMensagemNota(
     );
     return;
   }
+  const fiscal = conferenciaFiscal(nota.leitura);
+  if (fiscal) {
+    const resposta = responderLeituraFiscal(fiscal, texto);
+    if (resposta.reconhecido) {
+      if (resposta.erro) {
+        await responder(m, resposta.erro, leaseDono);
+        return;
+      }
+      await alterar(m.conversaId, leaseDono, async (tx) => {
+        await tx.notaFiscalWhatsapp.update({
+          where: { id: nota.id },
+          data: {
+            leitura: json(resposta.conferencia),
+            codigo: null,
+            resumoHash: null,
+            resumoEm: null,
+            expiraEm: null,
+          },
+        });
+        await auditar(tx, m, nota.id, "ALTEROU", {
+          etapa: "CONFERENCIA_FISCAL_HUMANA",
+          camposConfirmados: resposta.conferencia.alertasConferidos,
+          origem: "whatsapp",
+        });
+      });
+      await avancarLeituraFiscal(
+        m,
+        nota.id,
+        resposta.conferencia,
+        ctx,
+        leaseDono,
+      );
+      return;
+    }
+    if (pendenciasDaConferenciaFiscal(fiscal).length) {
+      await avancarLeituraFiscal(m, nota.id, fiscal, ctx, leaseDono);
+      return;
+    }
+  }
+  if (!nota.rascunho) {
+    await responder(m, AJUDA, leaseDono);
+    return;
+  }
   const r = nota.rascunho as unknown as RascunhoNota;
-  if (/^confirmar\b/i.test(texto)) {
+  if (/^(itens|detalhes)$/i.test(texto)) {
+    await responder(m, resumoConferencia(r, await catalogo(ctx)), leaseDono);
+    return;
+  }
+  if (/^(?:confirmar|ok)\b/i.test(texto)) {
     if (r.pagamento.situacao === "PAGA" && !pode(ctx, "financeiro.quitar")) {
       await responder(
         m,
