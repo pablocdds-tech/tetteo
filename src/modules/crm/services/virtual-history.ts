@@ -757,7 +757,7 @@ async function processHistoryStream(
     },
     orderBy: { updatedAt: "asc" },
     take: 3,
-  } as const;
+  } satisfies Prisma.AvChannelHistorySyncFindManyArgs;
   const candidates: AvChannelHistorySync[] =
     stream === "RECENT"
       ? await db.avChannelHistoryRecentSync.findMany(query)
