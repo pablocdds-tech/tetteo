@@ -1908,6 +1908,8 @@ export async function actOnVirtualConversation(
     });
     await virtualAudit(tx, full, context.usuario.id, data.action, { version });
   });
-  await deliverVirtualOutbox(20, channelFor);
+  // Control changes do not authorize delivery of pending messages elsewhere.
+  // Only a manual reply creates an outgoing message to attempt immediately.
+  if (data.action === "reply") await deliverVirtualOutbox(20, channelFor);
   return { success: true };
 }

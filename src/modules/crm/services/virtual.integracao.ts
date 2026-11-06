@@ -330,6 +330,77 @@ test("takeover durante a geração descarta a resposta pendente antes de mensage
   );
 });
 
+test("assumir, retomar e pausar uma conversa não processam saídas de outra organização", async () => {
+  const f = await fixture();
+  const other = await fixture();
+  await db.avChannelAccount.update({
+    where: { id: f.account.id },
+    data: { active: false },
+  });
+  const id = (await f.inbound("Teste fictício Kairu de controle humano"))
+    .conversationId!;
+  const otherId = (await other.inbound()).conversationId!;
+  const otherConversation = await db.avConversation.findUniqueOrThrow({
+    where: { id: otherId },
+  });
+  const pending = await db.avMessageOutbox.create({
+    data: {
+      organizationId: other.organization.id,
+      storeId: other.unit.id,
+      accountId: other.account.id,
+      conversationId: otherId,
+      version: otherConversation.version,
+      requestId: randomUUID(),
+      author: "AGENT",
+      text: "Mensagem pendente fictícia Kairu de outra organização.",
+    },
+  });
+  let adapterCalls = 0;
+  for (const action of ["takeover", "resume", "pause"] as const) {
+    const current = await db.avConversation.findUniqueOrThrow({
+      where: { id },
+    });
+    await actOnVirtualConversation(
+      f.context,
+      id,
+      {
+        storeId: f.unit.id,
+        action,
+        version: current.version,
+        requestId: randomUUID(),
+      },
+      (accountId) => {
+        adapterCalls++;
+        return demoChannel(accountId);
+      },
+    );
+    assert.equal(adapterCalls, 0);
+    assert.deepEqual(
+      await db.avMessageOutbox.findUniqueOrThrow({ where: { id: pending.id } }),
+      pending,
+      "Controle humano não altera nem concilia a saída de outra organização.",
+    );
+  }
+  const paused = await db.avConversation.findUniqueOrThrow({ where: { id } });
+  assert.equal(paused.status, "PAUSED");
+  assert.equal(paused.agentEnabled, false);
+  assert.equal(paused.assignedToId, f.actor.id);
+  assert.equal(
+    (
+      await db.avChannelAccount.findUniqueOrThrow({
+        where: { id: f.account.id },
+      })
+    ).active,
+    false,
+  );
+  assert.equal(
+    await db.avMessage.count({
+      where: { conversationId: otherId, direction: "OUTBOUND" },
+    }),
+    0,
+  );
+});
+
 test("mensagem nova durante o turno preserva o lote e agenda uma rodada com todo o contexto", async () => {
   const f = await fixture();
   const id = (await f.inbound("amanhã")).conversationId!;

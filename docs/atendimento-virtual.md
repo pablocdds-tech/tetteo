@@ -80,6 +80,11 @@ continuam restritas ao conteúdo autorizado da unidade.
 
 **Resolver** encerra o atendimento; **Reabrir** reinicia o fluxo conforme o controle registrado. Mensagem manual e suas retentativas usam ID de requisição para evitar duplicação por recarga/dobro de clique.
 
+Ações de controle humano, como assumir, pausar e retomar, não processam a fila de
+envios. Elas alteram somente o atendimento autorizado e sua trilha; não tentam
+enviar nem conciliar mensagens pendentes de outras conversas. A resposta manual
+continua com sua intenção de envio e as verificações existentes do canal.
+
 Escalar cria primeiro a tarefa durável, com motivo, trecho útil, cliente/conversa e unidade. O cliente só recebe a informação de que uma pendência foi criada depois desse retorno. O alerta usa notificações internas do sistema para um usuário autorizado da unidade; o criador da demonstração é o destino inicial. Destino ausente ou sem permissão deixa erro visível. Reenviar alerta reutiliza a tarefa. Aceitação da notificação não significa ciência: **Reconhecer** registra autor, horário e responsável.
 
 ## Configuração privada e custos
