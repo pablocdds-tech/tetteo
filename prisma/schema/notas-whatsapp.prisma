@@ -45,6 +45,11 @@ model NotaFiscalWhatsapp {
   custoMicros    Int @default(0)
   tokens         Int @default(0)
   leituraTentadaEm DateTime?
+  tentativasLeitura Int @default(0)
+  metodoLeitura String?
+  arquivosDerivados Json?
+  validacoes Json?
+  versaoLeitor String?
   criadoEm       DateTime @default(now())
   atualizadoEm   DateTime @updatedAt
 
@@ -87,10 +92,14 @@ model VinculoItemNotaWhatsapp {
   unidadeNota   String
   insumoId      String
   fator         Decimal @db.Decimal(14, 6)
+  codigoFornecedor String?
+  ean String?
   confirmadoPorId String
   criadoEm      DateTime @default(now())
   atualizadoEm  DateTime @updatedAt
 
   @@unique([organizacaoId, unidadeId, fornecedor, descricao, unidadeNota])
+  @@index([organizacaoId, unidadeId, fornecedor, codigoFornecedor], map: "vinculo_item_nota_whatsapp_org_unidade_codigo_idx")
+  @@index([organizacaoId, unidadeId, ean], map: "vinculo_item_nota_whatsapp_org_unidade_ean_idx")
   @@map("vinculo_item_nota_whatsapp")
 }

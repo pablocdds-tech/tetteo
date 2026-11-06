@@ -39,7 +39,13 @@ export async function GET(
       "Content-Length": String(bytes.length),
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
-      "Content-Disposition": "inline",
+      "Content-Disposition":
+        registro.tipo === "application/xml"
+          ? 'attachment; filename="nota.xml"'
+          : "inline",
+      ...(registro.tipo === "application/xml"
+        ? { "Content-Security-Policy": "default-src 'none'; sandbox" }
+        : {}),
     },
   });
 }
