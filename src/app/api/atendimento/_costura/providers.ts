@@ -68,6 +68,20 @@ export const managementFor: ChannelManagementFactory = async (accountId) => {
   };
   return {
     ...adapter,
+    ...(adapter.readMessageMedia
+      ? {
+          async readMessageMedia(
+            query: Parameters<NonNullable<typeof adapter.readMessageMedia>>[0],
+          ) {
+            if (!(await guard()))
+              throw new Error("CHANNEL_CONFIGURATION_CHANGED");
+            const media = await adapter.readMessageMedia!(query);
+            if (!(await guard()))
+              throw new Error("CHANNEL_CONFIGURATION_CHANGED");
+            return media;
+          },
+        }
+      : {}),
     async sendText(input) {
       if (!(await guard()))
         return { state: "FAILED", error: "CHANNEL_CONFIGURATION_CHANGED" };

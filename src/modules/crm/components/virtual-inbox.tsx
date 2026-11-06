@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Image from "next/image";
 import { api } from "../client/api";
 import { useAuth } from "../client/context";
 import { useVirtualAccount } from "../client/virtual-channel-context";
@@ -73,6 +74,7 @@ const NAME_SOURCE: Record<string, string> = {
   UNKNOWN: "Não identificado",
 };
 const EMPTY_MESSAGES: VirtualConversationDetail["messages"] = [];
+const HISTORY_ATTACHMENT_PREFIX = "[Anexo do histórico; arquivo não importado]";
 const when = (value: string | null) =>
   value
     ? new Intl.DateTimeFormat("pt-BR", {
@@ -112,6 +114,200 @@ function MessageText({ text }: { text: string }) {
     ) : (
       part
     ),
+  );
+}
+
+const MEDIA_EXTENSIONS: Record<string, string> = {
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/wav": "wav",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+function MessageMedia({
+  storeId,
+  messageId,
+  kind,
+}: {
+  storeId: string;
+  messageId: string;
+  kind: "AUDIO" | "IMAGE";
+}) {
+  const [media, setMedia] = useState<{ url: string; type: string } | null>(
+    null,
+  );
+  const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState<"preview" | "download" | null>(null);
+  const [error, setError] = useState("");
+  const request = useRef<AbortController | null>(null);
+  const objectUrl = useRef<string | null>(null);
+  const audio = kind === "AUDIO";
+  useEffect(
+    () => () => {
+      request.current?.abort();
+      if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+    },
+    [],
+  );
+  function download(file: { url: string; type: string }) {
+    const link = document.createElement("a");
+    link.href = file.url;
+    link.download = `${audio ? "audio" : "imagem"}-${messageId}.${MEDIA_EXTENSIONS[file.type]}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+  async function load(intent: "preview" | "download") {
+    if (request.current) return;
+    setError("");
+    if (media) {
+      if (intent === "preview") setExpanded(true);
+      else download(media);
+      return;
+    }
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(intent);
+    try {
+      const query = new URLSearchParams({ storeId, messageId });
+      if (intent === "download") query.set("download", "1");
+      const response = await fetch(`/api/atendimento/media?${query}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (
+        response.status === 401 ||
+        (response.redirected &&
+          /^\/login(?:\/|$)/.test(new URL(response.url).pathname))
+      )
+        throw new Error("Entre novamente no sistema para abrir o arquivo.");
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        throw new Error(
+          typeof failure?.error === "string"
+            ? failure.error
+            : "O arquivo não está disponível. Ele pode ter expirado no WhatsApp. Tente novamente ou peça que a pessoa o reenvie.",
+        );
+      }
+      const type = (response.headers.get("content-type") ?? "")
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
+      if (
+        !MEDIA_EXTENSIONS[type] ||
+        !type.startsWith(audio ? "audio/" : "image/")
+      )
+        throw new Error(
+          "O formato deste arquivo não pode ser exibido com segurança.",
+        );
+      const blob = await response.blob();
+      if (controller.signal.aborted) return;
+      if (!blob.size) throw new Error("O arquivo recebido está vazio.");
+      const file = { url: URL.createObjectURL(blob), type };
+      objectUrl.current = file.url;
+      setMedia(file);
+      if (intent === "preview") setExpanded(true);
+      else download(file);
+    } catch (failure) {
+      if (!controller.signal.aborted)
+        setError(
+          failure instanceof Error && !(failure instanceof TypeError)
+            ? failure.message
+            : "Não foi possível carregar o arquivo. Tente novamente ou peça que a pessoa o reenvie.",
+        );
+    } finally {
+      if (!controller.signal.aborted) {
+        request.current = null;
+        setLoading(null);
+      }
+    }
+  }
+  function close() {
+    setExpanded(false);
+    setError("");
+    setMedia(null);
+    if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+    objectUrl.current = null;
+  }
+  return (
+    <div className={styles.media} aria-busy={loading !== null}>
+      <strong>{audio ? "Áudio" : "Imagem"}</strong>
+      {expanded && media && (
+        <div className={styles.mediaPreview}>
+          {audio ? (
+            <audio
+              controls
+              preload="none"
+              src={media.url}
+              aria-label="Áudio desta mensagem"
+              onError={() =>
+                setError(
+                  "O navegador não conseguiu reproduzir este áudio. Use Baixar áudio para ouvir em outro aplicativo.",
+                )
+              }
+            />
+          ) : (
+            <>
+              <Image
+                src={media.url}
+                alt="Imagem enviada nesta conversa"
+                width={640}
+                height={480}
+                unoptimized
+                className={styles.mediaImage}
+                onError={() =>
+                  setError(
+                    "Não foi possível exibir a imagem. Tente baixá-la ou peça que a pessoa a reenvie.",
+                  )
+                }
+              />
+              <a href={media.url} target="_blank" rel="noopener noreferrer">
+                Ampliar imagem
+              </a>
+            </>
+          )}
+        </div>
+      )}
+      <div className={styles.mediaActions}>
+        {!expanded && (
+          <button
+            className="btn"
+            disabled={!!loading}
+            onClick={() => void load("preview")}
+          >
+            {loading === "preview"
+              ? "Carregando…"
+              : audio
+                ? "Carregar áudio"
+                : "Ver imagem"}
+          </button>
+        )}
+        <button
+          className="btn"
+          disabled={!!loading}
+          onClick={() => void load("download")}
+        >
+          {loading === "download"
+            ? "Preparando arquivo…"
+            : audio
+              ? "Baixar áudio"
+              : "Baixar imagem"}
+        </button>
+        {expanded && (
+          <button className="btn" onClick={close}>
+            Ocultar
+          </button>
+        )}
+      </div>
+      {error && (
+        <span className={styles.mediaError} role="alert">
+          {error}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -870,8 +1066,30 @@ function VirtualInboxForAccount({
                           · {when(item.createdAt)}
                         </span>
                         <p>
-                          <MessageText text={item.text} />
+                          <MessageText
+                            text={
+                              item.source === "HISTORY" &&
+                              item.kind === "IMAGE" &&
+                              (item.text === HISTORY_ATTACHMENT_PREFIX ||
+                                item.text.startsWith(
+                                  `${HISTORY_ATTACHMENT_PREFIX}\n`,
+                                ))
+                                ? item.text.replace(
+                                    HISTORY_ATTACHMENT_PREFIX,
+                                    "Anexo do histórico",
+                                  )
+                                : item.text
+                            }
+                          />
                         </p>
+                        {(item.kind === "AUDIO" || item.kind === "IMAGE") && (
+                          <MessageMedia
+                            key={`${storeId}:${activeId}:${item.id}`}
+                            storeId={storeId}
+                            messageId={item.id}
+                            kind={item.kind}
+                          />
+                        )}
                         <span className={styles.metadata}>
                           {item.source === "HISTORY"
                             ? "Mensagem histórica importada"

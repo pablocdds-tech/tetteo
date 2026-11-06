@@ -26,6 +26,7 @@ model AvChannelAccount {
   reservations AvReservation[]
   connection AvChannelConnection?
   historySync AvChannelHistorySync?
+  historyRecentSync AvChannelHistoryRecentSync?
   channelTests AvChannelTest[]
   serviceWindows AvChannelWindow[]
   @@index([organizationId, storeId, mode])

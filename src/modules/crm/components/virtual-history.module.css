@@ -34,6 +34,35 @@
 .history .status {
   font-weight: 600;
 }
+.automatic {
+  display: grid;
+  gap: 6px;
+  padding: 0 0 16px;
+  margin: 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+.automatic h3 {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.automatic a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.automaticTimes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.automaticTimes dt {
+  color: var(--ink-3);
+}
+.automaticTimes dd {
+  color: var(--ink-2);
+}
 .counts {
   display: flex;
   gap: 12px 32px;

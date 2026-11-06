@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { AvChannelHistorySync } from "@prisma/client";
+import { Prisma, type AvChannelHistorySync } from "@prisma/client";
 import { z } from "zod";
 import { contextoDeFundo, type ContextoSessao } from "@/core/sessao/nucleo";
 import { db } from "@/server/db";
@@ -75,6 +75,50 @@ const scopeOf = (
   accountId: row.accountId,
 });
 
+async function automaticHistoryPrincipal(
+  scope: {
+    organizationId: string;
+    storeId: string;
+    accountId: string;
+  },
+  preferredId?: string | null,
+) {
+  const audit = preferredId
+    ? null
+    : await db.avAuditEvent.findFirst({
+        where: {
+          organizationId: scope.organizationId,
+          storeId: scope.storeId,
+          action: {
+            in: [
+              "CHANNEL_SAVED",
+              "CHANNEL_CONNECTION_STATUS",
+              "CHANNEL_CONNECT_REQUESTED",
+            ],
+          },
+          data: { path: ["accountId"], equals: scope.accountId },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        select: { actorId: true },
+      });
+  const actorId = preferredId ?? audit?.actorId;
+  if (!actorId) return false;
+  const user = await db.usuario.findUnique({
+    where: { id: actorId },
+    select: { status: true, excluidoEm: true },
+  });
+  if (!user || user.status !== "ATIVO" || user.excluidoEm) return false;
+  const principal = await contextoDeFundo(actorId, scope.storeId);
+  if (!principal || principal.organizacao.id !== scope.organizationId)
+    return false;
+  try {
+    await authorizeVirtual(principal, scope.storeId, true, true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getVirtualHistory(
   context: ContextoSessao,
   storeId: string,
@@ -83,10 +127,57 @@ export async function getVirtualHistory(
   const scope = await authorizeVirtual(context, storeId);
   const account = await db.avChannelAccount.findFirst({
     where: { organizationId: scope.organizationId, storeId, id: accountId },
-    select: { mode: true, historySync: true },
+    select: {
+      mode: true,
+      historySync: true,
+      historyRecentSync: true,
+      connection: {
+        select: {
+          connectionState: true,
+          revision: true,
+          verifiedRevision: true,
+          verifiedAt: true,
+        },
+      },
+    },
   });
   if (!account) fail("NOT_FOUND", "Conta não encontrada nesta unidade.", 404);
-  return state(account.historySync, account.mode === "EVOLUTION");
+  const recent = account.historyRecentSync;
+  const available =
+    account.mode === "EVOLUTION" &&
+    process.env.AV_HISTORY_WORKER_ENABLED !== "false" &&
+    account.connection?.connectionState === "VERIFIED" &&
+    account.connection.verifiedRevision === account.connection.revision &&
+    Boolean(account.connection.verifiedAt);
+  const principalAllowed =
+    !available ||
+    (await automaticHistoryPrincipal(
+      { organizationId: scope.organizationId, storeId, accountId },
+      recent?.requestedById ?? account.historySync?.requestedById,
+    ));
+  const enabled = available && principalAllowed;
+  return {
+    ...state(account.historySync, account.mode === "EVOLUTION"),
+    automatic: {
+      enabled,
+      state:
+        available && !principalAllowed ? "FAILED" : (recent?.state ?? "IDLE"),
+      lastSyncedAt: recent?.lastSyncedAt?.toISOString() ?? null,
+      nextSyncAt:
+        enabled &&
+        recent?.state !== "RUNNING" &&
+        !(recent?.state === "FAILED" && recent.error !== PROVIDER_HISTORY_ERROR)
+          ? new Date(
+              (recent?.finishedAt?.getTime() ?? Date.now() - 60_000) +
+                (recent?.state === "FAILED" ? 5 * 60_000 : 60_000),
+            ).toISOString()
+          : null,
+      error:
+        available && !principalAllowed
+          ? "A atualização automática exige que o responsável pela conexão mantenha acesso de gestão nesta unidade. Confira a conexão com um gestor autorizado."
+          : (recent?.error ?? null),
+    },
+  };
 }
 
 export async function startVirtualHistory(
@@ -162,7 +253,8 @@ export async function startVirtualHistory(
     }
     if (prior?.state === "RUNNING")
       fail("HISTORY_BUSY", "O histórico desta conta já está sendo importado.");
-    const resumed = prior?.state === "PARTIAL";
+    const resumed =
+      prior?.state === "PARTIAL" && prior.revision === connection.revision;
     const now = new Date();
     const values = {
       revision: connection.revision,
@@ -209,7 +301,355 @@ export async function startVirtualHistory(
       },
     );
   });
+  const recent = await db.avChannelHistoryRecentSync.findUnique({
+    where: { accountId: data.accountId },
+    select: { state: true },
+  });
+  if (recent?.state === "FAILED")
+    await scheduleAutomaticVirtualHistory({
+      accountId: data.accountId,
+      actorId: context.usuario.id,
+      retryFailed: true,
+    });
   return getVirtualHistory(context, data.storeId, data.accountId);
+}
+
+const PROVIDER_HISTORY_ERROR =
+  "Não foi possível consultar o histórico do provedor. Confira a conexão e tente novamente.";
+const HISTORY_START = new Date("2000-01-01T00:00:00.000Z");
+const RECENT_INTERVAL_MS = 60_000;
+const FULL_INTERVAL_MS = 24 * 60 * 60_000;
+
+/** Detect a completed QR pairing even if the browser was closed. This only
+ * reads provider status: no QR, connect, logout, restart or activation. */
+export async function refreshVirtualHistoryConnections(
+  management: ChannelManagementFactory,
+  accountId?: string,
+) {
+  if (process.env.AV_HISTORY_WORKER_ENABLED === "false") return 0;
+  const candidates = await db.avChannelConnection.findMany({
+    where: {
+      ...(accountId ? { accountId } : {}),
+      connectionState: { in: ["PENDING", "FAILED"] },
+      updatedAt: { lte: new Date(Date.now() - 30_000) },
+      account: {
+        mode: "EVOLUTION",
+        store: {
+          ativa: true,
+          excluidoEm: null,
+          organizacao: { ativa: true, excluidoEm: null },
+        },
+      },
+      OR: [
+        { connectLeaseUntil: null },
+        { connectLeaseUntil: { lte: new Date() } },
+      ],
+    },
+    orderBy: { updatedAt: "asc" },
+    take: 20,
+    include: {
+      account: {
+        select: { historyRecentSync: { select: { requestedById: true } } },
+      },
+    },
+  });
+  let checked = 0,
+    verified = 0;
+  for (const connection of candidates) {
+    if (checked >= 3) break;
+    const scope = scopeOf(connection);
+    const audit = await db.avAuditEvent.findFirst({
+      where: {
+        organizationId: scope.organizationId,
+        storeId: scope.storeId,
+        action: {
+          in: [
+            "CHANNEL_SAVED",
+            "CHANNEL_CONNECTION_STATUS",
+            "CHANNEL_CONNECT_REQUESTED",
+          ],
+        },
+        data: { path: ["accountId"], equals: scope.accountId },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { actorId: true },
+    });
+    const actorId =
+      audit?.actorId ?? connection.account.historyRecentSync?.requestedById;
+    if (!actorId || !(await automaticHistoryPrincipal(scope, actorId)))
+      continue;
+    const owner = randomUUID();
+    const claimed = await db.$queryRaw<{ id: string }[]>`
+      UPDATE "av_channel_connection" SET "connectLeaseOwner"=${owner},
+        "connectLeaseUntil"=(clock_timestamp() AT TIME ZONE 'UTC') + INTERVAL '60 seconds',
+        "updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC')
+      WHERE "id"=${connection.id} AND "organizationId"=${scope.organizationId}
+        AND "storeId"=${scope.storeId} AND "accountId"=${scope.accountId}
+        AND "revision"=${connection.revision} AND "connectionState" IN ('PENDING','FAILED')
+        AND ("connectLeaseUntil" IS NULL OR "connectLeaseUntil"<=(clock_timestamp() AT TIME ZONE 'UTC'))
+      RETURNING "id"`;
+    if (!claimed.length) continue;
+    checked++;
+    try {
+      const adapter = await management(scope.accountId),
+        identity = adapter.identify();
+      if (
+        identity.mode !== "EVOLUTION" ||
+        identity.accountKey !== scope.accountId ||
+        identity.revision !== connection.revision
+      )
+        throw new Error("HISTORY_CONNECTION_BINDING_CHANGED");
+      const result = await adapter.verify();
+      if (
+        !result.connected ||
+        !(await automaticHistoryPrincipal(scope, actorId))
+      )
+        continue;
+      await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`av:account:${scope.accountId}`}))`;
+        const updated = await tx.avChannelConnection.updateMany({
+          where: {
+            ...scope,
+            revision: connection.revision,
+            connectLeaseOwner: owner,
+            connectLeaseUntil: { gt: new Date() },
+            connectionState: { in: ["PENDING", "FAILED"] },
+          },
+          data: {
+            connectionState: "VERIFIED",
+            verifiedRevision: connection.revision,
+            verifiedAt: new Date(),
+            lastError: null,
+          },
+        });
+        if (updated.count) {
+          verified++;
+          await virtualAudit(tx, scope, actorId, "CHANNEL_CONNECTION_STATUS", {
+            accountId: scope.accountId,
+            revision: connection.revision,
+            previousState: connection.connectionState,
+            state: "VERIFIED",
+            source: "HISTORY_STATUS_RECONCILIATION",
+          });
+        }
+      });
+    } catch {
+      // Pending pairing is normal. The durable updatedAt timestamp provides
+      // the retry cooldown without converting an unread QR into an error.
+    } finally {
+      await db.avChannelConnection.updateMany({
+        where: {
+          ...scope,
+          revision: connection.revision,
+          connectLeaseOwner: owner,
+        },
+        data: { connectLeaseOwner: null, connectLeaseUntil: null },
+      });
+    }
+  }
+  return verified;
+}
+
+/** Read-only automatic import; the manager who configured the channel remains
+ * the principal. Pausing the agent never pauses receipt/history. */
+export async function scheduleAutomaticVirtualHistory(input?: {
+  accountId: string;
+  actorId?: string;
+  retryFailed?: boolean;
+}) {
+  if (process.env.AV_HISTORY_WORKER_ENABLED === "false") return 0;
+  const accounts = await db.avChannelAccount.findMany({
+    where: {
+      ...(input ? { id: input.accountId } : {}),
+      mode: "EVOLUTION",
+      store: {
+        ativa: true,
+        excluidoEm: null,
+        organizacao: { ativa: true, excluidoEm: null },
+      },
+      connection: {
+        is: { connectionState: "VERIFIED", verifiedAt: { not: null } },
+      },
+    },
+    include: { connection: true, historySync: true, historyRecentSync: true },
+    orderBy: { updatedAt: "asc" },
+    take: 100,
+  });
+  let scheduled = 0;
+  for (const account of accounts) {
+    const connection = account.connection;
+    if (!connection || connection.revision !== connection.verifiedRevision)
+      continue;
+    const recent = account.historyRecentSync;
+    const full = account.historySync;
+    const audit =
+      !input?.actorId && (!recent || recent.revision !== connection.revision)
+        ? await db.avAuditEvent.findFirst({
+            where: {
+              organizationId: account.organizationId,
+              storeId: account.storeId,
+              action: {
+                in: [
+                  "CHANNEL_SAVED",
+                  "CHANNEL_CONNECTION_STATUS",
+                  "CHANNEL_CONNECT_REQUESTED",
+                ],
+              },
+              data: { path: ["accountId"], equals: account.id },
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: { actorId: true },
+          })
+        : null;
+    const actorId =
+      input?.actorId ??
+      audit?.actorId ??
+      recent?.requestedById ??
+      full?.requestedById;
+    if (!actorId) continue;
+    try {
+      const user = await db.usuario.findUnique({
+        where: { id: actorId },
+        select: { status: true, excluidoEm: true },
+      });
+      const context =
+        user?.status === "ATIVO" && !user.excluidoEm
+          ? await contextoDeFundo(actorId, account.storeId)
+          : null;
+      if (!context || context.organizacao.id !== account.organizationId)
+        continue;
+      await authorizeVirtual(context, account.storeId, true, true);
+    } catch {
+      continue;
+    }
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`av:account:${account.id}`}))`;
+      const current = await tx.avChannelConnection.findFirst({
+        where: {
+          accountId: account.id,
+          organizationId: account.organizationId,
+          storeId: account.storeId,
+          revision: connection.revision,
+          verifiedRevision: connection.revision,
+          connectionState: "VERIFIED",
+          verifiedAt: { not: null },
+        },
+        select: { id: true },
+      });
+      if (!current) return;
+      const now = new Date();
+      for (const stream of ["RECENT", "FULL"] as const) {
+        const prior =
+          stream === "RECENT"
+            ? await tx.avChannelHistoryRecentSync.findUnique({
+                where: { accountId: account.id },
+              })
+            : await tx.avChannelHistorySync.findUnique({
+                where: { accountId: account.id },
+              });
+        const sameRevision =
+          prior?.revision === connection.revision &&
+          (!input?.actorId || prior.requestedById === input.actorId);
+        if (sameRevision && prior?.state === "RUNNING") continue;
+        const resumed = sameRevision && prior?.state === "PARTIAL";
+        const interval =
+          prior?.state === "FAILED"
+            ? 5 * RECENT_INTERVAL_MS
+            : stream === "RECENT"
+              ? RECENT_INTERVAL_MS
+              : FULL_INTERVAL_MS;
+        // Provider/network errors retry with a cooldown; loops, lost access and
+        // malformed pagination remain stopped until a manual retry or revision.
+        if (
+          sameRevision &&
+          prior?.state === "FAILED" &&
+          prior.error !== PROVIDER_HISTORY_ERROR &&
+          !input?.retryFailed
+        )
+          continue;
+        if (
+          sameRevision &&
+          !resumed &&
+          !(input?.retryFailed && prior?.state === "FAILED") &&
+          prior?.finishedAt &&
+          now.getTime() - prior.finishedAt.getTime() < interval
+        )
+          continue;
+        const scope = {
+          organizationId: account.organizationId,
+          storeId: account.storeId,
+          accountId: account.id,
+        };
+        const fresh = {
+          nextPage: 1,
+          pageSize: 100,
+          since:
+            stream === "RECENT"
+              ? new Date(
+                  Math.max(
+                    HISTORY_START.getTime(),
+                    sameRevision && prior
+                      ? prior.until.getTime() - 5 * 60_000
+                      : now.getTime() - 24 * 60 * 60_000,
+                  ),
+                )
+              : HISTORY_START,
+          until: now,
+          importedConversations: 0,
+          importedMessages: 0,
+          skippedMessages: 0,
+          coverageFrom: null,
+          coverageUntil: null,
+          lastPageHash: null,
+        };
+        const values = {
+          revision: connection.revision,
+          requestedById: actorId,
+          requestId: randomUUID(),
+          state: "RUNNING",
+          pagesProcessed: 0,
+          startedAt: now,
+          finishedAt: null,
+          complete: false,
+          error: null,
+          limitReason: null,
+          leaseOwner: null,
+          leaseUntil: null,
+          attempts: 0,
+        };
+        const args = {
+          where: { accountId: account.id },
+          create: { ...scope, ...fresh, ...values },
+          update: { ...values, ...(resumed ? {} : fresh) },
+        };
+        if (stream === "RECENT")
+          await tx.avChannelHistoryRecentSync.upsert({
+            ...args,
+            update: {
+              ...args.update,
+              ...(!sameRevision ? { lastSyncedAt: null } : {}),
+            },
+          });
+        else await tx.avChannelHistorySync.upsert(args);
+        await virtualAudit(tx, scope, actorId, "HISTORY_SYNC_AUTOMATIC", {
+          accountId: account.id,
+          revision: connection.revision,
+          stream,
+          requestId: values.requestId,
+          resumed,
+          principalSource: input?.actorId
+            ? "CURRENT_MANAGER"
+            : audit
+              ? "CHANNEL_CONFIGURATION_AUDIT"
+              : recent
+                ? "PREVIOUS_MANAGER"
+                : "PREVIOUS_HISTORY_MANAGER",
+        });
+        scheduled++;
+      }
+    });
+  }
+  return scheduled;
 }
 
 async function authorizedJob(job: AvChannelHistorySync) {
@@ -276,38 +716,64 @@ async function failJob(
   job: AvChannelHistorySync,
   owner: string,
   error: unknown,
+  stream: "FULL" | "RECENT",
 ) {
+  const table = historyTable(stream);
   const immediate = terminalError(error),
     attempts = job.attempts + 1,
     finished = immediate || attempts >= 3;
   const safe =
     error instanceof CrmError && terminalError(error)
       ? error.message
-      : "Não foi possível consultar o histórico do provedor. Confira a conexão e tente novamente.";
-  await db.$executeRaw`UPDATE "av_channel_history_sync" SET "attempts"=${attempts}, "error"=${safe}, "state"=${finished ? "FAILED" : "RUNNING"}, "finishedAt"=${finished ? new Date() : null}, "complete"=false, "leaseOwner"=NULL, "leaseUntil"=NULL, "updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${job.id} AND "organizationId"=${job.organizationId} AND "storeId"=${job.storeId} AND "accountId"=${job.accountId} AND "requestId"=${job.requestId} AND "revision"=${job.revision} AND "state"='RUNNING' AND "leaseOwner"=${owner} AND "leaseUntil">(clock_timestamp() AT TIME ZONE 'UTC')`;
+      : PROVIDER_HISTORY_ERROR;
+  await db.$executeRaw`UPDATE ${table} SET "attempts"=${attempts}, "error"=${safe}, "state"=${finished ? "FAILED" : "RUNNING"}, "finishedAt"=${finished ? new Date() : null}, "complete"=false, "leaseOwner"=NULL, "leaseUntil"=NULL, "updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${job.id} AND "organizationId"=${job.organizationId} AND "storeId"=${job.storeId} AND "accountId"=${job.accountId} AND "requestId"=${job.requestId} AND "revision"=${job.revision} AND "state"='RUNNING' AND "leaseOwner"=${owner} AND "leaseUntil">(clock_timestamp() AT TIME ZONE 'UTC')`;
 }
+
+const historyTable = (stream: "FULL" | "RECENT") =>
+  Prisma.raw(
+    stream === "RECENT"
+      ? '"av_channel_history_recent_sync"'
+      : '"av_channel_history_sync"',
+  );
 
 export async function processVirtualHistoryQueue(
   management: ChannelManagementFactory,
 ) {
-  const candidates = await db.avChannelHistorySync.findMany({
+  // Recency has an independent lease/cursor, so a large backfill cannot starve it.
+  return (
+    (await processHistoryStream(management, "RECENT")) +
+    (await processHistoryStream(management, "FULL"))
+  );
+}
+async function processHistoryStream(
+  management: ChannelManagementFactory,
+  stream: "FULL" | "RECENT",
+) {
+  const table = historyTable(stream);
+  const query = {
     where: {
       state: "RUNNING",
       OR: [{ leaseUntil: null }, { leaseUntil: { lte: new Date() } }],
     },
     orderBy: { updatedAt: "asc" },
     take: 3,
-  });
+  } as const;
+  const candidates: AvChannelHistorySync[] =
+    stream === "RECENT"
+      ? await db.avChannelHistoryRecentSync.findMany(query)
+      : await db.avChannelHistorySync.findMany(query);
   let processed = 0;
   for (const candidate of candidates) {
     const owner = randomUUID();
     const claimed = await db.$queryRaw<
       { id: string }[]
-    >`UPDATE "av_channel_history_sync" SET "attempts"=CASE WHEN "leaseUntil" IS NOT NULL THEN "attempts"+1 ELSE "attempts" END, "state"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN 'FAILED' ELSE 'RUNNING' END, "error"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN 'A importação foi interrompida após três tentativas sem conclusão. Confira a conexão e tente novamente.' ELSE "error" END, "finishedAt"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN (clock_timestamp() AT TIME ZONE 'UTC') ELSE "finishedAt" END, "leaseOwner"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN NULL ELSE ${owner} END, "leaseUntil"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN NULL ELSE (clock_timestamp() AT TIME ZONE 'UTC') + INTERVAL '60 seconds' END, "updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${candidate.id} AND "organizationId"=${candidate.organizationId} AND "storeId"=${candidate.storeId} AND "accountId"=${candidate.accountId} AND "state"='RUNNING' AND ("leaseUntil" IS NULL OR "leaseUntil" <= (clock_timestamp() AT TIME ZONE 'UTC')) RETURNING "id"`;
+    >`UPDATE ${table} SET "attempts"=CASE WHEN "leaseUntil" IS NOT NULL THEN "attempts"+1 ELSE "attempts" END, "state"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN 'FAILED' ELSE 'RUNNING' END, "error"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN 'A importação foi interrompida após três tentativas sem conclusão. Confira a conexão e tente novamente.' ELSE "error" END, "finishedAt"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN (clock_timestamp() AT TIME ZONE 'UTC') ELSE "finishedAt" END, "leaseOwner"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN NULL ELSE ${owner} END, "leaseUntil"=CASE WHEN "leaseUntil" IS NOT NULL AND "attempts">=2 THEN NULL ELSE (clock_timestamp() AT TIME ZONE 'UTC') + INTERVAL '60 seconds' END, "updatedAt"=(clock_timestamp() AT TIME ZONE 'UTC') WHERE "id"=${candidate.id} AND "organizationId"=${candidate.organizationId} AND "storeId"=${candidate.storeId} AND "accountId"=${candidate.accountId} AND "state"='RUNNING' AND ("leaseUntil" IS NULL OR "leaseUntil" <= (clock_timestamp() AT TIME ZONE 'UTC')) RETURNING "id"`;
     if (!claimed.length) continue;
-    const job = await db.avChannelHistorySync.findFirst({
-      where: { id: candidate.id, leaseOwner: owner },
-    });
+    const lookup = { where: { id: candidate.id, leaseOwner: owner } };
+    const job =
+      stream === "RECENT"
+        ? await db.avChannelHistoryRecentSync.findFirst(lookup)
+        : await db.avChannelHistorySync.findFirst(lookup);
     if (!job) continue;
     try {
       await authorizedJob(job);
@@ -393,7 +859,7 @@ export async function processVirtualHistoryQueue(
           await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`av:account:${job.accountId}`}))`;
           const owned = await tx.$queryRaw<
             { id: string }[]
-          >`SELECT "id" FROM "av_channel_history_sync" WHERE "id"=${job.id} AND "organizationId"=${job.organizationId} AND "storeId"=${job.storeId} AND "accountId"=${job.accountId} AND "revision"=${job.revision} AND "requestId"=${job.requestId} AND "state"='RUNNING' AND "leaseOwner"=${owner} AND "leaseUntil">(clock_timestamp() AT TIME ZONE 'UTC') FOR UPDATE`;
+          >`SELECT "id" FROM ${table} WHERE "id"=${job.id} AND "organizationId"=${job.organizationId} AND "storeId"=${job.storeId} AND "accountId"=${job.accountId} AND "revision"=${job.revision} AND "requestId"=${job.requestId} AND "state"='RUNNING' AND "leaseOwner"=${owner} AND "leaseUntil">(clock_timestamp() AT TIME ZONE 'UTC') FOR UPDATE`;
           if (!owned.length) return;
           const connection = await tx.avChannelConnection.findFirst({
             where: {
@@ -549,43 +1015,53 @@ export async function processVirtualHistoryQueue(
             : job.coverageUntil;
           const complete = page.nextPage === null,
             partial = !complete && job.pagesProcessed + 1 >= 1000;
-          await tx.avChannelHistorySync.update({
-            where: { id: job.id },
-            data: {
-              importedConversations: { increment: importedConversations },
-              importedMessages: { increment: importedMessages },
-              skippedMessages: { increment: skipped },
-              pagesProcessed: { increment: 1 },
-              nextPage: page.nextPage ?? job.nextPage,
-              state: complete ? "COMPLETE" : partial ? "PARTIAL" : "RUNNING",
-              complete,
-              finishedAt: complete || partial ? new Date() : null,
-              limitReason: partial
-                ? "Limite de 1000 páginas nesta etapa. Continue a importação para buscar o restante."
-                : null,
-              coverageFrom: from,
-              coverageUntil: until,
-              lastPageHash: fingerprint,
-              attempts: 0,
-              error: null,
-              leaseOwner: null,
-              leaseUntil: null,
-            },
-          });
+          const progress = {
+            importedConversations: { increment: importedConversations },
+            importedMessages: { increment: importedMessages },
+            skippedMessages: { increment: skipped },
+            pagesProcessed: { increment: 1 },
+            nextPage: page.nextPage ?? job.nextPage,
+            state: complete ? "COMPLETE" : partial ? "PARTIAL" : "RUNNING",
+            complete,
+            finishedAt: complete || partial ? new Date() : null,
+            limitReason: partial
+              ? "Limite de 1000 páginas nesta etapa. Continue a importação para buscar o restante."
+              : null,
+            coverageFrom: from,
+            coverageUntil: until,
+            lastPageHash: fingerprint,
+            attempts: 0,
+            error: null,
+            leaseOwner: null,
+            leaseUntil: null,
+          };
+          if (stream === "RECENT")
+            await tx.avChannelHistoryRecentSync.update({
+              where: { id: job.id },
+              data: {
+                ...progress,
+                ...(complete ? { lastSyncedAt: new Date() } : {}),
+              },
+            });
+          else
+            await tx.avChannelHistorySync.update({
+              where: { id: job.id },
+              data: progress,
+            });
           if (complete || partial)
             await virtualAudit(
               tx,
               scopeOf(job),
               job.requestedById,
               "HISTORY_SYNC_FINISHED",
-              { accountId: job.accountId, complete, partial },
+              { accountId: job.accountId, complete, partial, stream },
             );
         },
         { timeout: 20000 },
       );
       processed++;
     } catch (error) {
-      await failJob(job, owner, error);
+      await failJob(job, owner, error, stream);
     }
   }
   return processed;

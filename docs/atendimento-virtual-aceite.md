@@ -1,5 +1,27 @@
 # Atendimento virtual — evidências de aceite
 
+## Correção de sincronização e mídia — 06/11/2026
+
+Ensaios desta alteração usam banco PostgreSQL local exclusivo UTF8, dados
+fictícios Kairu e HTTP simulado. As migrações SQL existentes e a nova tabela
+`20261106010000_whatsapp_history_automatic` foram aplicadas nesse banco; a
+publicação continua usando `prisma migrate deploy`, com validação completa no CI.
+
+- Integração de histórico: 18 casos aprovados, incluindo agendamento automático
+  de conta inativa, duas réplicas, cursores recente/antigo independentes,
+  continuação parcial, principal da configuração, perda de acesso durante HTTP,
+  cooldown, bloqueio de loop e pareamento concluído com o navegador fechado.
+  Nenhum turno, outbox ou ativação resulta do import.
+- Integração de mídia: seis casos aprovados para áudio/imagem LIVE e HISTORY,
+  conta pausada, isolamento de organização/unidade, falta de permissão,
+  revogação durante HTTP, revisão alterada, MIME falso e erro privado sanitizado.
+- Conector de mídia: quatro casos aprovados para endpoint vinculado, tipos
+  reais permitidos, recusa de vídeo/SVG, timeout sem retry e limites de bytes.
+  Não foram enviadas mensagens nem executado modelo nesses ensaios.
+
+O teste visual usa PNG e WAV fictícios servidos somente no navegador local. Uma
+prévia fictícia não comprova recuperação de um arquivo real no WhatsApp.
+
 Ensaios locais com dados fictícios Kairu. Não houve envio para telefone real nem reserva real. Números de ensaio usam a faixa fictícia +1 202 555; credenciais e respostas dos testes são simuladas. A conferência operacional de configuração descrita abaixo foi somente de leitura, separada dos testes de aceite.
 
 ## Ambiente e migração
