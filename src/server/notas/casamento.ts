@@ -44,17 +44,42 @@ export function casarProdutoFiscal(
       ? validos.filter((v) => v.ean === item.ean)
       : [];
   // Evidências fortes contraditórias ou repetidas nunca escolhem o primeiro cadastro.
-  const forte = porCodigo.length ? porCodigo : porEan;
+  // Sem identificador impresso, reaproveita apenas a descrição EXATA já aprovada
+  // para o mesmo fornecedor e unidade. Similaridade nunca escolhe cadastro.
+  const porDescricaoConfirmada =
+    !codigo && !item.ean
+      ? validos.filter(
+          (v) =>
+            v.fornecedor === fornecedor &&
+            normalizarProdutoFiscal(v.descricao) ===
+              normalizarProdutoFiscal(item.descricao),
+        )
+      : [];
+  const forte = porCodigo.length
+    ? porCodigo
+    : porEan.length
+      ? porEan
+      : porDescricaoConfirmada;
   const ids = new Set(forte.map((v) => v.insumoId));
   const fatores = new Set(forte.map((v) => v.fator));
   const contradicao =
-    porCodigo.length > 0 && porEan.some((v) => !ids.has(v.insumoId));
+    porCodigo.length > 0 &&
+    (porEan.some((v) => !ids.has(v.insumoId)) ||
+      (!!item.ean && porCodigo.some((v) => v.ean && v.ean !== item.ean)));
   if (forte.length && ids.size === 1 && fatores.size === 1 && !contradicao)
     return {
-      metodo: porCodigo.length ? "CODIGO_FORNECEDOR" : "EAN",
+      metodo: porCodigo.length
+        ? "CODIGO_FORNECEDOR"
+        : porEan.length
+          ? "EAN"
+          : "DESCRICAO_CONFIRMADA",
       vinculo: forte[0],
       candidatos: [] as Produto[],
-      confianca: 1,
+      confianca: porCodigo.length || porEan.length ? 1 : 0.95,
+      confirmarConversao:
+        forte[0].fator !== 1 &&
+        normalizarProdutoFiscal(item.descricao) !==
+          normalizarProdutoFiscal(forte[0].descricao),
     };
   const termos = new Set(
     normalizarProdutoFiscal(item.descricao)
@@ -83,6 +108,7 @@ export function casarProdutoFiscal(
     vinculo: null,
     candidatos: candidatos.slice(0, 8).map((v) => v.p),
     confianca: candidatos[0]?.score ?? 0,
+    confirmarConversao: true,
   };
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ratearCentavos } from "./rateio";
 import {
   chaveFiscalValida,
   dadosDaChave,
@@ -135,6 +136,18 @@ export function validarExtracaoFiscal(d: ExtracaoFiscal): PendenciaFiscal[] {
         `Confira ${campo.replaceAll("_", " ")}: não foi possível ler.`,
       );
   const doc = d.cnpj_emitente ?? d.cpf_emitente;
+  if (d.total_nota !== null && d.total_nota <= 0)
+    erro(
+      "total_nota",
+      "TOTAL_INVALIDO",
+      "A nota de compra precisa ter valor total positivo.",
+    );
+  if (d.cnpj_emitente && d.cpf_emitente)
+    erro(
+      "cnpj_emitente",
+      "DOCUMENTO_AMBIGUO",
+      "Confira se o emitente está identificado por CPF ou CNPJ.",
+    );
   if (!doc)
     erro(
       "cnpj_emitente",
@@ -191,6 +204,7 @@ export function validarExtracaoFiscal(d: ExtracaoFiscal): PendenciaFiscal[] {
       "descricao",
       "quantidade",
       "unidade",
+      "valor_unitario",
       "valor_total",
     ] as const)
       if (
@@ -237,6 +251,33 @@ export function validarExtracaoFiscal(d: ExtracaoFiscal): PendenciaFiscal[] {
         "BAIXA_CONFIANCA",
         `Confirme ${campo.replaceAll("_", " ")}: leitura com baixa confiança.`,
       );
+  if (d.parcelas) {
+    const dataValida = (v: string | null) =>
+      !!v &&
+      /^20\d{2}-\d{2}-\d{2}$/.test(v) &&
+      !Number.isNaN(Date.parse(v)) &&
+      new Date(v).toISOString().slice(0, 10) === v;
+    if (
+      d.parcelas.some(
+        (p) => !dataValida(p.vencimento) || p.valor === null || p.valor <= 0,
+      )
+    )
+      erro(
+        "parcelas",
+        "PARCELAS_INVALIDAS",
+        "Confira vencimentos e valores das parcelas. Use CORRIGIR PARCELAS SEM para informar o pagamento depois.",
+      );
+    else if (
+      d.total_nota !== null &&
+      d.parcelas.reduce((s, p) => s + centavos(p.valor!), 0) !==
+        centavos(d.total_nota)
+    )
+      erro(
+        "parcelas",
+        "PARCELAS_DIVERGENTES",
+        "A soma das parcelas impressas não confere com o total.",
+      );
+  }
   if (d.descontos === null || d.acrescimos === null)
     erro(
       "totais",
@@ -268,19 +309,8 @@ export function validarExtracaoFiscal(d: ExtracaoFiscal): PendenciaFiscal[] {
 export function valoresLiquidos(d: ExtracaoFiscal): number[] {
   if (validarExtracaoFiscal(d).some((p) => p.codigo !== "BAIXA_CONFIANCA"))
     throw new Error("Confira as pendências fiscais antes do rateio.");
-  const brutos = d.itens.map((i) => BigInt(centavos(i.valor_total!)));
-  const soma = brutos.reduce((a, b) => a + b, 0n),
-    alvo = BigInt(centavos(d.total_nota!));
-  if (soma <= 0n) throw new Error("A nota precisa ter itens com valor.");
-  const bases = brutos.map((v) => (v * alvo) / soma);
-  let resto = alvo - bases.reduce((a, b) => a + b, 0n);
-  const ordem = brutos
-    .map((v, i) => ({ i, r: (v * alvo) % soma }))
-    .sort((a, b) => (a.r === b.r ? a.i - b.i : a.r > b.r ? -1 : 1));
-  for (const { i } of ordem)
-    if (resto > 0n) {
-      bases[i]++;
-      resto--;
-    }
-  return bases.map((v) => Number(v) / 100);
+  return ratearCentavos(
+    d.itens.map((i) => centavos(i.valor_total!)),
+    centavos(d.total_nota!),
+  ).map((v) => v / 100);
 }

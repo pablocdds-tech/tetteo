@@ -82,3 +82,61 @@ test("fornecedor prioriza documento válido e não troca identidade por nome", (
     "DIVERGENTE",
   );
 });
+test("troca de embalagem e código reutilizado com outro EAN exigem conferência", () => {
+  const item = {
+    descricao: "ARROZ FARDO 10KG",
+    unidade: "PCT",
+    codigoFornecedor: "ABC",
+    ean: "7894900011517",
+  };
+  assert.equal(
+    casarProdutoFiscal(item, "11222333000181", produtos, vinculos)
+      .confirmarConversao,
+    true,
+  );
+  assert.equal(
+    casarProdutoFiscal(
+      { ...item, ean: "7891000315507" },
+      "11222333000181",
+      produtos,
+      vinculos,
+    ).vinculo,
+    null,
+  );
+  assert.equal(
+    casarProdutoFiscal(
+      { ...item, unidade: "CX" },
+      "11222333000181",
+      produtos,
+      vinculos,
+    ).vinculo,
+    null,
+  );
+});
+test("descrição exata já confirmada conserva conversão somente no mesmo fornecedor e unidade", () => {
+  const item = { descricao: "Arroz", unidade: "PCT" };
+  const r = casarProdutoFiscal(item, "11222333000181", produtos, vinculos);
+  assert.equal(r.metodo, "DESCRICAO_CONFIRMADA");
+  assert.equal(r.vinculo?.fator, 5);
+  assert.equal(r.confirmarConversao, false);
+  assert.equal(
+    casarProdutoFiscal(
+      { ...item, descricao: "Arroz 10kg" },
+      "11222333000181",
+      produtos,
+      vinculos,
+    ).vinculo,
+    null,
+  );
+  assert.equal(
+    casarProdutoFiscal(item, "outro", produtos, vinculos).vinculo,
+    null,
+  );
+  assert.equal(
+    casarProdutoFiscal(item, "11222333000181", produtos, [
+      ...vinculos,
+      { ...vinculos[0], fator: 10 },
+    ]).vinculo,
+    null,
+  );
+});

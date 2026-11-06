@@ -86,6 +86,7 @@ RUN addgroup --system --gid 1001 tetteo \
 COPY --from=builder --chown=tetteo:tetteo /app/.next/standalone ./
 COPY --from=builder --chown=tetteo:tetteo /app/.next/static ./.next/static
 COPY --from=builder --chown=tetteo:tetteo /app/public ./public
+COPY --chown=tetteo:tetteo scripts/pdf-fiscal-worker.cjs ./scripts/pdf-fiscal-worker.cjs
 
 # O migrador e o que ele precisa ler: o histórico de migrações e a
 # configuração que diz onde fica o banco. Fica numa pasta separada para não se

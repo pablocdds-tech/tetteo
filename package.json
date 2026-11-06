@@ -17,17 +17,23 @@
     "demo:despensa": "tsx prisma/despensa-demo.ts",
     "demo:despensa:limpar": "tsx prisma/despensa-demo.ts --limpar",
     "demo": "tsx prisma/demonstracao.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "fixtures:notas": "node --import tsx scripts/gerar-fixtures-notas.mjs",
+    "avaliar:notas": "tsx scripts/avaliar-notas.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "bcryptjs": "^3.0.3",
+    "fast-xml-parser": "5.12.0",
+    "jsqr": "1.4.0",
     "next": "16.4.4",
     "next-auth": "^5.0.0-beta.32",
+    "pdf-parse": "2.4.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
+    "sharp": "0.35.5",
     "zod": "4.6.6"
   },
   "devDependencies": {
@@ -44,6 +50,7 @@
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
     "prisma": "^7.9.1",
+    "qrcode": "1.5.4",
     "tailwindcss": "^4",
     "tsx": "^4.23.5",
     "typescript": "^5"

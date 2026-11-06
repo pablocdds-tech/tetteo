@@ -1,0 +1,343 @@
+{
+  "versao": 1,
+  "casos": [
+    {
+      "arquivo": "nfe-sintetica.xml",
+      "metodo": "XML",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": [
+          {
+            "vencimento": "2026-11-10",
+            "valor": 14
+          }
+        ],
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "nfe-texto-sintetica.pdf",
+      "metodo": "PDF_TEXTO",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "cupom-nitido.png",
+      "metodo": "GEMINI",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "cupom-escuro-simulado.png",
+      "metodo": "GEMINI",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "cupom-torto-simulado.png",
+      "metodo": "GEMINI",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "cupom-dobrado-simulado.png",
+      "metodo": "GEMINI",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "nfe-digitalizada-sintetica.pdf",
+      "metodo": "GEMINI",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "cupom-qr.png",
+      "metodo": "QR",
+      "pendencia": "DESATIVADA",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": "11222333000181",
+        "cpf_emitente": null,
+        "razao_social": "FORNECEDOR FICTICIO",
+        "data_emissao": "2026-11-04",
+        "numero": "123",
+        "serie": "1",
+        "chave_acesso": "35261111222333000181550010000001231123456787",
+        "descontos": 1,
+        "acrescimos": 0,
+        "total_nota": 14,
+        "forma_pagamento": "BOLETO",
+        "parcelas": null,
+        "itens": [
+          {
+            "descricao": "ARROZ TIPO 1",
+            "quantidade": 2,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 10,
+            "codigo_fornecedor": "001",
+            "codigo_ean": null
+          },
+          {
+            "descricao": "FEIJAO PRETO",
+            "quantidade": 1,
+            "unidade": "PCT",
+            "valor_unitario": 5,
+            "valor_total": 5,
+            "codigo_fornecedor": "002",
+            "codigo_ean": null
+          }
+        ]
+      }
+    },
+    {
+      "arquivo": "imagem-sem-detalhes.png",
+      "erro": "IMAGEM_RUIM",
+      "proveniencia": "sintetica",
+      "esperado": {
+        "cnpj_emitente": null,
+        "cpf_emitente": null,
+        "razao_social": null,
+        "data_emissao": null,
+        "numero": null,
+        "serie": null,
+        "chave_acesso": null,
+        "descontos": null,
+        "acrescimos": null,
+        "total_nota": null,
+        "forma_pagamento": null,
+        "parcelas": null,
+        "itens": []
+      }
+    }
+  ]
+}

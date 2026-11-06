@@ -81,3 +81,29 @@ test("campos ilegíveis permanecem null e conteúdo fora do contrato é rejeitad
     false,
   );
 });
+test("validação recusa dígitos inválidos, vencimento impossível e totais acima da tolerância", () => {
+  const d = nota();
+  d.cnpj_emitente = "11222333000180";
+  assert.ok(
+    validarExtracaoFiscal(d).some((p) => p.codigo === "DOCUMENTO_INVALIDO"),
+  );
+  d.cnpj_emitente = "11222333000181";
+  d.chave_acesso = base + ((Number(d.chave_acesso.at(-1)) + 1) % 10);
+  assert.ok(
+    validarExtracaoFiscal(d).some((p) => p.codigo === "CHAVE_INVALIDA"),
+  );
+  d.chave_acesso = base + digitoChaveFiscal(base);
+  d.total_nota = 14.01;
+  assert.deepEqual(validarExtracaoFiscal(d), []);
+  d.total_nota = 14.06;
+  assert.ok(validarExtracaoFiscal(d).some((p) => p.campo === "total_nota"));
+  const comParcelas = {
+    ...nota(),
+    parcelas: [{ vencimento: "2026-02-30", valor: 14 }],
+  };
+  assert.ok(
+    validarExtracaoFiscal(comParcelas).some(
+      (p) => p.codigo === "PARCELAS_INVALIDAS",
+    ),
+  );
+});
