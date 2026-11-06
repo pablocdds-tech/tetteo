@@ -236,6 +236,13 @@ botão de autorização de usuário real é acionado pelos ensaios de publicaç�
 O escopo inclui XML, PDF, QR e pré-processamento. Decisões confirmadas: consulta
 externa desativada; mesmo Gemini e Free Tier; recortes na segunda tentativa;
 fixtures sintéticas enquanto não houver notas reais anonimizadas.
+Em 06/11/2026, foi autorizada a leitura da foto inteira pelo Gemini antes de tentar
+QR; QR fica por último quando a leitura visual permanece incompleta. A consulta
+desativada não descarta a leitura visual. URL impressa continua sem navegação.
+Uma retomada operacional conserva a leitura anterior em auditoria, só reenfileira
+nota ativa sem tentativas de IA nem confirmação e usa resposta versionada. Não
+cria mensagem de aceite nem efeitos no Estoque/Financeiro. A liberação atual da
+equipe e o vínculo do arquivo privado continuam obrigatórios.
 
 | Ameaça                         | Impacto                                                    | Mitigação                                                                                                                                           | Risco residual                                                                 |
 | ------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |

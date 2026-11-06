@@ -2,6 +2,7 @@
 
 Decisões do responsável: consulta externa desativada; Gemini atual e Free Tier;
 segunda tentativa com recortes; confirmação antes de estoque e financeiro.
+Em 06/11/2026, o responsável definiu: foto inteira pelo Gemini primeiro, QR por último.
 Fixtures disponíveis são sintéticas. **Acurácia em notas reais não medida.**
 
 ## Fluxo e implementação
@@ -12,16 +13,18 @@ flowchart TD
   B --> C{Tipo pela assinatura}
   C -->|XML| D[Parser fiscal direto]
   C -->|PDF com texto| E[Extração e parser conservador]
-  C -->|Imagem ou PDF digitalizado| F[Orientação, contraste, nitidez, bordas e QR]
-  F --> G{Chave no QR?}
-  G -->|Sim| H[Consulta desativada: pedir XML]
-  G -->|Não| I[Gemini: original e derivado, JSON fixo]
+  C -->|Imagem ou PDF digitalizado| F[Orientação, contraste, nitidez e bordas]
+  F --> I[Gemini: original inteiro e derivado, JSON fixo]
   I --> J{Validação aprovada?}
   J -->|Não| K[Uma segunda leitura com recortes]
   D --> L[Validações e conferência humana]
   E --> L
   J -->|Sim| L
-  K --> L
+  K --> G{Ainda incompleto?}
+  G -->|Não| L
+  G -->|Sim| H[QR como último recurso, sem abrir URL]
+  H --> P[Consulta desligada: conservar leitura visual para conferência]
+  P --> L
   L --> M[Vínculos, conversões e pagamento]
   M --> N[Resumo e OK com código vigente]
   N --> O[Transação única: cadastros, estoque e financeiro]
@@ -80,12 +83,24 @@ conferência. Reservas impedem repetir gerações em replay, inclusive com custo
 
 ## Provedor externo pendente
 
-Nenhum provedor foi escolhido. QR decodificado pede o XML, sem disparar OCR ou
-consultar a URL impressa. O futuro conector implementará `ConsultaFiscal` e será
+Nenhum provedor foi escolhido. O Gemini lê a foto inteira antes de tentar QR;
+se a leitura visual ficar válida, o QR nem é decodificado. Se ficar incompleta,
+o QR é tentado depois dos recortes. A consulta desligada conserva os dados visuais
+e suas pendências, sem exigir XML só por haver QR. Sem leitura visual aproveitável,
+pede XML ou nova foto. A URL impressa nunca é aberta. O futuro conector implementará `ConsultaFiscal` e será
 injetado pela camada `app`, após decisão sobre provedor, autenticação e custos.
 O XML retornado precisará ter a chave solicitada. Não existe variável de ambiente
 que ative consulta genérica nesta entrega. Assinatura digital e situação atual na
 SEFAZ não são verificadas; esse limite aparece na conferência do XML.
+
+Retomada operacional de uma foto antiga bloqueada pelo QR: somente a nota ativa
+`AGUARDANDO_XML`, método QR, original privado presente, sem rascunho, confirmação,
+resultado ou tentativa de IA pode ser reenfileirada, sob trava da conversa e
+revalidação da autorização atual. Preservar a leitura anterior em auditoria;
+não zerar contadores de IA. A resposta da foto usa identidade `foto-2.1`, de modo
+que o antigo pedido de XML permaneça no histórico e não impeça a nova pergunta.
+Repetições conservam a mesma resposta e não repetem gerações. A retomada apenas
+extrai dados e nunca constitui confirmação financeira.
 
 ## Testar e comparar
 

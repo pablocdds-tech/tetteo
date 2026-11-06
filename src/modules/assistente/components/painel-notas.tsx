@@ -89,8 +89,8 @@ export function PainelDeNotas({ dados }: { dados: PainelNotas }) {
           </li>
         </ol>
         <p className="text-ink-3 mt-4 text-sm">
-          A consulta externa de QR Code está desativada. Se o agente encontrar
-          um QR, pedirá o XML.{" "}
+          Nas fotos, o Gemini lê a nota inteira primeiro. O QR Code fica como
+          último recurso; a consulta externa continua desativada.{" "}
           <Link
             href="/assistente/configuracao"
             className="text-accent underline underline-offset-4"

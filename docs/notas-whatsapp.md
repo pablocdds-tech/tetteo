@@ -96,7 +96,8 @@ Salvar uma mudança invalida o teste anterior. O teste da revisão vale por
 chat ou arquivo versionado. A configuração é da organização e unidade que
 usarão a leitura.
 
-A imagem sem QR decodificado pode ser enviada ao Gemini para extração. XML e PDF
+A foto inteira é enviada primeiro ao Gemini para extração; o QR é o último recurso
+se a leitura visual não passar nas validações. XML e PDF
 com texto são lidos diretamente. O custo máximo é reservado antes
 da geração e compartilha o orçamento da unidade com o atendimento e seus
 testes. Sem configuração ativa, com teste vencido ou limite de custo atingido,
@@ -126,8 +127,9 @@ conferência e de qualquer lançamento.
 O modelo escolhido nesta etapa permanece o Gemini atual, com tarifas confirmadas
 do Free Tier. Uma segunda leitura usa recortes e o mesmo modelo, no máximo uma
 vez. Falhas de rede, credencial e cota não repetem a geração. Não há modelo pago
-alternativo ativado. A consulta fiscal externa permanece desativada; encontrar QR
-Code pede o XML para continuar sem OCR.
+alternativo ativado. A consulta fiscal externa permanece desativada. Encontrar QR
+Code não bloqueia a leitura visual nem substitui seus dados por um pedido de XML.
+Campos ausentes ou inconsistentes continuam pendentes de conferência.
 
 ## Lançar uma nota
 
