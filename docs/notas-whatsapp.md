@@ -153,6 +153,20 @@ Campos ausentes ou inconsistentes continuam pendentes de conferência.
 6. Aguarde **Nota cadastrada com sucesso**, com a referência da nota de entrada
    e o resultado financeiro. Depois envie a próxima foto.
 
+Na leitura inicial, o WhatsApp mostra fornecedor, quantidade de produtos, total
+e somente a próxima pergunta. Responda diretamente com o dado solicitado, sem
+precisar decorar comandos: CPF/CNPJ, chave, quantidade ou valor. Ao perguntar por
+acréscimo ou desconto ausente, `0` confirma somente esse campo; não apaga outro
+ajuste já lido. Para código de barras ilegível, `SEM CÓDIGO` conserva a ausência.
+`ITENS` mostra a lista organizada mesmo enquanto há pendências. `RESUMO` volta à
+pergunta atual. Os detalhes técnicos das divergências permanecem na leitura
+salva e na auditoria, sem ocupar a conversa.
+
+Depois de corrigir os campos inválidos, `CONFERI` é a forma curta de
+`CONFERI LEITURA`: confirma a leitura e abre a preparação da compra. Esse aceite
+nunca lança a nota. O lançamento continua exigindo o `OK` com código do resumo
+final, com todas as permissões e validações anteriores.
+
 O código vale por 30 minutos após o envio aceito do resumo. Uma correção ou um
 novo resumo muda o código e invalida o anterior. `Sim`, uma mensagem anterior ao
 resumo ou um código antigo não autorizam o lançamento.

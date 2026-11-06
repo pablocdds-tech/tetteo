@@ -68,6 +68,15 @@ invalidam o código anterior. `ITENS` exibe descrições, valores e conversões;
 `OK CODIGO` ou `CONFIRMAR CODIGO` autoriza a versão entregue por até 30 minutos e
 declara que as mercadorias foram recebidas. `OK` sozinho nunca lança.
 
+O WhatsApp apresenta um resumo curto e uma pergunta por vez. A pessoa pode
+responder apenas o dado pedido; a pergunta é derivada das validações vigentes,
+sem mudar a transcrição original. `ITENS` mostra a lista completa, inclusive antes
+de resolver as pendências. O resumo não imprime mensagens técnicas, valores
+divergentes de todas as tentativas nem exemplos com documentos fictícios.
+Evidências e pendências completas continuam salvas. `CONFERI` é um atalho para
+conferir a leitura apenas quando não há campos inválidos; o aceite financeiro
+com código permanece separado.
+
 Fornecedor é encontrado pelo documento. Novos fornecedores/insumos ficam como
 propostas e são criados no commit confirmado. Itens usam código confirmado do
 fornecedor, depois EAN. Sem identificador impresso, descrição exata já confirmada

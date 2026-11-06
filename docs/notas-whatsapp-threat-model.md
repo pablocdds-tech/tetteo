@@ -259,6 +259,11 @@ derivados e recortes são privados. Logs guardam IDs/códigos, sem credenciais o
 corpo de erro do provedor. Validar dígitos não prova autenticidade fiscal.
 Testes sintéticos não medem acurácia real.
 
+Mensagens simplificadas não eliminam pendências: uma resposta curta só altera o
+campo perguntado e mantém original e divergências na leitura auditada. `CONFERI`
+confirma a extração, sem criar `confirmacaoId` nem efeitos financeiros. `OK` sem
+código continua sem autorizar lançamento; os testes da conversa cobrem a distinção.
+
 Cobertos: entrada HTTP, remetente, mídia, modelo, confirmação, banco, resposta e
 leitura privada. Cada fronteira aparece em pelo menos uma ameaça. CI e testes não
 recebem documentos reais nem banco de produção; integração exige PostgreSQL local
