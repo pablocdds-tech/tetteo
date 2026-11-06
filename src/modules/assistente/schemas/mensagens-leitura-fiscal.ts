@@ -159,6 +159,11 @@ function proximaPergunta(
 export function mensagemLeituraFiscal(
   d: ExtracaoFiscal,
   pendencias: PendenciaFiscal[],
+  categoria?: {
+    opcoes: { nome: string; valor: string }[];
+    selecionada: string | null;
+    confirmada: boolean;
+  },
 ): string {
   const apontamentos = [...pendenciasDoRascunho(d), ...pendencias];
   const campo = (
@@ -172,6 +177,9 @@ export function mensagemLeituraFiscal(
   const dinheiro = (nome: string, valor: number | null, casas = 2) =>
     campo(nome, valor, (v) => moeda(Number(v), casas));
   const data = d.data_emissao?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const nomeCategoria = categoria?.opcoes.find(
+    (o) => o.valor === categoria.selecionada,
+  )?.nome;
   return [
     "*Rascunho da nota — confira antes de lançar*",
     `Fornecedor: ${campo("razao_social", d.razao_social, (v) => limpar(String(v)))}`,
@@ -189,6 +197,17 @@ export function mensagemLeituraFiscal(
     `Desconto: ${dinheiro("descontos", d.descontos)}`,
     `Acréscimo: ${dinheiro("acrescimos", d.acrescimos)}`,
     `Total: ${dinheiro("total_nota", d.total_nota)}`,
+    `Pagamento na nota: ${campo("forma_pagamento", d.forma_pagamento, (v) => limpar(String(v)))}`,
+    "Para ajustar a forma: CORRIGIR PAGAMENTO PIX (ou a forma correta). A forma impressa não confirma que a compra foi paga.",
+    ...(categoria
+      ? [
+          `Categoria financeira: ${nomeCategoria ? `${limpar(nomeCategoria)}${categoria.confirmada ? " (selecionada)" : " (sugestão do cadastro; conferir)"}` : "*pendente*"}`,
+          ...categoria.opcoes.map((o, i) => `${i + 1}. ${limpar(o.nome)}`),
+          categoria.opcoes.length
+            ? "Para escolher ou trocar: CATEGORIA seguido do número da opção (ex.: CATEGORIA 1)."
+            : "Não há categoria financeira disponível para este fluxo. Cadastre no Financeiro e responda RESUMO.",
+        ]
+      : []),
     "",
     proximaPergunta(d, pendencias).texto,
     "",
@@ -230,7 +249,7 @@ export function comandoDaRespostaFiscal(
 ): string | null {
   const s = texto.trim();
   if (
-    /^(?:ok|confirmar|corrigir|cancelar|resumo|itens|detalhes|ajuda|buscar|alterar|nota|conferi\s+leitura|sem\s+ajustes)\b/i.test(
+    /^(?:ok|confirmar|corrigir|cancelar|resumo|itens|detalhes|ajuda|buscar|alterar|categoria|nota|conferi\s+leitura|sem\s+ajustes)\b/i.test(
       s,
     )
   )

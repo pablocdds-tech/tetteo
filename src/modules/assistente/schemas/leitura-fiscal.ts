@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   extracaoFiscalSchema,
   validarExtracaoFiscal,
@@ -13,6 +14,16 @@ import {
   mensagemLeituraFiscal,
   comandoDaRespostaFiscal,
 } from "./mensagens-leitura-fiscal";
+const categoriaFinanceiraSchema = z.object({
+  opcoes: z.array(
+    z.object({
+      nome: z.string().min(1).max(160),
+      valor: z.string().min(1).max(120),
+    }),
+  ),
+  selecionada: z.string().min(1).max(120).nullable(),
+  confirmada: z.boolean(),
+});
 export type ConferenciaFiscal = {
   versao: "fiscal-2.0";
   metodo: string;
@@ -20,6 +31,7 @@ export type ConferenciaFiscal = {
   conferida: ExtracaoFiscal;
   extras: PendenciaFiscal[];
   alertasConferidos: boolean;
+  categoriaFinanceira?: z.infer<typeof categoriaFinanceiraSchema>;
 };
 export function conferenciaFiscal(v: unknown): ConferenciaFiscal | null {
   if (!v || typeof v !== "object") return null;
@@ -32,6 +44,7 @@ export function conferenciaFiscal(v: unknown): ConferenciaFiscal | null {
     return null;
   const l = extracaoFiscalSchema.safeParse(d.conferida),
     o = extracaoFiscalSchema.safeParse(d.original);
+  const categoria = categoriaFinanceiraSchema.safeParse(d.categoriaFinanceira);
   return l.success && o.success
     ? {
         versao: "fiscal-2.0",
@@ -40,8 +53,38 @@ export function conferenciaFiscal(v: unknown): ConferenciaFiscal | null {
         conferida: l.data,
         extras: d.extras,
         alertasConferidos: !!d.alertasConferidos,
+        ...(categoria.success ? { categoriaFinanceira: categoria.data } : {}),
       }
     : null;
+}
+/** Categorias vêm do catálogo autorizado; a IA só transcreve o documento. */
+export function atualizarCategoriasDaLeitura(
+  c: ConferenciaFiscal,
+  opcoes: { nome: string; valor: string }[],
+  preferida?: string,
+): ConferenciaFiscal {
+  const anterior = c.categoriaFinanceira;
+  const valida = (id: string | null | undefined) =>
+    opcoes.some((o) => o.valor === id);
+  const manter = valida(anterior?.selecionada);
+  const preferir = valida(preferida);
+  return {
+    ...c,
+    categoriaFinanceira: {
+      opcoes,
+      selecionada: preferir
+        ? preferida!
+        : manter
+          ? anterior!.selecionada
+          : opcoes.length === 1
+            ? opcoes[0].valor
+            : null,
+      confirmada:
+        manter &&
+        !!anterior?.confirmada &&
+        (!preferir || preferida === anterior?.selecionada),
+    },
+  };
 }
 export function pendenciasDaConferenciaFiscal(c: ConferenciaFiscal) {
   const p = validarExtracaoFiscal(c.conferida);
@@ -57,7 +100,11 @@ export function pendenciasDaConferenciaFiscal(c: ConferenciaFiscal) {
   return p;
 }
 export function mensagemConferenciaFiscal(c: ConferenciaFiscal): string {
-  return mensagemLeituraFiscal(c.conferida, pendenciasDaConferenciaFiscal(c));
+  return mensagemLeituraFiscal(
+    c.conferida,
+    pendenciasDaConferenciaFiscal(c),
+    c.categoriaFinanceira,
+  );
 }
 export function responderLeituraFiscal(
   c: ConferenciaFiscal,
@@ -146,7 +193,7 @@ export function responderLeituraFiscal(
     }
   } else {
     m =
-      /^corrigir\s+(cnpj|cpf|fornecedor|data|numero|número|serie|série|chave|total|descontos|acrescimos|acréscimos)\s+(.+)$/i.exec(
+      /^corrigir\s+(cnpj|cpf|fornecedor|data|numero|número|serie|série|chave|total|descontos|acrescimos|acréscimos|pagamento)\s+(.+)$/i.exec(
         s,
       );
     if (!m) return { conferencia: c, erro: null, reconhecido: false };
@@ -174,10 +221,18 @@ export function responderLeituraFiscal(
           numero: "numero",
           serie: "serie",
           chave: "chave_acesso",
+          pagamento: "forma_pagamento",
         } as const
       )[
         k as
-          "cnpj" | "cpf" | "fornecedor" | "data" | "numero" | "serie" | "chave"
+          | "cnpj"
+          | "cpf"
+          | "fornecedor"
+          | "data"
+          | "numero"
+          | "serie"
+          | "chave"
+          | "pagamento"
       ];
       let valor: string | null = /^(?:null|ilegivel|ilegível|sem)$/i.test(v)
         ? null
@@ -289,6 +344,9 @@ export function rascunhoDaLeituraFiscal(
   return {
     ...anterior,
     ...meta,
+    ...(!anterior?.categoriaId && c.categoriaFinanceira?.selecionada
+      ? { categoriaId: c.categoriaFinanceira.selecionada }
+      : {}),
     fornecedor: { nome: d.razao_social!, documento },
     numero: d.numero ?? undefined,
     serie: d.serie ?? undefined,

@@ -189,6 +189,11 @@ test("foto no webhook Evolution entrega rascunho parcial completo em partes no m
   assert.match(texto, /Quantidade: \*pendente\*/);
   assert.match(texto, /Acréscimo: \*pendente\*/);
   assert.match(texto, /Total: R\$\s45,00/);
+  assert.match(texto, new RegExp(`Pagamento na nota: ${d.forma_pagamento}`));
+  assert.match(
+    texto,
+    /Categoria financeira: Mercadoria fictícia \(sugestão do cadastro; conferir\)/,
+  );
   enviadas.forEach((p, n) => {
     assert.ok(p.length <= 3500);
     assert.ok(p.startsWith(`*Parte ${n + 1}/${enviadas.length}*`));
@@ -214,6 +219,170 @@ test("foto no webhook Evolution entrega rascunho parcial completo em partes no m
   assert.equal(enviadas.length, quantidade);
   await tratarMensagemNota((await f.entrada("OK")).id);
   await f.semEfeito();
+});
+
+test("categoria financeira é escolhida no rascunho parcial, isolada por organização, sem vínculo de estoque ou nova IA", async (t) => {
+  const f = await fixture();
+  const rede = t.mock.method(globalThis, "fetch", async () => {
+    throw Error("Editar rascunho salvo não deve usar IA nem rede");
+  });
+  const outra = await db.categoriaFinanceira.create({
+    data: {
+      organizacaoId: f.org.id,
+      nome: "Outra mercadoria fictícia",
+      tipo: "DESPESA",
+      grupoDre: "MERCADORIA",
+    },
+  });
+  await db.categoriaFinanceira.createMany({
+    data: [
+      {
+        organizacaoId: f.org.id,
+        nome: "Inativa",
+        tipo: "DESPESA",
+        grupoDre: "MERCADORIA",
+        ativa: false,
+      },
+      {
+        organizacaoId: f.org.id,
+        nome: "Receita",
+        tipo: "RECEITA",
+        grupoDre: "MERCADORIA",
+      },
+      {
+        organizacaoId: f.org.id,
+        nome: "Fora do fluxo fiscal",
+        tipo: "DESPESA",
+        grupoDre: "OPERACIONAL",
+      },
+    ],
+  });
+  const estrangeira = await db.organizacao.create({
+    data: { nome: "Outra organização fictícia", slug: randomUUID() },
+  });
+  await db.categoriaFinanceira.create({
+    data: {
+      organizacaoId: estrangeira.id,
+      nome: "Categoria privada de outra organização",
+      tipo: "DESPESA",
+      grupoDre: "MERCADORIA",
+    },
+  });
+  const d = lerXmlFiscal(
+    await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
+  );
+  d.acrescimos = null;
+  d.forma_pagamento = null;
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: {
+      estado: "REVISAO",
+      rascunho: Prisma.DbNull,
+      codigo: null,
+      resumoHash: null,
+      resumoEm: null,
+      expiraEm: null,
+      leitura: json({
+        versao: "fiscal-2.0",
+        metodo: "GEMINI",
+        original: structuredClone(d),
+        conferida: structuredClone(d),
+        extras: [],
+        alertasConferidos: false,
+      }),
+    },
+  });
+  const responder = async (texto: string) => {
+    const m = await f.entrada(texto);
+    await tratarMensagemNota(m.id);
+    await f.semEfeito();
+    return f.atual();
+  };
+  const metadados = (n: Awaited<ReturnType<typeof f.atual>>) =>
+    n.leitura as {
+      categoriaFinanceira: {
+        selecionada: string | null;
+        confirmada: boolean;
+        opcoes: { nome: string; valor: string }[];
+      };
+      conferida: typeof d;
+      original: typeof d;
+    };
+  const inicial = await responder("RESUMO");
+  const opcoes = metadados(inicial).categoriaFinanceira.opcoes;
+  assert.equal(opcoes.length, 2);
+  assert.ok(opcoes.every((o) => [f.categoria.id, outra.id].includes(o.valor)));
+  assert.equal(metadados(inicial).categoriaFinanceira.selecionada, null);
+  // Inserir antes da opção não pode mudar o significado do número já enviado.
+  await db.categoriaFinanceira.create({
+    data: {
+      organizacaoId: f.org.id,
+      nome: "AAA mercadoria",
+      tipo: "DESPESA",
+      grupoDre: "MERCADORIA",
+    },
+  });
+  const selecionada = await responder("CATEGORIA 2");
+  assert.equal(
+    metadados(selecionada).categoriaFinanceira.selecionada,
+    opcoes[1].valor,
+  );
+  assert.equal(metadados(selecionada).categoriaFinanceira.confirmada, true);
+  assert.equal(selecionada.rascunho, null);
+  assert.equal(selecionada.codigo, null);
+  const invalida = await responder("CATEGORIA 999");
+  assert.equal(invalida.revisao, selecionada.revisao);
+  assert.equal(
+    metadados(invalida).categoriaFinanceira.selecionada,
+    opcoes[1].valor,
+  );
+  const indiceAnterior =
+    metadados(selecionada).categoriaFinanceira.opcoes.findIndex(
+      (o) => o.valor === outra.id,
+    ) + 1;
+  await db.categoriaFinanceira.update({
+    where: { id: outra.id },
+    data: { ativa: false },
+  });
+  const revogada = await responder(`CATEGORIA ${indiceAnterior}`);
+  assert.equal(revogada.revisao, selecionada.revisao);
+  const atualizada = await responder("RESUMO");
+  assert.equal(metadados(atualizada).categoriaFinanceira.selecionada, null);
+  assert.ok(
+    !metadados(atualizada).categoriaFinanceira.opcoes.some(
+      (o) => o.valor === outra.id,
+    ),
+  );
+  const indice =
+    metadados(atualizada).categoriaFinanceira.opcoes.findIndex(
+      (o) => o.valor === f.categoria.id,
+    ) + 1;
+  await responder(`CATEGORIA ${indice}`);
+  const pagamento = await responder("CORRIGIR PAGAMENTO PIX");
+  assert.equal(metadados(pagamento).conferida.forma_pagamento, "PIX");
+  assert.equal(metadados(pagamento).original.forma_pagamento, null);
+  assert.equal(pagamento.rascunho, null);
+  await responder("CORRIGIR ACRESCIMOS 0");
+  const conferida = await responder("CONFERI");
+  const r = conferida.rascunho as unknown as RascunhoNota;
+  assert.equal(r.categoriaId, f.categoria.id);
+  assert.equal(r.pagamento.forma, "PIX");
+  assert.equal(r.pagamento.situacao, undefined);
+  assert.equal(conferida.confirmacaoId, null);
+  // Uma correção explícita também substitui uma forma escolhida depois da leitura.
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: {
+      rascunho: json({ ...r, pagamento: { ...r.pagamento, forma: "BOLETO" } }),
+    },
+  });
+  const corrigida = await responder("CORRIGIR PAGAMENTO PIX");
+  assert.equal(
+    (corrigida.rascunho as unknown as RascunhoNota).pagamento.forma,
+    "PIX",
+  );
+  assert.equal(corrigida.codigo, null);
+  assert.equal(rede.mock.callCount(), 0);
 });
 
 async function fixture(paga = false) {

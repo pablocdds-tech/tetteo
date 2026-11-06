@@ -20,6 +20,21 @@ campos lidos que precisam de revisão são marcados **conferir**. Uma leitura pa
 responder `ITENS` nem completar os dados fiscais para receber essa apresentação.
 `ITENS` e `RESUMO` continuam disponíveis para rever os dados no próprio WhatsApp.
 
+A forma de pagamento impressa também aparece no primeiro resumo, ou como
+**pendente** quando não foi lida. `CORRIGIR PAGAMENTO PIX` (ou a forma correta)
+ajusta esse campo sem alterar a transcrição original ou presumir quitação.
+A categoria financeira é uma escolha do cadastro, separada da transcrição:
+a categoria única habilitada ou o padrão do mesmo fornecedor aparece como
+**sugestão do cadastro; conferir**. Havendo várias sem um padrão, fica pendente.
+`CATEGORIA 2` escolhe a opção apresentada, mesmo em leitura parcial, sem vincular
+insumos, exigir local de estoque ou chamar novamente a IA. Cada opção é
+revalidada no catálogo da organização antes de salvar; uma mudança na ordem
+não troca o significado do número já enviado. A escolha acompanha o rascunho
+na próxima etapa. O filtro existente é preservado: categorias ativas de despesa
+do grupo DRE `MERCADORIA`, compatíveis com o lançamento fiscal atual. Não há
+classificação semântica por IA nem ampliação deste fluxo para outras despesas.
+Identificar a forma e escolher a categoria não autorizam lançamentos.
+
 Respostas extensas são divididas em partes numeradas de até 3.500 caracteres,
 sem truncar produtos. As partes ficam na fila durável com identidade única e
 revisão. O worker mantém o intervalo de quatro segundos entre envios e segue
@@ -35,14 +50,17 @@ validações permitem. Resumos finais extensos também são divididos: a validad
 código só começa depois do aceite da última parte, com as anteriores aceitas.
 As regras de confirmação, duplicidade, orçamento, estoque e financeiro permanecem.
 
-Validação desta integração: `npm run check` aprovado com 881 testes unitários;
-84 verificações de integração aprovadas em PostgreSQL local exclusivo. O ensaio
+Validação da integração e do ajuste de pagamento/categoria: `npm run check`
+aprovado com 884 testes unitários; 85 verificações de integração aprovadas em
+PostgreSQL local exclusivo. O ensaio
 do webhook assinado percorreu download da foto, Gemini e envio de 45 produtos em
 partes, com HTTP externo simulado. Também foram verificados 100 itens na divisão,
 replay sem nova geração, envio incerto, revogação entre partes e validade do código
 somente após a última parte. `npm run build` aprovado com os três avisos de tracing
-preexistentes. Não houve envio real de WhatsApp, chamada real ao Gemini, avaliação
-de foto real ou deploy em produção.
+preexistentes. A categoria também foi testada com opções de outra organização,
+inativas, desativadas após o resumo e reordenadas; a correção de pagamento
+preserva o original e não declara quitação. Esses ensaios usam documentos
+sintéticos, Gemini e Evolution simulados; não comprovam acurácia em fotos reais.
 
 ## Rascunho editável auxiliar no sistema
 

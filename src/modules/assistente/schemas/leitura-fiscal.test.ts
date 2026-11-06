@@ -10,6 +10,7 @@ import {
   responderLeituraFiscal,
   rascunhoDaLeituraFiscal,
   mensagemConferenciaFiscal,
+  atualizarCategoriasDaLeitura,
   type ConferenciaFiscal,
 } from "./leitura-fiscal";
 import { propostaDaConferencia, confirmacaoVigente } from "./conferencia-nota";
@@ -88,6 +89,105 @@ test("adaptador conserva valores brutos, rateia centavos e mantém contrato atua
     false,
   );
   assert.ok(conferenciaFiscal(c));
+});
+
+test("primeiro resumo mostra o pagamento impresso ou pendente, sem presumir quitação", async () => {
+  const c = await fixture();
+  c.conferida.forma_pagamento = "Cartão de débito";
+  assert.match(
+    mensagemConferenciaFiscal(c),
+    /Pagamento na nota: Cartão de débito/,
+  );
+  assert.match(
+    mensagemConferenciaFiscal(c),
+    /não confirma que a compra foi paga/,
+  );
+  c.conferida.forma_pagamento = null;
+  assert.match(mensagemConferenciaFiscal(c), /Pagamento na nota: \*pendente\*/);
+  const valida = responderLeituraFiscal(c, "CONFERI").conferencia;
+  assert.deepEqual(pendenciasDaConferenciaFiscal(valida), []);
+  const r = rascunhoDaLeituraFiscal(valida, {
+    operacaoId: "teste",
+    arquivoId: "arquivo",
+    recebidaEm: "2026-11-04",
+  });
+  assert.equal(r.pagamento.forma, undefined);
+  assert.equal(r.pagamento.situacao, undefined);
+});
+
+test("forma de pagamento pode ser corrigida sem alterar original nem confirmar pagamento", async () => {
+  const c = await fixture();
+  const original = c.original.forma_pagamento;
+  const corrigida = responderLeituraFiscal(c, "CORRIGIR PAGAMENTO PIX");
+  assert.equal(corrigida.reconhecido, true);
+  assert.equal(corrigida.erro, null);
+  assert.equal(corrigida.conferencia.conferida.forma_pagamento, "PIX");
+  assert.equal(corrigida.conferencia.original.forma_pagamento, original);
+  const valida = responderLeituraFiscal(
+    corrigida.conferencia,
+    "CONFERI",
+  ).conferencia;
+  const meta = {
+    operacaoId: "teste",
+    arquivoId: "arquivo",
+    recebidaEm: "2026-11-04",
+  };
+  const anterior = rascunhoDaLeituraFiscal(valida, meta);
+  assert.equal(anterior.pagamento.forma, "PIX");
+  anterior.pagamento.forma = "BOLETO";
+  const r = rascunhoDaLeituraFiscal(valida, meta, anterior);
+  assert.equal(r.pagamento.forma, "BOLETO"); // Uma escolha posterior de pagamento permanece na conferência.
+  assert.equal(r.pagamento.situacao, undefined);
+  assert.equal(
+    responderLeituraFiscal(c, `CORRIGIR PAGAMENTO ${"x".repeat(81)}`).erro !==
+      null,
+    true,
+  );
+});
+
+test("categoria vem do catálogo, aceita leituras antigas e não é inventada em caso de ambiguidade", async () => {
+  const c = await fixture();
+  const original = structuredClone(c.original);
+  const a = { nome: "Mercadoria fictícia A", valor: "a" };
+  const b = { nome: "Mercadoria fictícia B", valor: "b" };
+  assert.ok(conferenciaFiscal(c)); // Leituras antigas sem metadados financeiros.
+  const unica = atualizarCategoriasDaLeitura(c, [a]);
+  assert.equal(unica.categoriaFinanceira?.selecionada, "a");
+  assert.equal(unica.categoriaFinanceira?.confirmada, false);
+  assert.match(
+    mensagemConferenciaFiscal(unica),
+    /Categoria financeira: Mercadoria fictícia A \(sugestão do cadastro; conferir\)/,
+  );
+  const ambiguas = atualizarCategoriasDaLeitura(c, [a, b]);
+  assert.equal(ambiguas.categoriaFinanceira?.selecionada, null);
+  assert.match(
+    mensagemConferenciaFiscal(ambiguas),
+    /Categoria financeira: \*pendente\*/,
+  );
+  assert.match(mensagemConferenciaFiscal(ambiguas), /CATEGORIA 1/);
+  const preferida = atualizarCategoriasDaLeitura(c, [a, b], "b");
+  assert.equal(preferida.categoriaFinanceira?.selecionada, "b");
+  const indisponivel = atualizarCategoriasDaLeitura(preferida, []);
+  assert.equal(indisponivel.categoriaFinanceira?.selecionada, null);
+  assert.equal(
+    atualizarCategoriasDaLeitura(c, [a, b], "outra-organizacao")
+      .categoriaFinanceira?.selecionada,
+    null,
+  );
+  const valida = responderLeituraFiscal(unica, "CONFERI").conferencia;
+  assert.equal(
+    conferenciaFiscal(valida)?.categoriaFinanceira?.selecionada,
+    "a",
+  );
+  assert.equal(
+    rascunhoDaLeituraFiscal(valida, {
+      operacaoId: "teste",
+      arquivoId: "arquivo",
+      recebidaEm: "2026-11-04",
+    }).categoriaId,
+    "a",
+  );
+  assert.deepEqual(unica.original, original);
 });
 
 test("rascunho apresenta os produtos e uma pergunta, sem despejar divergências técnicas", async () => {
@@ -203,6 +303,7 @@ test("comandos e sim/não nunca viram nome de produto ou fornecedor", async () =
     "AJUDA",
     "BUSCAR ARROZ",
     "ITENS",
+    "CATEGORIA 1",
   ]) {
     const r = responderLeituraFiscal(c, texto);
     assert.equal(r.reconhecido, false);

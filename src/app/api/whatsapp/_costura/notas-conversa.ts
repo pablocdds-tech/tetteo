@@ -37,6 +37,7 @@ import {
   conferenciaFiscal,
   pendenciasDaConferenciaFiscal,
   mensagemConferenciaFiscal,
+  atualizarCategoriasDaLeitura,
   responderLeituraFiscal,
   rascunhoDaLeituraFiscal,
   type ConferenciaFiscal,
@@ -60,6 +61,20 @@ const AJUDA =
 const enderecoNota = (id: string) =>
   `${process.env.APP_URL?.trim().replace(/\/+$/, "") ?? ""}/estoque/entradas/${encodeURIComponent(id)}`;
 
+async function categoriasFinanceiras(ctx: ContextoSessao) {
+  const categorias = await db.categoriaFinanceira.findMany({
+    where: {
+      organizacaoId: ctx.organizacao.id,
+      ativa: true,
+      tipo: "DESPESA",
+      grupoDre: "MERCADORIA",
+    },
+    select: { id: true, nome: true },
+    orderBy: { nome: "asc" },
+  });
+  return categorias.map((e) => ({ nome: e.nome, valor: e.id }));
+}
+
 async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
   const unidadeId = ctx.unidadeAtiva!.id;
   const organizacaoId = ctx.organizacao.id;
@@ -77,16 +92,7 @@ async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
       select: { id: true, nome: true, cnpj: true },
       orderBy: { nome: "asc" },
     }),
-    db.categoriaFinanceira.findMany({
-      where: {
-        organizacaoId,
-        ativa: true,
-        tipo: "DESPESA",
-        grupoDre: "MERCADORIA",
-      },
-      select: { id: true, nome: true },
-      orderBy: { nome: "asc" },
-    }),
+    categoriasFinanceiras(ctx),
     db.localEstoque.findMany({
       where: { unidadeId, ativo: true },
       select: { id: true, nome: true },
@@ -125,7 +131,7 @@ async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
       nome: `${e.nome} (${e.cnpj})`,
       valor: e.id,
     })),
-    categorias: categorias.map((e) => ({ nome: e.nome, valor: e.id })),
+    categorias,
     locais: locais.map((e) => ({ nome: e.nome, valor: e.id })),
     contas: contas.map((e) => ({
       nome: e.nome,
@@ -509,6 +515,29 @@ async function avancarLeituraFiscal(
   const nota = await db.notaFiscalWhatsapp.findUniqueOrThrow({
     where: { id: notaId },
   });
+  const anterior = nota.rascunho as unknown as RascunhoNota | undefined;
+  const padroes = m.conversa.padroes as {
+    empresaId?: string;
+    localId?: string;
+    categoriaId?: string;
+    fornecedor?: string;
+  } | null;
+  const mesmoFornecedor =
+    padroes?.fornecedor ===
+    normalizarDescricaoNota(
+      c.conferida.cnpj_emitente ??
+        c.conferida.cpf_emitente ??
+        c.conferida.razao_social ??
+        "",
+    );
+  c = atualizarCategoriasDaLeitura(
+    c,
+    await categoriasFinanceiras(ctx),
+    anterior?.categoriaId ??
+      (!c.categoriaFinanceira?.selecionada && mesmoFornecedor
+        ? padroes?.categoriaId
+        : undefined),
+  );
   const pendencias = pendenciasDaConferenciaFiscal(c);
   if (
     c.conferida.chave_acesso &&
@@ -590,7 +619,6 @@ async function avancarLeituraFiscal(
     where: { id: ctx.unidadeAtiva!.id },
     select: { fusoHorario: true },
   });
-  const anterior = nota.rascunho as unknown as RascunhoNota | undefined;
   const origem = await db.mensagemNotaWhatsapp.findUniqueOrThrow({
     where: { id: nota.mensagemId },
     select: { recebidoEm: true },
@@ -609,18 +637,13 @@ async function avancarLeituraFiscal(
     },
     anterior ?? undefined,
   );
-  const padroes = m.conversa.padroes as {
-    empresaId?: string;
-    localId?: string;
-    categoriaId?: string;
-    fornecedor?: string;
-  } | null;
   if (!anterior && padroes) {
     r.empresaId = padroes.empresaId;
     r.localId = padroes.localId;
     if (
+      !r.categoriaId &&
       padroes.fornecedor ===
-      normalizarDescricaoNota(r.fornecedor.documento || r.fornecedor.nome)
+        normalizarDescricaoNota(r.fornecedor.documento || r.fornecedor.nome)
     )
       r.categoriaId = padroes.categoriaId;
   }
@@ -971,6 +994,46 @@ export async function tratarMensagemNota(
   const fiscal = conferenciaFiscal(nota.leitura);
   if (fiscal) {
     if (
+      /^(?:categoria(?:\s|$)|alterar\s+categoria$)/i.test(texto) &&
+      (!nota.rascunho || pendenciasDaConferenciaFiscal(fiscal).length)
+    ) {
+      const escolha = /^categoria\s+(\d+)$/i.exec(texto);
+      const opcao = escolha
+        ? fiscal.categoriaFinanceira?.opcoes[Number(escolha[1]) - 1]
+        : undefined;
+      const opcoes = await categoriasFinanceiras(ctx);
+      if (escolha && (!opcao || !opcoes.some((o) => o.valor === opcao.valor))) {
+        await responder(
+          m,
+          "Categoria indisponível. Responda RESUMO para atualizar as opções e depois CATEGORIA seguido do número desejado.",
+          leaseDono,
+        );
+        return;
+      }
+      const atualizada = atualizarCategoriasDaLeitura(fiscal, opcoes);
+      if (opcao) {
+        atualizada.categoriaFinanceira!.selecionada = opcao.valor;
+        atualizada.categoriaFinanceira!.confirmada = true;
+        if (nota.rascunho) {
+          const r = nota.rascunho as unknown as RascunhoNota;
+          await alterar(m.conversaId, leaseDono, (tx) =>
+            tx.notaFiscalWhatsapp.update({
+              where: { id: nota.id },
+              data: {
+                rascunho: json({ ...r, categoriaId: opcao.valor }),
+                codigo: null,
+                resumoHash: null,
+                resumoEm: null,
+                expiraEm: null,
+              },
+            }),
+          );
+        }
+      }
+      await avancarLeituraFiscal(m, nota.id, atualizada, ctx, leaseDono, true);
+      return;
+    }
+    if (
       /^(itens|detalhes)$/i.test(texto) &&
       (!nota.rascunho || pendenciasDaConferenciaFiscal(fiscal).length)
     ) {
@@ -983,11 +1046,18 @@ export async function tratarMensagemNota(
         await responder(m, resposta.erro, leaseDono);
         return;
       }
+      const anterior = nota.rascunho as unknown as RascunhoNota | null;
+      const mudouForma =
+        /^corrigir\s+pagamento\s/i.test(texto) ||
+        fiscal.conferida.forma_pagamento !==
+          resposta.conferencia.conferida.forma_pagamento;
+      if (anterior && mudouForma) delete anterior.pagamento.forma;
       await alterar(m.conversaId, leaseDono, async (tx) => {
         await tx.notaFiscalWhatsapp.update({
           where: { id: nota.id },
           data: {
             leitura: json(resposta.conferencia),
+            ...(anterior && mudouForma ? { rascunho: json(anterior) } : {}),
             codigo: null,
             resumoHash: null,
             resumoEm: null,
