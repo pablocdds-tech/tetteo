@@ -19,6 +19,7 @@ export function centavosInformados(valor: string): number | null {
 }
 export const referenciaSchema = z
   .object({
+    unidadeId: z.string().min(1).max(128),
     de: z.string(),
     ate: z.string(),
     total: z.string().max(32),

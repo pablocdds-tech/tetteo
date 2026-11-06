@@ -9,6 +9,7 @@ import {
   csvSeguro,
   fontes,
   PARSER_VERSAO,
+  periodoBancoSchema,
   periodoSchema,
   REGRAS_VERSAO,
   type Cobertura,
@@ -393,6 +394,10 @@ export async function listarImportacoes(
 ) {
   const e = escopoConferencia(ctx);
   periodoSchema.parse({ de, ate });
+  return buscarImportacoes(e, de, ate);
+}
+
+async function buscarImportacoes(e: Escopo, de: string, ate: string) {
   return db.conferenciaImportacao.findMany({
     where: { ...e, de: { lte: ate }, ate: { gte: de } },
     select: arquivoSelect,
@@ -559,7 +564,7 @@ export async function executarConferencia(
         .filter((d): d is string => !!d);
       const deBanco = [dados.de, ...datasBanco].sort()[0];
       const ateBanco = [dados.ate, ...datasBanco].sort().at(-1)!;
-      if (Date.parse(ateBanco) - Date.parse(deBanco) > 730 * 86400000)
+      if (!periodoBancoSchema.safeParse({ de: deBanco, ate: ateBanco }).success)
         throw new ErroConferencia(
           "As liquidações ultrapassam dois anos. Revise o arquivo.",
         );
@@ -841,12 +846,9 @@ export async function consultarConferencia(
   });
   const efetivo = execucao?.periodoEfetivo as
     { banco: { de: string; ate: string } } | undefined;
+  const periodoBanco = periodoBancoSchema.parse(efetivo?.banco ?? dados);
   const [importacoes, contratos, historico] = await Promise.all([
-    listarImportacoes(
-      ctx,
-      efetivo?.banco.de ?? dados.de,
-      efetivo?.banco.ate ?? dados.ate,
-    ),
+    buscarImportacoes(e, periodoBanco.de, periodoBanco.ate),
     db.conferenciaContrato.findMany({
       where: e,
       orderBy: { criadoEm: "desc" },

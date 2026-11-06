@@ -133,6 +133,17 @@ As quatro colunas representam o mesmo dinheiro em etapas distintas. O total de
 créditos bancários inclui créditos sem lote, que aparecem na fila como ausentes;
 não é receita atribuída ao PDV. Débitos são separados.
 
+Desde `conservadora-lotes-1.0.1`, um crédito só deixa de ter ocorrência bancária
+própria quando algum resultado já expõe sua referência. Isso preserva arquivo,
+linha e hash no CSV mesmo para lotes sem venda vinculada, sem atribuir receita
+ou alterar totais e alocações. Snapshots antigos permanecem imutáveis: execute
+uma nova conferência para obter os resultados com a regra corrigida, mantendo
+a execução anterior no histórico.
+
+O período solicitado de vendas e a listagem pública de importações continuam
+limitados a 366 dias. Execução e consulta de resultados usam o mesmo limite de
+730 dias para a janela bancária ampliada pelas datas de liquidação.
+
 ## Acesso e rotas
 
 Escopo vem da sessão, sem organização/loja aceitas no corpo da importação.

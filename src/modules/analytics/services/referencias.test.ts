@@ -98,6 +98,7 @@ test("referência exige diretor e unidade visível; versão e auditoria são at�
     },
   } as unknown as NonNullable<Parameters<typeof registrarReferencia>[2]>;
   const entrada = {
+    unidadeId: "matriz-a",
     de: "2026-10-24",
     ate: "2026-10-24",
     total: "10.457,38",
@@ -107,17 +108,53 @@ test("referência exige diretor e unidade visível; versão e auditoria são at�
     registrarReferencia({ ...contexto, ehDiretor: false }, entrada, repo),
   );
   await assert.rejects(() =>
+    registrarReferencia(
+      { ...contexto, permissoes: new Set<string>() },
+      entrada,
+      repo,
+    ),
+  );
+  await assert.rejects(() =>
     registrarReferencia({ ...contexto, unidadesVisiveis: [] }, entrada, repo),
   );
   await assert.rejects(() =>
     registrarReferencia({ ...contexto, unidadeAtiva: null }, entrada, repo),
   );
   assert.equal(transacoes, 0);
-  const salvo = await registrarReferencia(
-    contexto,
-    { ...entrada, unidadeId: "outra-loja" },
-    repo,
-  );
+  const outra = { id: "filial-b", nome: "Filial", codigo: "B" };
+  const contextoOutraAba = {
+    ...contexto,
+    unidadeAtiva: outra,
+    unidadesVisiveis: [...contexto.unidadesVisiveis, outra],
+  };
+  for (const versao of [0, 1]) {
+    // As duas lojas têm a mesma versão: a versão otimista não detecta a troca.
+    registro = versao
+      ? {
+          id: "referencia-b",
+          versao,
+          totalCentavos: 500,
+          excluidoEm: null,
+          informadaPorId: "diretor",
+        }
+      : null;
+    const antes = registro ? { ...registro } : null;
+    await assert.rejects(
+      () => registrarReferencia(contextoOutraAba, { ...entrada, versao }, repo),
+      /unidade mudou/,
+    );
+    assert.deepEqual(registro, antes);
+    assert.equal(transacoes, 0);
+    assert.equal(auditorias, 0);
+  }
+  registro = null;
+  for (const unidadeId of [undefined, null, "", "outra-loja"]) {
+    await assert.rejects(() =>
+      registrarReferencia(contexto, { ...entrada, unidadeId }, repo),
+    );
+  }
+  assert.equal(transacoes, 0);
+  const salvo = await registrarReferencia(contexto, entrada, repo);
   assert.equal(salvo.versao, 1);
   assert.equal(auditorias, 1);
   await assert.rejects(

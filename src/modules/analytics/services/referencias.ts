@@ -20,6 +20,10 @@ export async function registrarReferencia(
   )
     throw new SemPermissao("registrar referência de fechamento");
   const dados = referenciaSchema.parse(entrada);
+  if (dados.unidadeId !== unidade.id)
+    throw new ErroReferencia(
+      "A unidade mudou em outra aba. Recarregue a página e confira a unidade antes de salvar.",
+    );
   const hoje = new Intl.DateTimeFormat("sv-SE", {
     timeZone: "America/Sao_Paulo",
   }).format(new Date());

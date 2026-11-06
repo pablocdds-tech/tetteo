@@ -53,6 +53,7 @@ export async function PainelVendas({
           de={de}
           ate={ate}
           diretor={contexto.ehDiretor && !!contexto.unidadeAtiva}
+          unidadeId={contexto.unidadeAtiva?.id ?? null}
           salvarReferencia={
             contexto.unidadeAtiva ? salvarReferencia : undefined
           }
