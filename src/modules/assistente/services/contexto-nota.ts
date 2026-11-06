@@ -8,7 +8,7 @@ import { db } from "@/server/db";
 
 /**
  * Reconstrói a autorização da pessoa na loja do número a cada etapa da nota.
- * Autorizar avisos é uma adesão do responsável, nunca uma permissão financeira.
+ * A liberação de notas é explícita, por vínculo e unidade, independente de avisos.
  */
 export async function contextoParaNota(
   instanciaId: string,
@@ -35,7 +35,6 @@ export async function contextoParaNota(
       where: {
         id: vinculoId,
         organizacaoId: instancia.organizacaoId,
-        autorizadoEm: { not: null },
         excluidoEm: null,
       },
       select: { usuarioId: true, telefone: true, remoteJid: true },
@@ -45,6 +44,22 @@ export async function contextoParaNota(
   // inteira tem uma única unidade ativa, independente do acesso da pessoa.
   const unidade = unidades.length === 1 ? unidades[0] : null;
   if (!unidade || !vinculo || ehGrupo(vinculo.remoteJid)) return null;
+  const autorizacao = await db.autorizacaoNotaWhatsapp.findUnique({
+    where: {
+      organizacaoId_unidadeId_vinculoId: {
+        organizacaoId: instancia.organizacaoId,
+        unidadeId: unidade.id,
+        vinculoId,
+      },
+    },
+    select: { autorizadoEm: true, usuarioId: true, telefone: true },
+  });
+  if (
+    !autorizacao?.autorizadoEm ||
+    autorizacao.usuarioId !== vinculo.usuarioId ||
+    autorizacao.telefone !== vinculo.telefone
+  )
+    return null;
   const destinatario = normalizarTelefone(vinculo.telefone);
   if (!destinatario || !/^\d{10,15}$/.test(destinatario)) return null;
 

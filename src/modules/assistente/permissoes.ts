@@ -37,4 +37,9 @@ export const PERMISSOES_ASSISTENTE = [
     chave: "assistente.conectar",
     descricao: "Conectar o número, ver o QR Code e configurar os eventos",
   },
+  {
+    chave: "assistente.autorizar_notas",
+    descricao:
+      "Autorizar e revogar envio e confirmação de notas pelo WhatsApp na unidade",
+  },
 ] as const;

@@ -81,6 +81,17 @@ async function fixture(paga = false) {
       autorizadoEm: new Date(),
     },
   });
+  await db.autorizacaoNotaWhatsapp.create({
+    data: {
+      organizacaoId: org.id,
+      unidadeId: unidade.id,
+      vinculoId: vinculo.id,
+      usuarioId: usuario.id,
+      telefone: vinculo.telefone,
+      autorizadoEm: new Date(),
+      autorizadoPorId: usuario.id,
+    },
+  });
   const local = await db.localEstoque.create({
     data: { unidadeId: unidade.id, nome: "Depósito fictício" },
   });

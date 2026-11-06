@@ -70,6 +70,17 @@ async function fixture() {
       autorizadoEm: new Date(),
     },
   });
+  await db.autorizacaoNotaWhatsapp.create({
+    data: {
+      organizacaoId: organizacao.id,
+      unidadeId: unidade.id,
+      vinculoId: vinculo.id,
+      usuarioId: usuario.id,
+      telefone: vinculo.telefone,
+      autorizadoEm: new Date(),
+      autorizadoPorId: usuario.id,
+    },
+  });
   const resolver = () => contextoParaNota(instancia.id, vinculo.id);
   return {
     organizacao,
@@ -118,8 +129,8 @@ test("revogação e suspensão impedem continuar uma nota recebida antes", async
       const f = await fixture();
       assert.ok(await f.resolver());
       if (mudanca === "autorizacao")
-        await db.vinculoWhatsapp.update({
-          where: { id: f.vinculo.id },
+        await db.autorizacaoNotaWhatsapp.updateMany({
+          where: { vinculoId: f.vinculo.id },
           data: { autorizadoEm: null },
         });
       if (mudanca === "vinculo")

@@ -10,6 +10,7 @@ import {
   validarFinanceiroDaNota,
 } from "@/modules/financeiro/services/notas-assistidas";
 import { vincularArquivos } from "@/server/arquivos";
+import { exigirAutorizacaoNotaNaTransacao } from "@/modules/assistente/services/notas-autorizacao";
 import {
   notaAssistidaPronta,
   NotaAssistidaRecusada,
@@ -23,6 +24,7 @@ import {
 export async function lancarNotaAssistida(
   contexto: ContextoSessao,
   entrada: unknown,
+  origemWhatsapp?: { instanciaId: string; vinculoId: string },
 ): Promise<{ notaId: string; lancamentoIds: string[] }> {
   const dados = notaAssistidaPronta.parse(entrada);
   if (!pode(contexto, "estoque.lancar"))
@@ -34,6 +36,8 @@ export async function lancarNotaAssistida(
     contexto,
     "financeiro.lancar",
     async (tx, unidadeId) => {
+      if (origemWhatsapp)
+        await exigirAutorizacaoNotaNaTransacao(tx, contexto, origemWhatsapp);
       // Reconstrói o acesso dentro da mesma transação dos lançamentos.
       const acessos = await tx.acesso.findMany({
         where: {

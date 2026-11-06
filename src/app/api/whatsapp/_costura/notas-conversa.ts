@@ -311,7 +311,10 @@ async function executar(
     throw new Error("A autorização para lançar a nota foi revogada.");
   let resultado;
   try {
-    resultado = await lancarNotaAssistida(atual.contexto, dados);
+    resultado = await lancarNotaAssistida(atual.contexto, dados, {
+      instanciaId: m.instanciaId,
+      vinculoId: m.conversa.vinculoId,
+    });
   } catch (e) {
     if (!(e instanceof NotaAssistidaRecusada)) throw e;
     // Recusa de validação sai da transação sem efeitos. Erros de banco/rede

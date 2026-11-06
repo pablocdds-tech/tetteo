@@ -61,6 +61,17 @@ async function fixture() {
       autorizadoEm: new Date(),
     },
   });
+  await db.autorizacaoNotaWhatsapp.create({
+    data: {
+      organizacaoId: org.id,
+      unidadeId: unidade.id,
+      vinculoId: vinculo.id,
+      usuarioId: usuario.id,
+      telefone: vinculo.telefone,
+      autorizadoEm: new Date(),
+      autorizadoPorId: usuario.id,
+    },
+  });
   const conversa = await db.conversaNotaWhatsapp.create({
     data: {
       organizacaoId: org.id,
@@ -355,8 +366,8 @@ test("revogar o vínculo impede processar entrada e entregar dados pendentes", a
   const f = await fixture();
   await f.entrada();
   const m = await f.saida("Resumo confidencial fictício");
-  await db.vinculoWhatsapp.update({
-    where: { id: f.vinculo.id },
+  await db.autorizacaoNotaWhatsapp.updateMany({
+    where: { vinculoId: f.vinculo.id },
     data: { autorizadoEm: null },
   });
   let chamadas = 0;

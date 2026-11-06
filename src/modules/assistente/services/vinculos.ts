@@ -4,6 +4,7 @@ import { normalizarTelefone, telefoneDoJid } from "@/lib/telefone";
 import { db } from "@/server/db";
 
 import { registrarAuditoria } from "./auditoria";
+import { revogarNotasDoVinculo } from "./notas-autorizacao";
 
 /**
  * OS VÍNCULOS — quem existe para a Severina.
@@ -115,9 +116,12 @@ export async function criarVinculo(
   if (existente) {
     // Vínculo excluído que volta: reaproveita a linha em vez de criar uma
     // segunda com o mesmo número, que a chave única recusaria.
-    await db.vinculoWhatsapp.update({
-      where: { id: existente.id },
-      data: { usuarioId: dados.usuarioId, telefone, excluidoEm: null },
+    await db.$transaction(async (tx) => {
+      await revogarNotasDoVinculo(tx, contexto, existente.id);
+      await tx.vinculoWhatsapp.update({
+        where: { id: existente.id },
+        data: { usuarioId: dados.usuarioId, telefone, excluidoEm: null },
+      });
     });
     return { id: existente.id };
   }
@@ -144,9 +148,12 @@ export async function removerVinculo(contexto: ContextoSessao, id: string) {
   });
   if (!vinculo) throw new Error("Vínculo não encontrado.");
 
-  await db.vinculoWhatsapp.update({
-    where: { id },
-    data: { excluidoEm: new Date() },
+  await db.$transaction(async (tx) => {
+    await revogarNotasDoVinculo(tx, contexto, id);
+    await tx.vinculoWhatsapp.update({
+      where: { id },
+      data: { excluidoEm: new Date() },
+    });
   });
 }
 

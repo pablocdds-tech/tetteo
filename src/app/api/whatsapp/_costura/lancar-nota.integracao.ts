@@ -195,6 +195,55 @@ test("confirmação cria estoque, custo, fornecedor e todas as parcelas em conju
     1,
   );
 });
+test("transação de WhatsApp recusa autorização revogada mesmo com contexto e permissões válidos", async () => {
+  const f = await fixture();
+  const instancia = await db.instanciaWhatsapp.create({
+    data: {
+      organizacaoId: f.org.id,
+      unidadeId: f.unidade.id,
+      nome: randomUUID(),
+    },
+  });
+  const vinculo = await db.vinculoWhatsapp.create({
+    data: {
+      organizacaoId: f.org.id,
+      usuarioId: f.usuario.id,
+      telefone: "5511900000021",
+      remoteJid: `${randomUUID()}@lid`,
+      autorizadoEm: new Date(),
+    },
+  });
+  const origem = { instanciaId: instancia.id, vinculoId: vinculo.id };
+  await assert.rejects(
+    lancarNotaAssistida(f.ctx, f.nota, origem),
+    /este número de WhatsApp/,
+  );
+  assert.equal(await f.saldo(), "10");
+  assert.equal(
+    await db.lancamento.count({ where: { unidadeId: f.unidade.id } }),
+    0,
+  );
+  const a = await db.autorizacaoNotaWhatsapp.create({
+    data: {
+      organizacaoId: f.org.id,
+      unidadeId: f.unidade.id,
+      vinculoId: vinculo.id,
+      usuarioId: f.usuario.id,
+      telefone: vinculo.telefone,
+      autorizadoEm: new Date(),
+      autorizadoPorId: f.usuario.id,
+    },
+  });
+  await db.autorizacaoNotaWhatsapp.update({
+    where: { id: a.id },
+    data: { autorizadoEm: null },
+  });
+  await assert.rejects(
+    lancarNotaAssistida(f.ctx, f.nota, origem),
+    /este número de WhatsApp/,
+  );
+  assert.equal(await f.saldo(), "10");
+});
 
 test("confirmações concorrentes e recuperação após falha de resposta não duplicam nota nem baixa", async () => {
   const f = await fixture();

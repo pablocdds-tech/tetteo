@@ -1,5 +1,26 @@
 // Rascunhos e fila durável da conferência de notas pela equipe interna.
 // IDs de Core são escalares, como no schema do assistente.
+// Liberação de notas por unidade: independente da adesão a avisos.
+model AutorizacaoNotaWhatsapp {
+  id String @id @default(cuid())
+  organizacaoId String
+  unidadeId String
+  vinculoId String
+  usuarioId String
+  telefone String
+  autorizadoEm DateTime?
+  autorizadoPorId String?
+  revogadoEm DateTime?
+  revogadoPorId String?
+  versao Int @default(1)
+  criadoEm DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@unique([organizacaoId, unidadeId, vinculoId], map: "autorizacao_nota_whatsapp_escopo_key")
+  @@index([organizacaoId, unidadeId, usuarioId])
+  @@map("autorizacao_nota_whatsapp")
+}
+
 model ConversaNotaWhatsapp {
   id            String @id @default(cuid())
   organizacaoId String
