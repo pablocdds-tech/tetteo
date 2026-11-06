@@ -9,6 +9,10 @@ import {
   type PendenciaFiscal,
 } from "@/server/notas/extracao";
 import type { RascunhoNota } from "./conferencia-nota";
+import {
+  mensagemLeituraFiscal,
+  comandoDaRespostaFiscal,
+} from "./mensagens-leitura-fiscal";
 export type ConferenciaFiscal = {
   versao: "fiscal-2.0";
   metodo: string;
@@ -53,38 +57,7 @@ export function pendenciasDaConferenciaFiscal(c: ConferenciaFiscal) {
   return p;
 }
 export function mensagemConferenciaFiscal(c: ConferenciaFiscal): string {
-  const d = c.conferida,
-    p = pendenciasDaConferenciaFiscal(c);
-  const consulta = c.extras.find((p) =>
-    ["DESATIVADA", "INDISPONIVEL", "NAO_AUTORIZADA"].includes(p.codigo),
-  );
-  if (consulta)
-    return `${consulta.mensagem}\nNenhum cadastro foi realizado. Envie o XML da mesma nota para continuar.`;
-  const valor = (n: number | null) =>
-    n === null
-      ? "a conferir"
-      : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  return [
-    `Leitura por ${c.metodo} · ${d.itens.length} itens · Total ${valor(d.total_nota)}`,
-    `Fornecedor: ${d.razao_social ?? "a conferir"} · CPF/CNPJ: ${d.cnpj_emitente ?? d.cpf_emitente ?? "a conferir"}`,
-    ...d.itens.map(
-      (i, n) =>
-        `${n + 1}. ${i.descricao ?? "descrição ilegível"}: ${i.quantidade ?? "?"} ${i.unidade ?? "?"} · unitário ${valor(i.valor_unitario)} · total bruto ${valor(i.valor_total)}`,
-    ),
-    `Descontos: ${valor(d.descontos)} · Acréscimos: ${valor(d.acrescimos)}`,
-    ...[...new Set(p.map((p) => p.mensagem))]
-      .slice(0, 14)
-      .map((s) => `A conferir: ${s}`),
-    ...d.alertas.map((s) => `Atenção: ${s}`),
-    "Para corrigir: CORRIGIR CNPJ 11222333000181; CORRIGIR DATA 04/11/2026; CORRIGIR ITEM 1 QUANTIDADE 2; CORRIGIR ITEM 1 PRECO 5,00; CORRIGIR ITEM 1 VALOR 10,00; CORRIGIR TOTAL 10,00.",
-    d.descontos === null || d.acrescimos === null
-      ? "Se não houver descontos nem acréscimos, responda SEM AJUSTES. Caso existam, use CORRIGIR DESCONTOS 1,00 e CORRIGIR ACRESCIMOS 2,00."
-      : "",
-    "Depois de conferir no original, responda CONFERI LEITURA para confirmar os campos legíveis e os alertas. Valores ausentes ou inconsistentes continuam bloqueados. CANCELAR descarta a conferência; uma nova foto ou XML substitui esta leitura ainda incompleta.",
-    "Ainda não houve lançamento no estoque ou financeiro.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return mensagemLeituraFiscal(c.conferida, pendenciasDaConferenciaFiscal(c));
 }
 export function responderLeituraFiscal(
   c: ConferenciaFiscal,
@@ -100,7 +73,9 @@ export function responderLeituraFiscal(
       conferida: structuredClone(c.conferida),
     },
     d = n.conferida,
-    s = texto.trim();
+    s =
+      comandoDaRespostaFiscal(d, pendenciasDaConferenciaFiscal(c), texto) ??
+      texto.trim();
   if (/^corrigir\s+parcelas\s+(sem|ilegivel|ilegível|null)$/i.test(s)) {
     d.parcelas = null;
     d.confianca.parcelas = 0;

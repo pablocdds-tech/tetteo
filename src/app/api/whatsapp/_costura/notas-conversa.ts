@@ -42,6 +42,7 @@ import {
   rascunhoDaLeituraFiscal,
   type ConferenciaFiscal,
 } from "@/modules/assistente/schemas/leitura-fiscal";
+import { mensagemItensFiscais } from "@/modules/assistente/schemas/mensagens-leitura-fiscal";
 import {
   notaAssistidaPronta,
   NotaAssistidaRecusada,
@@ -941,6 +942,13 @@ export async function tratarMensagemNota(
   }
   const fiscal = conferenciaFiscal(nota.leitura);
   if (fiscal) {
+    if (
+      /^(itens|detalhes)$/i.test(texto) &&
+      (!nota.rascunho || pendenciasDaConferenciaFiscal(fiscal).length)
+    ) {
+      await responder(m, mensagemItensFiscais(fiscal.conferida), leaseDono);
+      return;
+    }
     const resposta = responderLeituraFiscal(fiscal, texto);
     if (resposta.reconhecido) {
       if (resposta.erro) {

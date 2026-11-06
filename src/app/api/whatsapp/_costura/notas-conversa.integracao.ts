@@ -534,7 +534,8 @@ test("retomar foto guardada usa Gemini antes do QR, conserva resposta antiga e n
       },
     },
   });
-  assert.match(nova.texto!, /Leitura por GEMINI/);
+  assert.match(nova.texto!, /FORNECEDOR FICTICIO/);
+  assert.doesNotMatch(nova.texto!, /GEMINI|LEITURAS_DIVERGENTES|A conferir:/);
   assert.equal(
     (
       await db.mensagemNotaWhatsapp.findUniqueOrThrow({
@@ -559,6 +560,109 @@ test("retomar foto guardada usa Gemini antes do QR, conserva resposta antiga e n
       },
     }),
   );
+});
+
+test("conferência pelo WhatsApp pede um dado por vez, aceita respostas simples e não lança", async (t) => {
+  const f = await fixture();
+  const rede = t.mock.method(globalThis, "fetch", async () => {
+    throw Error("Conferência salva não deve usar IA nem rede");
+  });
+  const d = lerXmlFiscal(
+    await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
+  );
+  d.cnpj_emitente = "00000000000000";
+  const chave = d.chave_acesso!;
+  d.chave_acesso = "0".repeat(44);
+  d.itens[1].codigo_ean = "12345678";
+  d.acrescimos = null;
+  const arquivo = await gravarArquivoFiscal({
+    organizacaoId: f.org.id,
+    unidadeId: f.unidade.id,
+    usuarioId: f.usuario.id,
+    bytes: await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
+    tipo: "application/xml",
+    variante: "sintetico",
+  });
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: {
+      estado: "REVISAO",
+      arquivoId: arquivo.id,
+      rascunho: Prisma.DbNull,
+      codigo: null,
+      resumoHash: null,
+      resumoEm: null,
+      expiraEm: null,
+      leitura: json({
+        versao: "fiscal-2.0",
+        metodo: "GEMINI",
+        original: structuredClone(d),
+        conferida: structuredClone(d),
+        extras: [
+          {
+            campo: "itens",
+            codigo: "LEITURAS_DIVERGENTES",
+            mensagem: "Leituras diferentes: 16.99 / 18.99",
+          },
+        ],
+        alertasConferidos: false,
+      }),
+    },
+  });
+  const responder = async (texto: string) => {
+    const m = await f.entrada(texto);
+    await tratarMensagemNota(m.id);
+    await f.semEfeito();
+    return db.mensagemNotaWhatsapp.findUniqueOrThrow({
+      where: {
+        instanciaId_idExterno: {
+          instanciaId: f.instancia.id,
+          idExterno: `resposta:${m.id}`,
+        },
+      },
+    });
+  };
+  const resumo = await responder("RESUMO");
+  assert.ok(resumo.texto!.length < 500);
+  assert.match(resumo.texto!, /CPF\/CNPJ/);
+  assert.doesNotMatch(resumo.texto!, /44 números|GEMINI|Leituras diferentes/);
+  const detalhes = await responder("ITENS");
+  assert.match(detalhes.texto!, /ARROZ TIPO 1/);
+  assert.match(detalhes.texto!, /FEIJAO PRETO/);
+  assert.equal((await f.atual()).confirmacaoId, null);
+  const documento = await responder("11.222.333/0001-81");
+  assert.match(documento.texto!, /44 números/);
+  const codigo = await responder(chave);
+  assert.match(codigo.texto!, /código de barras/);
+  const ean = await responder("SEM CÓDIGO");
+  assert.match(ean.texto!, /valor do acréscimo/);
+  const acrescimo = await responder("0");
+  assert.match(acrescimo.texto!, /\*CONFERI\*/);
+  const n = await f.atual();
+  const leitura = n.leitura as {
+    original: typeof d;
+    conferida: typeof d;
+    extras: unknown[];
+  };
+  assert.equal(leitura.conferida.descontos, 1);
+  assert.equal(leitura.conferida.acrescimos, 0);
+  assert.equal(leitura.original.cnpj_emitente, "00000000000000");
+  assert.equal(leitura.extras.length, 1);
+  await responder("OK");
+  const confirmar = await f.entrada("CONFERI");
+  await tratarMensagemNota(confirmar.id);
+  await f.semEfeito();
+  const pronta = await f.atual();
+  assert.ok(pronta.rascunho);
+  assert.equal(pronta.confirmacaoId, null);
+  assert.equal(pronta.resultado, null);
+  await tratarMensagemNota(confirmar.id);
+  assert.equal((await f.atual()).revisao, pronta.revisao);
+  assert.equal(
+    await db.fornecedor.count({ where: { organizacaoId: f.org.id } }),
+    0,
+  );
+  assert.equal(rede.mock.callCount(), 0);
 });
 
 test("código errado, confirmação anterior ao envio e hash alterado não lançam", async (t) => {
