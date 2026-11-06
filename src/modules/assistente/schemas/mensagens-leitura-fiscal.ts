@@ -1,5 +1,6 @@
 import { documentoFiscalValido } from "@/lib/documento-fiscal";
 import type { ExtracaoFiscal, PendenciaFiscal } from "@/server/notas/extracao";
+import { pendenciasDoRascunho } from "./rascunho-fiscal";
 
 type PerguntaFiscal = {
   texto: string;
@@ -11,12 +12,16 @@ const limpar = (s: string) =>
     .replace(/[\r\n\t*_~`]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-const moeda = (n: number | null) =>
+const moeda = (n: number | null, casas = 2) =>
   n === null
     ? "a conferir"
-    : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    : n.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: casas,
+      });
 const numero = (n: number | null) =>
-  n === null ? "?" : n.toLocaleString("pt-BR", { maximumFractionDigits: 4 });
+  n === null ? "?" : n.toLocaleString("pt-BR", { maximumFractionDigits: 20 });
 
 /** Uma pergunta por vez. Códigos e divergências completas permanecem na leitura auditada. */
 function proximaPergunta(
@@ -47,7 +52,7 @@ function proximaPergunta(
   if (!p)
     return {
       texto:
-        "Confira os produtos respondendo *ITENS*.\nDepois, responda *CONFERI* para seguir com os dados lidos.",
+        "Confira os dados e produtos acima.\nResponda *CONFERI* para seguir com os dados lidos.",
       comando: "CONFERI LEITURA",
     };
   if (p.campo === "cnpj_emitente" || p.campo === "cpf_emitente")
@@ -155,15 +160,40 @@ export function mensagemLeituraFiscal(
   d: ExtracaoFiscal,
   pendencias: PendenciaFiscal[],
 ): string {
+  const apontamentos = [...pendenciasDoRascunho(d), ...pendencias];
+  const campo = (
+    nome: string,
+    valor: string | number | null,
+    formatar: (v: string | number) => string = String,
+  ) =>
+    valor === null
+      ? "*pendente*"
+      : `${formatar(valor)}${apontamentos.some((p) => p.campo === nome) ? " (conferir)" : ""}`;
+  const dinheiro = (nome: string, valor: number | null, casas = 2) =>
+    campo(nome, valor, (v) => moeda(Number(v), casas));
+  const data = d.data_emissao?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return [
-    `*${limpar(d.razao_social ?? "Nota de compra")}*`,
-    `${d.itens.length} ${d.itens.length === 1 ? "produto" : "produtos"} · *${moeda(d.total_nota)}*`,
-    ...(d.descontos ? [`Desconto: ${moeda(d.descontos)}`] : []),
-    ...(d.acrescimos ? [`Acréscimo: ${moeda(d.acrescimos)}`] : []),
+    "*Rascunho da nota — confira antes de lançar*",
+    `Fornecedor: ${campo("razao_social", d.razao_social, (v) => limpar(String(v)))}`,
+    `CPF/CNPJ: ${campo(d.cnpj_emitente ? "cnpj_emitente" : "cpf_emitente", d.cnpj_emitente ?? d.cpf_emitente, (v) => limpar(String(v)))}`,
+    `Data: ${campo("data_emissao", data ? `${data[3]}/${data[2]}/${data[1]}` : d.data_emissao, (v) => limpar(String(v)))}`,
+    `Número: ${campo("numero", d.numero, (v) => limpar(String(v)))}`,
+    "",
+    `*${d.itens.length} ${d.itens.length === 1 ? "produto" : "produtos"}*`,
+    ...d.itens.flatMap((i, n) => [
+      `${n + 1}. ${campo(`itens.${n}.descricao`, i.descricao, (v) => limpar(String(v)))}`,
+      `Quantidade: ${campo(`itens.${n}.quantidade`, i.quantidade, (v) => numero(Number(v)))} · Unidade: ${campo(`itens.${n}.unidade`, i.unidade, (v) => limpar(String(v)))}`,
+      `Preço unitário: ${dinheiro(`itens.${n}.valor_unitario`, i.valor_unitario, 20)} · Total do item: ${dinheiro(`itens.${n}.valor_total`, i.valor_total)}`,
+      "",
+    ]),
+    `Desconto: ${dinheiro("descontos", d.descontos)}`,
+    `Acréscimo: ${dinheiro("acrescimos", d.acrescimos)}`,
+    `Total: ${dinheiro("total_nota", d.total_nota)}`,
     "",
     proximaPergunta(d, pendencias).texto,
     "",
-    "*ITENS* para ver os produtos · *CANCELAR* para descartar.",
+    "Para corrigir: CORRIGIR ITEM 1 QUANTIDADE 2 (use o número e o campo desejados).",
+    "*RESUMO* para rever os dados · *ITENS* para rever produtos · *CANCELAR* para descartar.",
     "Ainda não houve lançamento.",
   ].join("\n");
 }
@@ -178,7 +208,7 @@ export function mensagemItensFiscais(d: ExtracaoFiscal): string {
     "",
     ...d.itens.map(
       (i, n) =>
-        `${n + 1}. *${limpar(i.descricao ?? "Produto a conferir")}*\n${numero(i.quantidade)} ${limpar(i.unidade ?? "?")} × ${moeda(i.valor_unitario)} = ${moeda(i.valor_total)}`,
+        `${n + 1}. *${limpar(i.descricao ?? "Produto a conferir")}*\n${numero(i.quantidade)} ${limpar(i.unidade ?? "?")} × ${moeda(i.valor_unitario, 20)} = ${moeda(i.valor_total)}`,
     ),
     "",
     `Desconto: ${moeda(d.descontos)} · Acréscimo: ${moeda(d.acrescimos)}`,

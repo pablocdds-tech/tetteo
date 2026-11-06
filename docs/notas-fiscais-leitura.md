@@ -5,7 +5,46 @@ segunda tentativa com recortes; confirmação antes de estoque e financeiro.
 Em 06/11/2026, o responsável definiu: foto inteira pelo Gemini primeiro, QR por último.
 Fixtures disponíveis são sintéticas. **Acurácia em notas reais não medida.**
 
-## Rascunho editável no sistema
+## Canal principal: rascunho no WhatsApp
+
+A pessoa autorizada envia a foto ao WhatsApp da equipe. O webhook da Evolution
+valida o passe, identifica a pessoa e enfileira a mídia; o worker baixa o original
+por ID e usa o mesmo pipeline fiscal e a configuração Gemini da unidade. A tela
+web é auxiliar e não participa desse caminho.
+
+A resposta automática contém fornecedor, CPF/CNPJ, data, número, todos os
+produtos, quantidades, unidades, preços unitários, totais por item, descontos,
+acréscimos e total encontrados. Campos ausentes aparecem como **pendentes**;
+campos lidos que precisam de revisão são marcados **conferir**. Uma leitura parcial
+é salva como `ConferenciaFiscal`, conservando original e correções. Não é preciso
+responder `ITENS` nem completar os dados fiscais para receber essa apresentação.
+`ITENS` e `RESUMO` continuam disponíveis para rever os dados no próprio WhatsApp.
+
+Respostas extensas são divididas em partes numeradas de até 3.500 caracteres,
+sem truncar produtos. As partes ficam na fila durável com identidade única e
+revisão. O worker mantém o intervalo de quatro segundos entre envios e segue
+as partes da mesma resposta, inclusive quando excedem o lote inicial. Cada rodada
+prossegue por até 40 partes; o restante permanece na fila. Uma parte incerta ou
+falha impede pular para as próximas. A autorização é revalidada antes de cada
+envio; cancelamento, substituição e revisão invalidam as partes antigas.
+
+A primeira leitura não gera código de confirmação. Pendências não impedem
+mostrar ou corrigir o rascunho, mas continuam impedindo uma proposta de lançamento
+inválida. `CONFERI` segue para a conferência operacional somente quando as
+validações permitem. Resumos finais extensos também são divididos: a validade do
+código só começa depois do aceite da última parte, com as anteriores aceitas.
+As regras de confirmação, duplicidade, orçamento, estoque e financeiro permanecem.
+
+Validação desta integração: `npm run check` aprovado com 881 testes unitários;
+84 verificações de integração aprovadas em PostgreSQL local exclusivo. O ensaio
+do webhook assinado percorreu download da foto, Gemini e envio de 45 produtos em
+partes, com HTTP externo simulado. Também foram verificados 100 itens na divisão,
+replay sem nova geração, envio incerto, revogação entre partes e validade do código
+somente após a última parte. `npm run build` aprovado com os três avisos de tracing
+preexistentes. Não houve envio real de WhatsApp, chamada real ao Gemini, avaliação
+de foto real ou deploy em produção.
+
+## Rascunho editável auxiliar no sistema
 
 Em **Severina → Equipe e avisos → Notas pelo WhatsApp → Ler documento e salvar
 rascunho**, a rota `/assistente/equipe/notas/rascunhos` recebe XML, PDF e fotos
@@ -24,7 +63,7 @@ O armazenamento reutiliza `NotaFiscalWhatsapp`, cujos identificadores de canal
 são escalares: `instanciaId=WEB`, `vinculoId=usuarioId`, `mensagemId=web:<hash>` e
 estados exclusivos `LENDO_WEB`/`RASCUNHO_WEB`. Não cria conversa nem mensagem de
 WhatsApp, proposta de lançamento, código de confirmação ou evento de compra.
-O fluxo existente de WhatsApp permanece inalterado. Nenhuma migração é necessária.
+A tela web é independente da fila de WhatsApp. Nenhuma migração é necessária.
 
 Cada operação exige sessão ativa, unidade ativa visível e permissões atuais
 `assistente.ver`, `estoque.ver` e `estoque.lancar`. Consultas e alterações exigem
@@ -112,9 +151,9 @@ invalidam o código anterior. `ITENS` exibe descrições, valores e conversões;
 `OK CODIGO` ou `CONFIRMAR CODIGO` autoriza a versão entregue por até 30 minutos e
 declara que as mercadorias foram recebidas. `OK` sozinho nunca lança.
 
-O WhatsApp apresenta um resumo curto e uma pergunta por vez. A pessoa pode
+O WhatsApp apresenta todos os produtos e uma pergunta por vez. A pessoa pode
 responder apenas o dado pedido; a pergunta é derivada das validações vigentes,
-sem mudar a transcrição original. `ITENS` mostra a lista completa, inclusive antes
+sem mudar a transcrição original. `ITENS` permite rever a lista, inclusive antes
 de resolver as pendências. O resumo não imprime mensagens técnicas, valores
 divergentes de todas as tentativas nem exemplos com documentos fictícios.
 Evidências e pendências completas continuam salvas. `CONFERI` é um atalho para

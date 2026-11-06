@@ -15,7 +15,6 @@ import {
   propostaDaConferencia,
   responderConferencia,
   resumoConferencia,
-  resumoCurtoConferencia,
   type CatalogoNota,
   type PerguntaNota,
   type RascunhoNota,
@@ -43,6 +42,10 @@ import {
   type ConferenciaFiscal,
 } from "@/modules/assistente/schemas/leitura-fiscal";
 import { mensagemItensFiscais } from "@/modules/assistente/schemas/mensagens-leitura-fiscal";
+import {
+  dividirMensagemNota,
+  idDaParte,
+} from "@/modules/assistente/schemas/partes-mensagem-nota";
 import {
   notaAssistidaPronta,
   NotaAssistidaRecusada,
@@ -159,33 +162,56 @@ async function alterar<T>(
 type Mensagem = Prisma.MensagemNotaWhatsappGetPayload<{
   include: { conversa: true };
 }>;
+async function enfileirarResposta(
+  tx: Prisma.TransactionClient,
+  m: Mensagem,
+  base: string,
+  texto: string,
+  tipo: "TEXTO" | "LEITURA" | "RESUMO",
+  notaId?: string,
+) {
+  const partes = dividirMensagemNota(texto);
+  const agora = Date.now();
+  for (const [n, parte] of partes.entries()) {
+    const idExterno = idDaParte(base, n, partes.length);
+    await tx.mensagemNotaWhatsapp.upsert({
+      where: {
+        instanciaId_idExterno: { instanciaId: m.instanciaId, idExterno },
+      },
+      create: {
+        conversaId: m.conversaId,
+        instanciaId: m.instanciaId,
+        idExterno,
+        direcao: "SAIDA",
+        tipo: n === partes.length - 1 ? tipo : `PARTE_${tipo}`,
+        texto: parte,
+        notaId,
+        recebidoEm: new Date(agora + n),
+      },
+      update: {},
+    });
+  }
+}
 async function responder(
   m: Mensagem,
   texto: string,
   leaseDono?: string,
   mutar?: (tx: Prisma.TransactionClient) => Promise<unknown>,
+  leitura?: { notaId: string; revisao: number },
 ) {
-  const idResposta = `resposta:${m.id}${m.tipo === "FOTO" ? `:${VERSAO_FLUXO_FOTO}` : ""}`;
+  const idResposta = leitura
+    ? `leitura:${leitura.notaId}:${leitura.revisao}`
+    : `resposta:${m.id}${m.tipo === "FOTO" ? `:${VERSAO_FLUXO_FOTO}` : ""}`;
   await alterar(m.conversaId, leaseDono, async (tx) => {
     if (mutar) await mutar(tx);
-    await tx.mensagemNotaWhatsapp.upsert({
-      where: {
-        instanciaId_idExterno: {
-          instanciaId: m.instanciaId,
-          idExterno: idResposta,
-        },
-      },
-      create: {
-        conversaId: m.conversaId,
-        instanciaId: m.instanciaId,
-        idExterno: idResposta,
-        direcao: "SAIDA",
-        tipo: "TEXTO",
-        texto,
-        recebidoEm: new Date(),
-      },
-      update: {},
-    });
+    await enfileirarResposta(
+      tx,
+      m,
+      idResposta,
+      texto,
+      leitura ? "LEITURA" : "TEXTO",
+      leitura?.notaId,
+    );
     await tx.mensagemNotaWhatsapp.update({
       where: { id: m.id },
       data: { aplicadaEm: new Date() },
@@ -221,14 +247,7 @@ async function mostrar(
   aviso?: string,
 ) {
   const pergunta = prepararConferencia(r, c);
-  const resumo = r.fiscal
-    ? resumoCurtoConferencia(r, c)
-    : resumoConferencia(r, c);
-  // Nunca trunca itens: uma confirmação precisa conter todos os dados.
-  if (resumo.length > 48_000)
-    throw new Error(
-      "A nota é extensa demais para conferir pelo WhatsApp. Use o cadastro pelo sistema.",
-    );
+  const resumo = resumoConferencia(r, c);
   await alterar(m.conversaId, leaseDono, async (tx) => {
     const anterior = await tx.notaFiscalWhatsapp.findUniqueOrThrow({
       where: { id: notaId },
@@ -255,7 +274,11 @@ async function mostrar(
       },
     });
     await tx.mensagemNotaWhatsapp.updateMany({
-      where: { conversaId: m.conversaId, tipo: "RESUMO", estado: "PENDENTE" },
+      where: {
+        conversaId: m.conversaId,
+        tipo: { in: ["RESUMO", "PARTE_RESUMO", "LEITURA", "PARTE_LEITURA"] },
+        estado: "PENDENTE",
+      },
       data: { estado: "CANCELADA" },
     });
     const texto = [
@@ -267,25 +290,14 @@ async function mostrar(
     ]
       .filter(Boolean)
       .join("\n\n");
-    await tx.mensagemNotaWhatsapp.upsert({
-      where: {
-        instanciaId_idExterno: {
-          instanciaId: m.instanciaId,
-          idExterno: `resumo:${notaId}:${revisao}`,
-        },
-      },
-      create: {
-        conversaId: m.conversaId,
-        instanciaId: m.instanciaId,
-        idExterno: `resumo:${notaId}:${revisao}`,
-        direcao: "SAIDA",
-        tipo: "RESUMO",
-        texto,
-        notaId,
-        recebidoEm: new Date(),
-      },
-      update: {},
-    });
+    await enfileirarResposta(
+      tx,
+      m,
+      `resumo:${notaId}:${revisao}`,
+      texto,
+      "RESUMO",
+      notaId,
+    );
     await tx.mensagemNotaWhatsapp.update({
       where: { id: m.id },
       data: { aplicadaEm: new Date() },
@@ -492,6 +504,7 @@ async function avancarLeituraFiscal(
   c: ConferenciaFiscal,
   ctx: ContextoSessao,
   leaseDono?: string,
+  exibirRascunho = false,
 ) {
   const nota = await db.notaFiscalWhatsapp.findUniqueOrThrow({
     where: { id: notaId },
@@ -529,34 +542,48 @@ async function avancarLeituraFiscal(
     );
     return;
   }
-  if (pendencias.length) {
+  if (pendencias.length || exibirRascunho) {
     const aguardandoXml = c.extras.some((e) =>
       ["DESATIVADA", "INDISPONIVEL", "NAO_AUTORIZADA"].includes(e.codigo),
     );
-    await responder(m, mensagemConferenciaFiscal(c), leaseDono, async (tx) => {
-      await tx.notaFiscalWhatsapp.update({
-        where: { id: notaId },
-        data: {
-          estado: aguardandoXml ? "AGUARDANDO_XML" : "REVISAO",
-          leitura: json(c),
-          validacoes: json(pendencias),
-          pergunta: json({ campo: "leituraFiscal" }),
-          codigo: null,
-          resumoHash: null,
-          resumoEm: null,
-          expiraEm: null,
-        },
-      });
-      await tx.mensagemNotaWhatsapp.updateMany({
-        where: { notaId, direcao: "SAIDA", tipo: "RESUMO", estado: "PENDENTE" },
-        data: { estado: "CANCELADA" },
-      });
-      await auditar(tx, m, notaId, "ALTEROU", {
-        etapa: "LEITURA_PENDENTE",
-        codigos: pendencias.map((p) => p.codigo),
-        metodo: c.metodo,
-      });
-    });
+    await responder(
+      m,
+      mensagemConferenciaFiscal(c),
+      leaseDono,
+      async (tx) => {
+        await tx.notaFiscalWhatsapp.update({
+          where: { id: notaId },
+          data: {
+            estado: aguardandoXml ? "AGUARDANDO_XML" : "REVISAO",
+            leitura: json(c),
+            validacoes: json(pendencias),
+            pergunta: json({ campo: "leituraFiscal" }),
+            codigo: null,
+            resumoHash: null,
+            resumoEm: null,
+            expiraEm: null,
+            revisao: { increment: 1 },
+          },
+        });
+        await tx.mensagemNotaWhatsapp.updateMany({
+          where: {
+            notaId,
+            direcao: "SAIDA",
+            tipo: {
+              in: ["RESUMO", "PARTE_RESUMO", "LEITURA", "PARTE_LEITURA"],
+            },
+            estado: "PENDENTE",
+          },
+          data: { estado: "CANCELADA" },
+        });
+        await auditar(tx, m, notaId, "ALTEROU", {
+          etapa: "LEITURA_PENDENTE",
+          codigos: pendencias.map((p) => p.codigo),
+          metodo: c.metodo,
+        });
+      },
+      { notaId, revisao: nota.revisao + 1 },
+    );
     return;
   }
   const unidade = await db.unidade.findUniqueOrThrow({
@@ -628,6 +655,7 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
       leituraExistente,
       ctx,
       leaseDono,
+      true,
     );
     return;
   }
@@ -817,7 +845,7 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
         },
       }),
     );
-    await avancarLeituraFiscal(m, nota.id, conferencia, ctx, leaseDono);
+    await avancarLeituraFiscal(m, nota.id, conferencia, ctx, leaseDono, true);
   } catch (e) {
     // Erros da rede/Prisma nunca são devolvidos com payload ou credenciais.
     const mensagem =
@@ -981,8 +1009,8 @@ export async function tratarMensagemNota(
       );
       return;
     }
-    if (pendenciasDaConferenciaFiscal(fiscal).length) {
-      await avancarLeituraFiscal(m, nota.id, fiscal, ctx, leaseDono);
+    if (pendenciasDaConferenciaFiscal(fiscal).length || !nota.rascunho) {
+      await avancarLeituraFiscal(m, nota.id, fiscal, ctx, leaseDono, true);
       return;
     }
   }

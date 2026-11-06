@@ -570,6 +570,11 @@ export function resumoConferencia(r: RascunhoNota, c: CatalogoNota): string {
       (i, n) =>
         `${n + 1}. ${i.descricao}: ${i.quantidade} ${i.unidade} · ${moeda(i.valorTotal)}${i.valorBruto !== undefined ? ` líquido rateado (bruto impresso ${moeda(i.valorBruto)})` : ""}${i.novoInsumo ? " · NOVO CADASTRO" : ""}${i.fatorConversao ? ` → ${Number((i.quantidade * i.fatorConversao).toFixed(3))} ${i.novoInsumo?.unidadeMedida ?? c.insumos.find((s) => s.id === i.insumoId)?.unidadeMedida ?? ""} de ${i.novoInsumo?.nome ?? c.insumos.find((s) => s.id === i.insumoId)?.nome ?? "produto a conferir"}` : ""}`,
     ),
+    ...(r.fiscal
+      ? [
+          `Descontos: ${moeda(r.fiscal.descontos)} · Acréscimos: ${moeda(r.fiscal.acrescimos)}`,
+        ]
+      : []),
     `Total: ${moeda(r.valorTotal)}`,
     `Empresa: ${nome(c.empresas, r.empresaId)} · Categoria: ${nome(c.categorias, r.categoriaId)}`,
     `Entrada em: ${nome(c.locais, r.localId)} · Recebimento: ${dia(r.recebidaEm)}`,

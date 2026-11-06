@@ -90,7 +90,7 @@ test("adaptador conserva valores brutos, rateia centavos e mantém contrato atua
   assert.ok(conferenciaFiscal(c));
 });
 
-test("resumo mostra uma pendência, sem despejar divergências técnicas nem exemplos fiscais", async () => {
+test("rascunho apresenta os produtos e uma pergunta, sem despejar divergências técnicas", async () => {
   const c = await fixture();
   c.metodo = "GEMINI";
   c.conferida.cnpj_emitente = "00000000000000";
@@ -103,7 +103,10 @@ test("resumo mostra uma pendência, sem despejar divergências técnicas nem exe
   }));
   const antes = structuredClone(c);
   const texto = mensagemConferenciaFiscal(c);
-  assert.ok(texto.length < 500);
+  assert.match(texto, /1\. ARROZ TIPO 1/);
+  assert.match(texto, /2\. FEIJAO PRETO/);
+  assert.match(texto, /Data: 04\/11\/2026/);
+  assert.match(texto, /Acréscimo: \*pendente\*/);
   assert.match(texto, /2 produtos/);
   assert.match(texto, /14,00/);
   assert.match(texto, /CPF\/CNPJ do fornecedor/);
@@ -158,7 +161,7 @@ test("resposta numérica vai somente para a quantidade que foi perguntada", asyn
   assert.equal(r.conferencia.original.itens[0].quantidade, 2);
 });
 
-test("ITENS oferece lista organizada e resumo não cresce com centenas de divergências", async () => {
+test("ITENS continua disponível e o rascunho inclui automaticamente todos os produtos", async () => {
   const c = await fixture();
   const detalhes = mensagemItensFiscais(c.conferida);
   assert.match(detalhes, /1\. \*ARROZ TIPO 1\*/);
@@ -168,7 +171,11 @@ test("ITENS oferece lista organizada e resumo não cresce com centenas de diverg
   c.conferida.itens = Array.from({ length: 100 }, () =>
     structuredClone(c.conferida.itens[0]),
   );
-  assert.ok(mensagemConferenciaFiscal(c).length < 500);
+  assert.match(mensagemConferenciaFiscal(c), /100\. ARROZ TIPO 1/);
+  assert.doesNotMatch(
+    mensagemConferenciaFiscal(c),
+    /produtos respondendo \*ITENS\*/,
+  );
 });
 
 test("CONFERI abre a próxima etapa apenas após resolver campos inválidos; OK não vira aceite fiscal", async () => {

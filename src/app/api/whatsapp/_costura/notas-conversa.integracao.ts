@@ -5,7 +5,6 @@ import { Prisma } from "@prisma/client";
 import { gravarArquivoFiscal } from "@/server/notas/arquivos";
 import { encryptVirtualCredential } from "@/server/ia/credencial-atendimento";
 import { lerXmlFiscal } from "@/server/notas/xml";
-import { VERSAO_FLUXO_FOTO } from "@/server/notas/pipeline";
 import { after, test } from "node:test";
 import {
   hashPropostaNota,
@@ -17,6 +16,9 @@ import { db } from "@/server/db";
 import { notaAssistidaPronta } from "@/server/nota-assistida-contrato";
 import { lancarNotaAssistida } from "./lancar-nota";
 import { tratarMensagemNota } from "./notas-conversa";
+import { receberWebhook } from "./receber";
+import { processarNotasWhatsapp } from "./notas-worker";
+import { assinarPasse } from "@/connectors/whatsapp/passe";
 
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid");
 assert.ok(
@@ -26,6 +28,193 @@ assert.ok(
 );
 after(() => db.$disconnect());
 const json = (v: unknown) => JSON.parse(JSON.stringify(v));
+
+test("foto no webhook Evolution entrega rascunho parcial completo em partes no mesmo WhatsApp, sem web ou lançamento", async (t) => {
+  const f = await fixture();
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: { estado: "CANCELADA" },
+  });
+  await db.conversaNotaWhatsapp.update({
+    where: { id: f.conversa.id },
+    data: { notaAtivaId: null },
+  });
+  await db.instanciaWhatsapp.update({
+    where: { id: f.instancia.id },
+    data: { provedor: "EVOLUTION_BAILEYS" },
+  });
+  const env = {
+    NODE_ENV: "test",
+    EVOLUTION_URL: "http://evolution.example.test",
+    EVOLUTION_INSTANCIA: f.instancia.nome,
+    EVOLUTION_API_KEY: "chave-sintetica-evolution",
+    WHATSAPP_WEBHOOK_CHAVE: "senha-sintetica-webhook-de-teste",
+  };
+  for (const k of [
+    "EVOLUTION_URL",
+    "EVOLUTION_INSTANCIA",
+    "EVOLUTION_API_KEY",
+  ] as const) {
+    const anterior = process.env[k];
+    process.env[k] = env[k];
+    t.after(() => {
+      if (anterior === undefined) delete process.env[k];
+      else process.env[k] = anterior;
+    });
+  }
+  const scope = { organizationId: f.org.id, storeId: f.unidade.id };
+  await db.avModelConfiguration.create({
+    data: {
+      ...scope,
+      model: "gemini-ficticio",
+      encryptedKey: encryptVirtualCredential(scope, "chave-ficticia"),
+      enabled: true,
+      ratesConfirmed: true,
+      testState: "PASSED",
+      testedRevision: 1,
+      testedAt: new Date(),
+      updatedById: f.usuario.id,
+      inputMicrosPerMillion: 0,
+      outputMicrosPerMillion: 0,
+    },
+  });
+  const d = lerXmlFiscal(
+    await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
+  );
+  d.itens = Array.from({ length: 45 }, (_, n) => ({
+    ...structuredClone(d.itens[0]),
+    descricao: `PRODUTO FICTICIO ${String(n + 1).padStart(2, "0")} ${"descrição ".repeat(15)}`,
+    quantidade: n === 3 ? null : 1,
+    valor_unitario: 1,
+    valor_total: 1,
+  }));
+  d.descontos = 0;
+  d.acrescimos = null;
+  d.total_nota = 45;
+  const foto = await readFile("tests/fixtures/notas/cupom-nitido.png");
+  const idFoto = randomUUID();
+  const enviadas: string[] = [];
+  let downloads = 0,
+    geracoes = 0;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string, opcoes: RequestInit) => {
+      const body = JSON.parse(String(opcoes.body));
+      if (url.includes("/chat/getBase64FromMediaMessage/")) {
+        downloads++;
+        assert.equal(body.message.key.id, idFoto);
+        return Response.json({
+          base64: foto.toString("base64"),
+          mimetype: "image/png",
+        });
+      }
+      if (url.startsWith("https://generativelanguage.googleapis.com/")) {
+        if (url.endsWith(":countTokens"))
+          return Response.json({ totalTokens: 1000 });
+        geracoes++;
+        return Response.json({
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: { parts: [{ text: JSON.stringify(d) }] },
+            },
+          ],
+          usageMetadata: {
+            promptTokenCount: 1000,
+            candidatesTokenCount: 100,
+            totalTokenCount: 1100,
+          },
+        });
+      }
+      if (
+        url.startsWith(env.EVOLUTION_URL) &&
+        url.includes("/message/sendText/")
+      ) {
+        assert.equal(body.number, f.vinculo.telefone);
+        assert.equal(body.linkPreview, false);
+        enviadas.push(body.text);
+        return Response.json({
+          key: { id: `saida-sintetica-${enviadas.length}` },
+        });
+      }
+      throw Error("Chamada externa inesperada recusada no teste");
+    },
+  );
+  const tarefas: (() => Promise<void>)[] = [];
+  const evento = JSON.stringify({
+    event: "messages.upsert",
+    instance: f.instancia.nome,
+    data: {
+      key: { id: idFoto, remoteJid: f.vinculo.remoteJid, fromMe: false },
+      messageTimestamp: Math.floor(Date.now() / 1000),
+      message: { imageMessage: { mimetype: "image/png" } },
+    },
+  });
+  const pedido = () =>
+    new Request("http://localhost/api/whatsapp/webhook", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${assinarPasse(env.WHATSAPP_WEBHOOK_CHAVE, new Date())}`,
+      },
+      body: evento,
+    });
+  const resposta = await receberWebhook(pedido(), {
+    env,
+    agendar: (fn) => tarefas.push(fn),
+  });
+  assert.equal(resposta.status, 200);
+  assert.ok(tarefas.length > 0);
+  assert.equal(enviadas.length, 0); // O webhook responde antes da IA e dos envios.
+  const rodar = () =>
+    processarNotasWhatsapp({
+      instanciaId: f.instancia.id,
+      env,
+      esperar: async () => {
+        await db.instanciaWhatsapp.update({
+          where: { id: f.instancia.id },
+          data: { ultimoEnvioEm: new Date(Date.now() - 5000) },
+        });
+      },
+    });
+  await rodar();
+  assert.equal(downloads, 1);
+  assert.equal(geracoes, 2);
+  assert.ok(enviadas.length > 1);
+  const texto = enviadas.join("\n");
+  for (let n = 1; n <= 45; n++)
+    assert.ok(texto.includes(`PRODUTO FICTICIO ${String(n).padStart(2, "0")}`));
+  assert.match(texto, /Data: 04\/11\/2026/);
+  assert.match(texto, /Quantidade: \*pendente\*/);
+  assert.match(texto, /Acréscimo: \*pendente\*/);
+  assert.match(texto, /Total: R\$\s45,00/);
+  enviadas.forEach((p, n) => {
+    assert.ok(p.length <= 3500);
+    assert.ok(p.startsWith(`*Parte ${n + 1}/${enviadas.length}*`));
+  });
+  const notaId = (
+    await db.conversaNotaWhatsapp.findUniqueOrThrow({
+      where: { id: f.conversa.id },
+    })
+  ).notaAtivaId!;
+  const nota = await db.notaFiscalWhatsapp.findUniqueOrThrow({
+    where: { id: notaId },
+  });
+  assert.equal(nota.rascunho, null);
+  assert.equal(nota.codigo, null);
+  assert.equal(nota.confirmacaoId, null);
+  assert.equal(nota.metodoLeitura, "GEMINI");
+  await f.semEfeito();
+  const quantidade = enviadas.length;
+  await receberWebhook(pedido(), { env, agendar: (fn) => tarefas.push(fn) });
+  await rodar();
+  assert.equal(downloads, 1);
+  assert.equal(geracoes, 2);
+  assert.equal(enviadas.length, quantidade);
+  await tratarMensagemNota((await f.entrada("OK")).id);
+  await f.semEfeito();
+});
 
 async function fixture(paga = false) {
   const tag = randomUUID();
@@ -530,7 +719,7 @@ test("retomar foto guardada usa Gemini antes do QR, conserva resposta antiga e n
     where: {
       instanciaId_idExterno: {
         instanciaId: f.instancia.id,
-        idExterno: `resposta:${f.nota.mensagemId}:${VERSAO_FLUXO_FOTO}`,
+        idExterno: `leitura:${f.nota.id}:${n.revisao}`,
       },
     },
   });
@@ -613,17 +802,20 @@ test("conferência pelo WhatsApp pede um dado por vez, aceita respostas simples 
     const m = await f.entrada(texto);
     await tratarMensagemNota(m.id);
     await f.semEfeito();
-    return db.mensagemNotaWhatsapp.findUniqueOrThrow({
+    const n = await f.atual();
+    return db.mensagemNotaWhatsapp.findFirstOrThrow({
       where: {
-        instanciaId_idExterno: {
-          instanciaId: f.instancia.id,
-          idExterno: `resposta:${m.id}`,
-        },
+        instanciaId: f.instancia.id,
+        OR: [
+          { idExterno: `resposta:${m.id}` },
+          { idExterno: `leitura:${n.id}:${n.revisao}` },
+        ],
       },
     });
   };
   const resumo = await responder("RESUMO");
-  assert.ok(resumo.texto!.length < 500);
+  assert.match(resumo.texto!, /ARROZ TIPO 1/);
+  assert.match(resumo.texto!, /FEIJAO PRETO/);
   assert.match(resumo.texto!, /CPF\/CNPJ/);
   assert.doesNotMatch(resumo.texto!, /44 números|GEMINI|Leituras diferentes/);
   const detalhes = await responder("ITENS");

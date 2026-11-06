@@ -422,3 +422,171 @@ test("outbox aceita canal de rede somente com uma unidade ativa inequívoca", as
   );
   assert.equal(simulador().tentativasDeEnvio, 1);
 });
+
+async function resumoEmPartes(
+  f: Awaited<ReturnType<typeof fixture>>,
+  total = 3,
+) {
+  const nota = await db.notaFiscalWhatsapp.create({
+    data: {
+      organizacaoId: f.org.id,
+      unidadeId: f.unidade.id,
+      instanciaId: f.instancia.id,
+      vinculoId: f.vinculo.id,
+      usuarioId: f.usuario.id,
+      mensagemId: randomUUID(),
+      estado: "PRONTA",
+      revisao: 1,
+      codigo: "TESTE",
+      resumoHash: "hash-sintetico",
+    },
+  });
+  await db.conversaNotaWhatsapp.update({
+    where: { id: f.conversa.id },
+    data: { notaAtivaId: nota.id },
+  });
+  const partes = [];
+  for (let n = 0; n < total; n++)
+    partes.push(
+      await f.saida(`Parte fictícia ${n + 1}`, {
+        notaId: nota.id,
+        tipo: n === total - 1 ? "RESUMO" : "PARTE_RESUMO",
+        idExterno:
+          n === total - 1
+            ? `resumo:${nota.id}:1`
+            : `resumo:${nota.id}:1:parte:${String(n + 1).padStart(4, "0")}`,
+      }),
+    );
+  return { nota, partes };
+}
+const liberarRitmo = (f: Awaited<ReturnType<typeof fixture>>) =>
+  db.instanciaWhatsapp.update({
+    where: { id: f.instancia.id },
+    data: { ultimoEnvioEm: new Date(Date.now() - 5000) },
+  });
+
+test("partes seguem ordenadas mesmo além do limite da rodada e só a última libera confirmação", async () => {
+  reiniciarSimulador();
+  const f = await fixture();
+  const { nota, partes } = await resumoEmPartes(f, 6);
+  let esperas = 0;
+  const resumo = await processarNotasWhatsapp({
+    instanciaId: f.instancia.id,
+    limite: 1,
+    env: { NODE_ENV: "test" },
+    esperar: async (ms) => {
+      assert.equal(ms, 4000);
+      esperas++;
+      assert.equal(
+        (
+          await db.notaFiscalWhatsapp.findUniqueOrThrow({
+            where: { id: nota.id },
+          })
+        ).resumoEm,
+        null,
+      );
+      await liberarRitmo(f);
+    },
+  });
+  assert.equal(esperas, 5);
+  assert.equal(resumo.enviadas, 6);
+  assert.deepEqual(
+    simulador().enviadas.map((m) => m.texto),
+    partes.map((m) => m.texto),
+  );
+  const pronta = await db.notaFiscalWhatsapp.findUniqueOrThrow({
+    where: { id: nota.id },
+  });
+  assert.ok(pronta.resumoEm);
+  assert.ok(pronta.expiraEm);
+});
+
+test("parte incerta não é reenviada e bloqueia todas as seguintes e a confirmação", async () => {
+  reiniciarSimulador({ comportamento: "tempo-esgotado-nao-saiu" });
+  const f = await fixture();
+  const { nota, partes } = await resumoEmPartes(f);
+  await f.rodar();
+  simulador().comportamento = "aceita";
+  await liberarRitmo(f);
+  await f.rodar();
+  assert.equal(simulador().tentativasDeEnvio, 1);
+  assert.equal(
+    (
+      await db.mensagemNotaWhatsapp.findUniqueOrThrow({
+        where: { id: partes[0].id },
+      })
+    ).estado,
+    "INCERTA",
+  );
+  assert.equal(
+    (
+      await db.mensagemNotaWhatsapp.findUniqueOrThrow({
+        where: { id: partes[2].id },
+      })
+    ).estado,
+    "PENDENTE",
+  );
+  assert.equal(
+    (await db.notaFiscalWhatsapp.findUniqueOrThrow({ where: { id: nota.id } }))
+      .resumoEm,
+    null,
+  );
+});
+
+test("autorização revogada entre as partes impede entregar o restante", async () => {
+  reiniciarSimulador();
+  const f = await fixture();
+  const { nota, partes } = await resumoEmPartes(f);
+  await processarNotasWhatsapp({
+    instanciaId: f.instancia.id,
+    env: { NODE_ENV: "test" },
+    esperar: async () => {
+      await db.autorizacaoNotaWhatsapp.updateMany({
+        where: { vinculoId: f.vinculo.id },
+        data: { autorizadoEm: null },
+      });
+      await liberarRitmo(f);
+    },
+  });
+  assert.equal(simulador().enviadas.length, 1);
+  for (const p of partes.slice(1))
+    assert.equal(
+      (await db.mensagemNotaWhatsapp.findUniqueOrThrow({ where: { id: p.id } }))
+        .estado,
+      "CANCELADA",
+    );
+  assert.equal(
+    (await db.notaFiscalWhatsapp.findUniqueOrThrow({ where: { id: nota.id } }))
+      .resumoEm,
+    null,
+  );
+});
+
+test("revisão alterada durante o envio cancela partes antigas e não libera código", async () => {
+  reiniciarSimulador();
+  const f = await fixture();
+  const { nota, partes } = await resumoEmPartes(f);
+  await processarNotasWhatsapp({
+    instanciaId: f.instancia.id,
+    env: { NODE_ENV: "test" },
+    esperar: async () => {
+      await db.notaFiscalWhatsapp.update({
+        where: { id: nota.id },
+        data: { revisao: 2, codigo: null },
+      });
+      await liberarRitmo(f);
+    },
+  });
+  assert.equal(simulador().enviadas.length, 1);
+  for (const p of partes.slice(1))
+    assert.equal(
+      (await db.mensagemNotaWhatsapp.findUniqueOrThrow({ where: { id: p.id } }))
+        .estado,
+      "CANCELADA",
+    );
+  assert.equal(
+    (await db.notaFiscalWhatsapp.findUniqueOrThrow({ where: { id: nota.id } }))
+      .resumoEm,
+    null,
+  );
+});

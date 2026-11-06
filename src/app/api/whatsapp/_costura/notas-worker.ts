@@ -5,6 +5,7 @@ import type { ResultadoEnvio } from "@/connectors/whatsapp/tipos";
 import { contextoParaNota } from "@/modules/assistente/services/contexto-nota";
 import { db } from "@/server/db";
 import { tratarMensagemNota } from "./notas-conversa";
+import { baseDaParte } from "@/modules/assistente/schemas/partes-mensagem-nota";
 
 const LEASE_MS = 240_000;
 const RITMO_MS = 4_000;
@@ -44,7 +45,8 @@ async function autorizacao(m: Mensagem) {
 
 /** Uma pergunta antiga também perde a validade quando a revisão muda. */
 async function resumoAtual(tx: Prisma.TransactionClient, m: Mensagem) {
-  if (m.tipo !== "RESUMO") return true;
+  const leitura = ["LEITURA", "PARTE_LEITURA"].includes(m.tipo);
+  if (!leitura && !["RESUMO", "PARTE_RESUMO"].includes(m.tipo)) return true;
   if (!m.notaId || m.conversa.notaAtivaId !== m.notaId) return false;
   const nota = await tx.notaFiscalWhatsapp.findFirst({
     where: {
@@ -54,15 +56,37 @@ async function resumoAtual(tx: Prisma.TransactionClient, m: Mensagem) {
       instanciaId: m.instanciaId,
       vinculoId: m.conversa.vinculoId,
       usuarioId: m.conversa.usuarioId,
-      estado: { in: ["REVISAO", "PRONTA"] },
+      estado: {
+        in: leitura ? ["REVISAO", "AGUARDANDO_XML"] : ["REVISAO", "PRONTA"],
+      },
     },
     select: { id: true, revisao: true, expiraEm: true },
   });
   return (
     !!nota &&
-    m.idExterno === `resumo:${nota.id}:${nota.revisao}` &&
+    baseDaParte(m.idExterno) ===
+      `${leitura ? "leitura" : "resumo"}:${nota.id}:${nota.revisao}` &&
     (!nota.expiraEm || nota.expiraEm > new Date())
   );
+}
+
+/** Só uma parte aceita pelo provedor libera a seguinte, inclusive entre réplicas. */
+async function anterioresEntregues(tx: Prisma.TransactionClient, m: Mensagem) {
+  const base = baseDaParte(m.idExterno);
+  if (!/^(?:leitura|resumo|resposta):/.test(base)) return true;
+  const anteriores = await tx.mensagemNotaWhatsapp.count({
+    where: {
+      conversaId: m.conversaId,
+      instanciaId: m.instanciaId,
+      direcao: "SAIDA",
+      idExterno: {
+        startsWith: `${base}:parte:`,
+        ...(base !== m.idExterno ? { lt: m.idExterno } : {}),
+      },
+      estado: { not: "ENVIADA" },
+    },
+  });
+  return anteriores === 0;
 }
 
 async function registrarAceite(
@@ -349,12 +373,23 @@ async function entregarSaidas(
   env: Ambiente,
   resumo: ResumoNotasWhatsapp,
   instanciaId?: string,
+  grupo?: { base: string; conversaId: string },
 ) {
+  let continuar: typeof grupo;
   const candidatas = await db.mensagemNotaWhatsapp.findMany({
     where: {
       direcao: "SAIDA",
       estado: "PENDENTE",
       ...(instanciaId ? { instanciaId } : {}),
+      ...(grupo
+        ? {
+            conversaId: grupo.conversaId,
+            OR: [
+              { idExterno: grupo.base },
+              { idExterno: { startsWith: `${grupo.base}:parte:` } },
+            ],
+          }
+        : {}),
     },
     orderBy: [{ recebidoEm: "asc" }, { criadoEm: "asc" }, { id: "asc" }],
     take: limite,
@@ -392,6 +427,7 @@ async function entregarSaidas(
         });
         return null;
       }
+      if (!(await anterioresEntregues(tx, m))) return null;
       const agora = new Date();
       if (
         instancia.ultimoEnvioEm &&
@@ -459,8 +495,14 @@ async function entregarSaidas(
             resultado.aceitoEm,
             "ENVIANDO",
           )
-        )
+        ) {
           resumo.enviadas++;
+          if (m.tipo.startsWith("PARTE_"))
+            continuar = {
+              base: baseDaParte(m.idExterno),
+              conversaId: m.conversaId,
+            };
+        }
       } else {
         const estado =
           resultado.tipo === "incerto"
@@ -485,19 +527,23 @@ async function entregarSaidas(
       resumo.incertas++;
     }
   }
+  return continuar;
 }
 
-/** Banco coordena réplicas; nenhuma espera de ritmo segura esta requisição. */
+/** O webhook já respondeu; partes de uma resposta seguem com o ritmo da instância. */
 export async function processarNotasWhatsapp({
   limite = 20,
   env = process.env,
   tratar = tratarMensagemNota,
   instanciaId,
+  esperar = (ms: number) =>
+    new Promise<void>((resolver) => setTimeout(resolver, ms)),
 }: {
   limite?: number;
   env?: Ambiente;
   tratar?: typeof tratarMensagemNota;
   instanciaId?: string;
+  esperar?: (ms: number) => Promise<void>;
 } = {}): Promise<ResumoNotasWhatsapp> {
   const tamanho = Number.isSafeInteger(limite)
     ? Math.min(50, Math.max(1, limite))
@@ -510,6 +556,11 @@ export async function processarNotasWhatsapp({
   };
   await recuperarEnvios(tamanho, env, resumo, instanciaId);
   await processarEntradas(tamanho, resumo, tratar, instanciaId);
-  await entregarSaidas(tamanho, env, resumo, instanciaId);
+  let grupo = await entregarSaidas(tamanho, env, resumo, instanciaId);
+  // Limite por rodada, sem perder o restante persistido. Uma nota tem até 100 itens.
+  for (let n = 0; grupo && n < 40; n++) {
+    await esperar(RITMO_MS);
+    grupo = await entregarSaidas(tamanho, env, resumo, instanciaId, grupo);
+  }
   return resumo;
 }
