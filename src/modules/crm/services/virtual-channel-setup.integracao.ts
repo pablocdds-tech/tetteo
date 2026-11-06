@@ -37,6 +37,19 @@ afterEach(async () => {
     where: { id: { in: accounts } },
     data: { active: false },
   });
+  // Connection verification also schedules read-only history jobs. Each fixture
+  // must finish its own jobs before another test file runs the shared worker.
+  const historyCleanup = {
+    where: { accountId: { in: accounts } },
+    data: {
+      state: "FAILED",
+      leaseOwner: null,
+      leaseUntil: null,
+      finishedAt: new Date(),
+    },
+  };
+  await db.avChannelHistorySync.updateMany(historyCleanup);
+  await db.avChannelHistoryRecentSync.updateMany(historyCleanup);
 });
 after(async () => db.$disconnect());
 async function fixture() {

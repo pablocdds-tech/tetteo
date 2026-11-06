@@ -8,6 +8,7 @@ import type { ChannelSendResult } from "@/server/atendimento-canal";
 import { channelHttp, record, string } from "./atendimento-http";
 import { readEvolutionHistoryPage } from "./atendimento-evolution-historico";
 import { lookupEvolutionContactNames } from "./atendimento-evolution-contatos";
+import { readEvolutionMessageMedia } from "./atendimento-evolution-midia";
 export function evolutionAttendance(
   config: Extract<LiveChannelConfig, { provider: "EVOLUTION" }>,
   lookup?: (id: string) => Promise<{
@@ -140,6 +141,7 @@ export function evolutionAttendance(
     }),
     createInstance,
     readHistoryPage: (query) => readEvolutionHistoryPage(config, query),
+    readMessageMedia: (query) => readEvolutionMessageMedia(config, query),
     lookupContactNames: (query) => lookupEvolutionContactNames(config, query),
     async ensureInstance() {
       try {

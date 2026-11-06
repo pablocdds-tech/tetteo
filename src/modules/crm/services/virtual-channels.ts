@@ -26,6 +26,7 @@ import { safeVirtualModelStatus } from "./virtual-model";
 import { approvedVirtualKnowledge } from "./virtual-knowledge";
 import { CrmError } from "./campaign-domain";
 import { managedEvolutionFor } from "./virtual-evolution-config";
+import { scheduleAutomaticVirtualHistory } from "./virtual-history";
 function fail(code: string, message: string, status = 409): never {
   throw new CrmError(code, message, status);
 }
@@ -637,6 +638,15 @@ export async function changeVirtualChannel(
               },
             );
         });
+        if (connected && row.mode === "EVOLUTION")
+          await scheduleAutomaticVirtualHistory({
+            accountId: row.id,
+            actorId: ctx.usuario.id,
+          }).catch(() => {
+            console.error(
+              "[atendimento-historico] Conexão pronta; sincronização automática aguardando nova rodada.",
+            );
+          });
       };
       if (data.action === "connect" || data.action === "qr") {
         if (row.mode !== "EVOLUTION")
@@ -779,6 +789,15 @@ export async function changeVirtualChannel(
               : { lastError: error },
         });
         if (error) fail("PROVIDER_CONFIGURATION_FAILED", error);
+        if (connected && row.mode === "EVOLUTION")
+          await scheduleAutomaticVirtualHistory({
+            accountId: row.id,
+            actorId: ctx.usuario.id,
+          }).catch(() => {
+            console.error(
+              "[atendimento-historico] Conexão pronta; sincronização automática aguardando nova rodada.",
+            );
+          });
       } else if (data.action === "sendTest") {
         if (
           connection.connectionState !== "VERIFIED" ||

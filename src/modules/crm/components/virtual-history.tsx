@@ -22,13 +22,27 @@ type HistoryStatus = {
   complete: boolean;
   limitReason: string | null;
   error: string | null;
+  automatic?: {
+    enabled: boolean;
+    state: "IDLE" | "RUNNING" | "COMPLETE" | "PARTIAL" | "FAILED";
+    lastSyncedAt: string | null;
+    nextSyncAt: string | null;
+    error: string | null;
+  };
 };
 const LABELS: Record<HistoryStatus["state"], string> = {
-  IDLE: "Histórico ainda não sincronizado",
-  RUNNING: "Sincronizando histórico…",
-  COMPLETE: "Sincronização concluída",
-  PARTIAL: "Histórico importado parcialmente",
-  FAILED: "A sincronização precisa de atenção",
+  IDLE: "Histórico antigo ainda não importado",
+  RUNNING: "Importando histórico antigo…",
+  COMPLETE: "Importação do histórico antigo concluída",
+  PARTIAL: "Histórico antigo importado parcialmente",
+  FAILED: "A importação do histórico antigo precisa de atenção",
+};
+const AUTOMATIC_LABELS: Record<HistoryStatus["state"], string> = {
+  IDLE: "Aguardando a próxima atualização",
+  RUNNING: "Buscando mensagens recentes…",
+  COMPLETE: "Última atualização concluída",
+  PARTIAL: "Última atualização parcial",
+  FAILED: "A atualização automática precisa de atenção",
 };
 const failureText = (failure: unknown) =>
   failure instanceof Error
@@ -51,6 +65,7 @@ export default function VirtualHistory({
   const { account, refreshAccounts } = useVirtualAccount();
   const connection = account?.id === accountId ? account : null;
   const revision = connection?.revision ?? null;
+  const connectionState = connection?.connectionState;
   const currentRevision = useRef(revision);
   useEffect(() => {
     currentRevision.current = revision;
@@ -88,8 +103,34 @@ export default function VirtualHistory({
     return () => {
       alive = false;
     };
-  }, [path]);
+  }, [path, revision, connectionState]);
   const state = history?.state;
+  const automatic = history?.automatic;
+  const automaticEnabled = automatic?.enabled;
+  useEffect(() => {
+    if (!automaticEnabled || (state === "RUNNING" && !watchStopped)) return;
+    let alive = true;
+    let pending = false;
+    const timer = setInterval(async () => {
+      if (document.hidden || pending) return;
+      pending = true;
+      try {
+        const result = await api.get<HistoryStatus>(path);
+        if (alive) {
+          setHistory(result);
+          setError("");
+        }
+      } catch (failure) {
+        if (alive) setError(failureText(failure));
+      } finally {
+        pending = false;
+      }
+    }, 30000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [automaticEnabled, state, watchStopped, path]);
   useEffect(() => {
     if (state !== "RUNNING" || watchStopped) return;
     let alive = true;
@@ -227,10 +268,11 @@ export default function VirtualHistory({
     <section className={styles.history} aria-label="Sincronização do histórico">
       <div className={styles.heading}>
         <div>
-          <h2>Histórico deste WhatsApp</h2>
+          <h2>Mensagens e histórico deste WhatsApp</h2>
           <p>
-            Importe as conversas disponíveis no servidor Evolution. Isso não
-            ativa a IA nem envia mensagens.
+            A atualização das mensagens recentes e a importação do histórico
+            antigo são independentes. Sincronizar não ativa a IA nem envia
+            mensagens.
           </p>
         </div>
         <div className={styles.actions}>
@@ -263,6 +305,53 @@ export default function VirtualHistory({
         </div>
       </div>
       {!history && !error && <p>Consultando histórico disponível…</p>}
+      {automatic && (
+        <div className={styles.automatic}>
+          <h3>Atualização automática</h3>
+          <p className={styles.status} role="status">
+            {automatic.enabled
+              ? AUTOMATIC_LABELS[automatic.state]
+              : "Atualização automática não está ativa nesta conta"}
+          </p>
+          <p>
+            {automatic.enabled ? (
+              <>
+                O sistema verifica mensagens recentes a cada minuto. As
+                primeiras podem aparecer em instantes, enquanto o histórico
+                antigo continua em segundo plano.
+              </>
+            ) : (
+              <>
+                Confira a conexão em{" "}
+                <Link href="/assistente/conectar">Conectar WhatsApp</Link> e o
+                estado da operação em{" "}
+                <Link href="/assistente/monitoramento">Monitoramento</Link>.
+              </>
+            )}
+          </p>
+          <dl className={styles.automaticTimes}>
+            <div>
+              <dt>Última atualização concluída</dt>
+              <dd>
+                {automatic.lastSyncedAt
+                  ? when(automatic.lastSyncedAt)
+                  : "Ainda sem atualização concluída"}
+              </dd>
+            </div>
+            {automatic.enabled && automatic.nextSyncAt && (
+              <div>
+                <dt>Próxima verificação</dt>
+                <dd>{when(automatic.nextSyncAt)}</dd>
+              </div>
+            )}
+          </dl>
+          {automatic.error && (
+            <p className={styles.error} role="alert">
+              {automatic.error}
+            </p>
+          )}
+        </div>
+      )}
       {error && (
         <p className={styles.error} role="alert">
           {error}

@@ -56,7 +56,23 @@ Informações da unidade aceita rascunho separado de aprovação, autor, versão
 
 Preço e disponibilidade vêm dos dados publicados. A base vencida gera encaminhamento; link ausente/indisponível é informado sem inventar destino. Os links devem ser HTTPS públicos e configurados; a resposta usa URL simples, adequada a canais que não interpretam Markdown de link.
 
-Não há upload/download de mídia real nesta ativação. Fotos só podem vir do catálogo autorizado; nenhuma foto de prato é gerada para preencher ausência. Áudio sem transcrição confiável pede o trecho importante por texto antes de qualquer efeito. Imagem/anexo que precise de leitura vai à equipe. Ativar mídia futura exige limite de bytes, verificação do tipo real, armazenamento restrito e retenção aprovada.
+No inbox, imagens e áudios recebidos pela conta Evolution podem ser abertos e
+baixados pelo operador autorizado, inclusive em mensagens históricas. O arquivo
+é consultado pelo ID da mensagem na instância vinculada, somente ao clicar em
+**Ver imagem**, **Carregar áudio** ou **Baixar**. O navegador não recebe chaves de
+mídia, credenciais ou URLs privadas do WhatsApp. O acesso não depende de ativar a
+IA. Imagens aceitam JPG, PNG e WebP até 5 MB; áudios aceitam OGG/Opus, MP3, WAV e
+M4A de áudio até 16 MB, com conferência dos bytes e do MIME. Vídeos e documentos
+não são abertos como se fossem imagens. A leitura de arquivos Meta ainda não
+está implementada neste fluxo e retorna essa limitação explicitamente.
+
+O download não cria cópia permanente no servidor. A prévia permanece em memória
+do navegador até ocultar ou sair da conversa. O histórico textual não garante
+que o WhatsApp ainda disponibilize o arquivo; falha ou expiração pede reenvio,
+sem inventar uma foto ou transcrição. Áudio sem transcrição confiável continua
+exigindo confirmação do trecho importante antes de qualquer efeito. A abertura
+pelo operador não concede leitura automática ao modelo. Fotos do catálogo
+continuam restritas ao conteúdo autorizado da unidade.
 
 ## Humano assumindo e escalações
 
@@ -170,10 +186,20 @@ Os dois adaptadores estão implementados. Credenciais e testes reais permanecem 
 
 **Atendimentos → WhatsApp** prioriza uma conta real conectada, inclusive quando a
 IA está pausada. Exemplos ficam somente na aba **Demonstração**. Em uma conta
-Evolution verificada, **Sincronizar histórico** importa as mensagens disponíveis
-no provedor; não exige ativar a IA. A operação tem progresso durável por conta e
-continua com o navegador fechado. A tela acompanha por até 90 segundos; reabrir
-ou atualizar o status recupera o progresso sem reiniciar o pedido.
+Evolution verificada, a sincronização começa automaticamente ao conectar ou
+reconectar, mesmo com a IA pausada e com o navegador fechado. O worker também
+encontra contas já conectadas ao iniciar e confere novos agendamentos a cada
+30 segundos. Um cursor independente consulta mensagens recentes a cada minuto;
+outro carrega o acervo antigo. Assim, um pareamento com muito histórico não
+bloqueia a atualização recente. A tela mostra a última atualização concluída e
+eventuais falhas. **Sincronizar histórico** permanece como recuperação manual.
+
+A primeira consulta recente cobre as últimas 24 horas. As próximas partem do
+corte concluído com sobreposição de cinco minutos, incluindo o intervalo em que
+a conexão ficou fora. Uma revisão diária do acervo recolhe dados antigos que o
+provedor tenha disponibilizado depois. A sincronização pode levar tempo até o
+WhatsApp/Evolution fornecer os dados; não existe promessa de recuperar tudo do
+celular imediatamente após ler o QR.
 
 O importador lê páginas de 100 mensagens recebidas e enviadas, preserva o horário
 original e deduplica pelo ID do provedor na mesma conta, inclusive quando um
@@ -185,11 +211,12 @@ explicitamente. Conversas com mais de 200 mensagens têm **Carregar mensagens
 anteriores**, com paginação no servidor e acesso restrito à unidade.
 
 Cada etapa limita a importação a 1000 páginas. Se houver mais, o estado é parcial
-e o gestor pode continuar a partir do progresso salvo. Erro, página repetida,
+e o worker continua a partir do progresso salvo. Erro, página repetida,
 troca de revisão ou perda de permissão não produzem sucesso fictício; tentativas
 e lease recuperável ficam persistidos. Credenciais e conteúdo não entram na
-auditoria. Grupos não autorizados, status, remetentes ambíguos e arquivos de mídia
-não são importados; áudios/anexos aparecem com indicação de conferência humana.
+auditoria. Grupos não autorizados, status e remetentes ambíguos não são
+importados. Referências de áudios/imagens ficam no histórico; seus bytes são
+buscados somente quando o operador abre ou baixa o arquivo.
 
 O limite é o que a Evolution armazenou, e não todo o conteúdo existente no
 celular. Na versão 2.3.7, **Sync Full History** no Manager e
@@ -206,7 +233,8 @@ iniciar novas rodadas. Cada leitura externa mantém seu timeout e cada página t
 lease e transação próprios; o ciclo para quando não há progresso. Assim, uma
 importação grande não espera dois segundos adicionais entre todas as páginas.
 Testes e QA devem desativá-lo junto dos demais workers. Migração aditiva:
-`20261103150000_whatsapp_history`. Contrato verificado no código da
+`20261103150000_whatsapp_history`; o cursor recente usa a migração aditiva
+`20261106010000_whatsapp_history_automatic`. Contrato verificado no código da
 [Evolution 2.3.7 — consulta paginada](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/services/channel.service.ts)
 e [sincronização e persistência histórica](https://github.com/EvolutionAPI/evolution-api/blob/2.3.7/src/api/integrations/channel/whatsapp/whatsapp.baileys.service.ts).
 

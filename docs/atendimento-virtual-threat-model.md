@@ -44,6 +44,47 @@ ausência, sem depender de idempotência oferecida pelo Evolution.
 
 ## System model
 
+### Atualização automática e mídia recebida — 06/11/2026
+
+Contexto mantido do pedido: produção HTTPS no Dokploy, Auth.js, organização e
+unidade ativas; operadores autorizados podem consultar suas conversas. A IA geral
+permanece pausada. O novo worker agenda leituras Evolution ao verificar conexão e
+no relógio do servidor, sem criar mensagens de saída. O principal vem do gestor
+atual ou da auditoria da configuração daquela conta, com acesso revalidado antes
+e depois da rede. Dois cursores persistidos, `AvChannelHistoryRecentSync` e
+`AvChannelHistorySync`, impedem que o acervo antigo bloqueie mensagens recentes.
+Leases, revisão, locks e deduplicação são comuns aos dois caminhos. Histórico
+continua processado para exibição e nunca autoriza uma resposta automática.
+
+O novo endpoint `GET /api/atendimento/media` recebe apenas unidade e UUID local
+da mensagem. `virtual-media.ts` exige sessão/permissão CRM, busca com organização
+e unidade, deriva a conta da mensagem e confere sua revisão verificada. Após o
+HTTP repete acesso atual do operador e vínculo da conexão. Um UUID de outra loja
+não inicia download. O risco principal é exposição entre unidades (impacto alto);
+os testes de integração cobrem esse bloqueio e a revogação durante a leitura.
+
+`atendimento-evolution-midia.ts` consulta somente o endpoint fixo da instância
+autorizada com o ID já persistido. URLs, nomes de arquivo e chaves enviados pelo
+cliente não controlam o destino. Redirecionamentos são recusados. Há timeout de
+20 segundos, limites de JSON/base64 e de bytes: imagem 5 MB, áudio 16 MB. MIME e
+assinatura dos bytes precisam coincidir; SVG, vídeo e documento são recusados.
+Tentativa de usar um MIME falso tem impacto de conteúdo ativo, mitigado também
+por `nosniff`, CSP sandbox e política de origem da resposta. Consumo repetido
+de rede/memória tem impacto médio e é limitado por operador e conta.
+
+Arquivos não são gravados em disco ou no banco do Tetteo. O endpoint não expõe
+segredos, URLs do provedor ou detalhes do erro externo e usa resposta privada
+sem cache. A UI só busca após ação, não executa transcrição, aborta ao sair e
+revoga o blob ao ocultar/desmontar. Auditoria registra IDs, tipo e tamanho,
+sem os bytes. Um download que o operador salva permanece sob sua guarda; a
+retenção do arquivo original continua sendo responsabilidade do provedor. Meta
+não oferece esse leitor nesta implementação; não se assume equivalência com
+Evolution nem se interpreta disponibilidade textual como arquivo recuperável.
+
+Fontes no repositório: `virtual-history.ts`, `virtual-history-worker.ts`,
+`virtual-media.ts`, `atendimento-evolution-midia.ts`, `atendimento-midia.ts`,
+`src/app/api/atendimento/media/route.ts` e integrações correspondentes.
+
 ### Resolução do nome sem promoção de identidade
 
 `virtual-customer-name.ts` separa nome e vínculo: somente identidades CRM
@@ -150,7 +191,7 @@ Cliente pode enviar texto malicioso, instruções conflitantes e sequências de 
 
 ### Non-capabilities
 
-Cliente não escolhe organização, conta, unidade, permissões, configuração ou SQL. Não recebe sessão administrativa por possuir o telefone. Não há ingestão de arquivo remoto; decodificadores de mídia e SSRF de download continuam fora da superfície ativada. Configuração Evolution introduz uma superfície de requisição HTTP administrativa: somente destinos explicitamente autorizados no servidor podem ser usados, sem credenciais na URL ou redirecionamento para outro host.
+Cliente não escolhe organização, conta, unidade, permissões, configuração ou SQL. Não recebe sessão administrativa por possuir o telefone. Mídia recebida só pode ser lida pelo operador a partir de mensagem local autorizada; o cliente não fornece uma URL de download. Configuração Evolution introduz uma superfície de requisição HTTP administrativa: somente destinos explicitamente autorizados no servidor podem ser usados, sem credenciais na URL ou redirecionamento para outro host.
 
 ## Entry points and attack surfaces
 

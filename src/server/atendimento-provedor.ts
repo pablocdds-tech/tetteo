@@ -57,6 +57,15 @@ export type ChannelContactNamesResult = {
   trustedPhone: string;
   names: ChannelContactName[];
 };
+export type ChannelMessageMediaQuery = {
+  providerMessageId: string;
+  kind: "AUDIO" | "IMAGE";
+};
+export type ChannelMessageMedia = {
+  bytes: Uint8Array;
+  contentType: string;
+  extension: string;
+};
 export interface ChannelManagement extends AtendimentoChannelAdapter {
   createInstance?(): Promise<void>;
   ensureInstance?(): Promise<void>;
@@ -64,6 +73,9 @@ export interface ChannelManagement extends AtendimentoChannelAdapter {
   webhook(url: string, replace: boolean): Promise<void>;
   qr(): Promise<ChannelConnectionQr>;
   readHistoryPage?(query: ChannelHistoryQuery): Promise<ChannelHistoryPage>;
+  readMessageMedia?(
+    query: ChannelMessageMediaQuery,
+  ): Promise<ChannelMessageMedia>;
   lookupContactNames?(
     query: ChannelContactNamesQuery,
   ): Promise<ChannelContactNamesResult>;

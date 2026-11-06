@@ -12,6 +12,8 @@ import {
   getVirtualHistory,
   startVirtualHistory,
   processVirtualHistoryQueue,
+  scheduleAutomaticVirtualHistory,
+  refreshVirtualHistoryConnections,
 } from "./virtual-history";
 import {
   lockVirtualConversation,
@@ -27,6 +29,23 @@ if (
   throw new Error("Exige PostgreSQL local exclusivo _test.");
 const accounts: string[] = [];
 afterEach(async () => {
+  await db.avChannelConnection.updateMany({
+    where: { accountId: { in: accounts } },
+    data: {
+      connectionState: "PENDING",
+      verifiedAt: null,
+      verifiedRevision: null,
+    },
+  });
+  await db.avChannelHistoryRecentSync.updateMany({
+    where: { accountId: { in: accounts } },
+    data: {
+      state: "FAILED",
+      leaseOwner: null,
+      leaseUntil: null,
+      finishedAt: new Date(),
+    },
+  });
   await db.avChannelHistorySync.updateMany({
     where: { accountId: { in: accounts } },
     data: {
@@ -686,4 +705,265 @@ test("resposta live concluída durante espera pelo lock mantém lastMessageAt ma
     newest.getTime(),
   );
   assert.equal((await f.result()).importedMessages, 1);
+});
+
+test("conectar agenda histórico e atualização recente sem ativar conta; duas réplicas não duplicam jobs", async () => {
+  const f = await fixture();
+  const input = { accountId: f.account.id, actorId: f.actor.id };
+  const scheduled = await Promise.all([
+    scheduleAutomaticVirtualHistory(input),
+    scheduleAutomaticVirtualHistory(input),
+  ]);
+  assert.equal(
+    scheduled.reduce((sum, n) => sum + n, 0),
+    2,
+  );
+  assert.equal(
+    await db.avChannelHistoryRecentSync.count({ where: scopeOf(f) }),
+    1,
+  );
+  assert.equal(await db.avChannelHistorySync.count({ where: scopeOf(f) }), 1);
+  const message = historical({
+    occurredAt: new Date(Date.now() - 1000).toISOString(),
+  });
+  f.setReader(async () => page([message]));
+  await processVirtualHistoryQueue(f.factory);
+  const status = await f.result();
+  assert.equal(status.automatic.enabled, true);
+  assert.equal(status.automatic.state, "COMPLETE");
+  assert.ok(status.automatic.lastSyncedAt);
+  assert.ok(status.automatic.nextSyncAt);
+  assert.equal(await db.avMessage.count({ where: scopeOf(f) }), 1);
+  const account = await db.avChannelAccount.findUniqueOrThrow({
+    where: { id: f.account.id },
+  });
+  assert.equal(account.active, false);
+  const conversation = await db.avConversation.findFirstOrThrow({
+    where: scopeOf(f),
+  });
+  assert.equal(conversation.agentEnabled, false);
+  assert.equal(conversation.pendingSince, null);
+  assert.equal(await db.avAgentRun.count({ where: scopeOf(f) }), 0);
+  assert.equal(await db.avMessageOutbox.count({ where: scopeOf(f) }), 0);
+  assert.equal(await scheduleAutomaticVirtualHistory(input), 0);
+});
+
+test("atualização recente não espera backfill; etapa parcial continua automaticamente com corte congelado", async () => {
+  const f = await fixture();
+  const input = { accountId: f.account.id, actorId: f.actor.id };
+  await scheduleAutomaticVirtualHistory(input);
+  const before = await db.avChannelHistorySync.findUniqueOrThrow({
+    where: { accountId: f.account.id },
+  });
+  await db.avChannelHistorySync.update({
+    where: { id: before.id },
+    data: { pagesProcessed: 999 },
+  });
+  let recent = 0,
+    old = 0;
+  f.setReader(async (query) => {
+    const isRecent =
+      new Date((query as { since?: string }).since!).getFullYear() > 2000;
+    if (isRecent) {
+      recent++;
+      return page([
+        historical({ occurredAt: new Date(Date.now() - 1000).toISOString() }),
+      ]);
+    }
+    old++;
+    return query.page === 1
+      ? page([historical()], 1, 2)
+      : page([historical()], 2);
+  });
+  await processVirtualHistoryQueue(f.factory);
+  assert.equal(recent, 1);
+  assert.equal(old, 1);
+  assert.equal((await f.result()).state, "PARTIAL");
+  assert.equal((await f.result()).automatic.state, "COMPLETE");
+  assert.equal(await scheduleAutomaticVirtualHistory(input), 1);
+  const resumed = await db.avChannelHistorySync.findUniqueOrThrow({
+    where: { accountId: f.account.id },
+  });
+  assert.equal(resumed.nextPage, 2);
+  assert.equal(resumed.until.getTime(), before.until.getTime());
+  await db.avChannelHistoryRecentSync.update({
+    where: { accountId: f.account.id },
+    data: { finishedAt: new Date(Date.now() - 61_000) },
+  });
+  assert.equal(await scheduleAutomaticVirtualHistory(input), 1);
+  assert.ok((await f.result()).automatic.lastSyncedAt);
+  await processVirtualHistoryQueue(f.factory);
+  assert.equal(recent, 2);
+  assert.equal(old, 2);
+  assert.equal((await f.result()).state, "COMPLETE");
+});
+
+test("automático usa somente gestor que configurou a conta e respeita revogação durante consulta", async () => {
+  const f = await fixture();
+  // No audit/prior history: an arbitrary active user is never selected.
+  assert.equal(
+    await db.avChannelHistoryRecentSync.count({ where: scopeOf(f) }),
+    0,
+  );
+  await db.avAuditEvent.create({
+    data: {
+      organizationId: f.organization.id,
+      storeId: f.unit.id,
+      actorId: f.actor.id,
+      action: "CHANNEL_SAVED",
+      data: { accountId: f.account.id, provider: "EVOLUTION" },
+    },
+  });
+  await scheduleAutomaticVirtualHistory({ accountId: f.account.id });
+  const recent = await db.avChannelHistoryRecentSync.findUniqueOrThrow({
+    where: { accountId: f.account.id },
+  });
+  assert.equal(recent.requestedById, f.actor.id);
+  f.setReader(async () => {
+    await db.acesso.update({
+      where: { id: f.access.id },
+      data: { status: "SUSPENSO" },
+    });
+    return page([
+      historical({ occurredAt: new Date(Date.now() - 1000).toISOString() }),
+    ]);
+  });
+  await processVirtualHistoryQueue(f.factory);
+  assert.equal(await db.avMessage.count({ where: scopeOf(f) }), 0);
+  assert.equal((await f.result()).automatic.state, "FAILED");
+  assert.equal(
+    await scheduleAutomaticVirtualHistory({
+      accountId: f.account.id,
+      actorId: f.actor.id,
+    }),
+    0,
+  );
+});
+
+test("automático não reinicia loops; falha transitória aguarda cooldown e revisão nova reinicia cursor", async () => {
+  const f = await fixture();
+  const input = { accountId: f.account.id, actorId: f.actor.id };
+  await scheduleAutomaticVirtualHistory(input);
+  await db.avChannelHistorySync.update({
+    where: { accountId: f.account.id },
+    data: {
+      state: "FAILED",
+      error:
+        "O provedor repetiu a mesma página. A importação foi interrompida.",
+      finishedAt: new Date(Date.now() - 24 * 3_600_000 - 1),
+    },
+  });
+  await db.avChannelHistoryRecentSync.update({
+    where: { accountId: f.account.id },
+    data: {
+      state: "FAILED",
+      error:
+        "Não foi possível consultar o histórico do provedor. Confira a conexão e tente novamente.",
+      finishedAt: new Date(),
+    },
+  });
+  assert.equal(await scheduleAutomaticVirtualHistory(input), 0);
+  await db.avChannelHistoryRecentSync.update({
+    where: { accountId: f.account.id },
+    data: { finishedAt: new Date(Date.now() - 5 * 60_000 - 1) },
+  });
+  assert.equal(await scheduleAutomaticVirtualHistory(input), 1);
+  await db.avChannelHistorySync.update({
+    where: { accountId: f.account.id },
+    data: { state: "PARTIAL", nextPage: 40 },
+  });
+  await db.avChannelConnection.update({
+    where: { accountId: f.account.id },
+    data: { revision: 2, verifiedRevision: 2, verifiedAt: new Date() },
+  });
+  assert.equal(await scheduleAutomaticVirtualHistory(input), 2);
+  const full = await db.avChannelHistorySync.findUniqueOrThrow({
+    where: { accountId: f.account.id },
+  });
+  assert.equal(full.revision, 2);
+  assert.equal(full.nextPage, 1);
+});
+
+test("pareamento concluído é detectado sem navegador; lease e revisão descartam verificação obsoleta", async () => {
+  const f = await fixture();
+  await db.avAuditEvent.create({
+    data: {
+      organizationId: f.organization.id,
+      storeId: f.unit.id,
+      actorId: f.actor.id,
+      action: "CHANNEL_SAVED",
+      data: { accountId: f.account.id, provider: "EVOLUTION" },
+    },
+  });
+  await db.avChannelConnection.update({
+    where: { accountId: f.account.id },
+    data: {
+      connectionState: "PENDING",
+      verifiedAt: null,
+      verifiedRevision: null,
+      updatedAt: new Date(Date.now() - 31_000),
+    },
+  });
+  let calls = 0;
+  const factory: ChannelManagementFactory = async (accountId) => ({
+    ...(await f.factory(accountId)),
+    verify: async () => {
+      calls++;
+      return { connected: true };
+    },
+  });
+  await Promise.all([
+    refreshVirtualHistoryConnections(factory, f.account.id),
+    refreshVirtualHistoryConnections(factory, f.account.id),
+  ]);
+  assert.equal(calls, 1);
+  const verified = await db.avChannelConnection.findUniqueOrThrow({
+    where: { accountId: f.account.id },
+  });
+  assert.equal(verified.connectionState, "VERIFIED");
+  assert.equal(verified.verifiedRevision, 1);
+  assert.equal(verified.connectLeaseOwner, null);
+  assert.equal(
+    (
+      await db.avChannelAccount.findUniqueOrThrow({
+        where: { id: f.account.id },
+      })
+    ).active,
+    false,
+  );
+  await scheduleAutomaticVirtualHistory({ accountId: f.account.id });
+  assert.equal((await f.result()).automatic.state, "RUNNING");
+  await db.avChannelConnection.update({
+    where: { accountId: f.account.id },
+    data: {
+      connectionState: "PENDING",
+      verifiedAt: null,
+      verifiedRevision: null,
+      updatedAt: new Date(Date.now() - 31_000),
+    },
+  });
+  const staleFactory: ChannelManagementFactory = async (accountId) => ({
+    ...(await f.factory(accountId)),
+    verify: async () => {
+      await db.avChannelConnection.update({
+        where: { accountId },
+        data: {
+          revision: 2,
+          connectionState: "PENDING",
+          verifiedAt: null,
+          verifiedRevision: null,
+          connectLeaseOwner: "new-manager",
+          connectLeaseUntil: new Date(Date.now() + 60_000),
+        },
+      });
+      return { connected: true };
+    },
+  });
+  await refreshVirtualHistoryConnections(staleFactory, f.account.id);
+  const stale = await db.avChannelConnection.findUniqueOrThrow({
+    where: { accountId: f.account.id },
+  });
+  assert.equal(stale.connectionState, "PENDING");
+  assert.equal(stale.verifiedRevision, null);
+  assert.equal(stale.connectLeaseOwner, "new-manager");
 });
