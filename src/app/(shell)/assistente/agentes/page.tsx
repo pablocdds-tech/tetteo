@@ -31,6 +31,16 @@ export default async function PaginaAgentes() {
       </div>
 
       <div className="mt-6">
+        <p className="text-ink-3 mb-5 text-sm">
+          Estes agentes enviam avisos. O{" "}
+          <Link
+            href="/assistente/equipe/notas"
+            className="text-accent underline underline-offset-4"
+          >
+            agente de notas da Severina
+          </Link>{" "}
+          tem seu próprio painel de número receptor e autorizações.
+        </p>
         <ListaDeAgentes agentes={agentes} podeConfigurar={podeConfigurar} />
       </div>
     </div>

@@ -11,6 +11,7 @@ export default function EquipeNavigation({
 }) {
   const path = usePathname();
   const links = [
+    ["notas", "Notas pelo WhatsApp"],
     ["avisos", "Avisos e disparos"],
     ["conversas", "Conversas da equipe"],
     ["whatsapp", "WhatsApp da equipe"],

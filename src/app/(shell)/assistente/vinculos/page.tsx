@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { obterContexto, pode } from "@/core/sessao/contexto";
 import { PainelDeVinculos } from "@/modules/assistente/components/painel-de-vinculos";
@@ -22,7 +23,17 @@ export default async function PaginaVinculos() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Números</h1>
         <p className="text-ink-3 mt-1 text-sm">
-          Quem a Severina enxerga — e quem pode receber avisos
+          Telefones vinculados aos usuários e autorização para receber avisos.
+        </p>
+        <p className="text-ink-3 mt-2 text-sm">
+          O envio e a confirmação de notas têm uma liberação própria em{" "}
+          <Link
+            href="/assistente/equipe/notas"
+            className="text-accent underline underline-offset-4"
+          >
+            Notas pelo WhatsApp
+          </Link>
+          .
         </p>
       </div>
 

@@ -62,8 +62,8 @@ export function PainelDeVinculos({
           <div>
             <h2 className="font-semibold">Ligar um número a uma pessoa</h2>
             <p className="text-ink-3 mt-0.5 text-sm">
-              A Severina só fala com quem está nesta lista — e só obedece a quem
-              está nela.
+              Vincule o telefone ao usuário correto. Depois autorize avisos e
+              notas separadamente, conforme o acesso de cada pessoa.
             </p>
           </div>
 
@@ -171,7 +171,7 @@ export function PainelDeVinculos({
                           peso="secundario"
                           tamanho="pequeno"
                         >
-                          Revogar
+                          Revogar avisos
                         </Botao>
                       </form>
                     ) : (
