@@ -211,7 +211,12 @@ export async function lerFiscalComGemini(
   imagens: ImagemNota[],
   fallback: () => Promise<ImagemNota[]>,
   registrar: RegistroLeitura,
-): Promise<{ dados: ExtracaoFiscal; extras: PendenciaFiscal[] }> {
+  categorias: { nome: string; valor: string }[] = [],
+): Promise<{
+  dados: ExtracaoFiscal;
+  extras: PendenciaFiscal[];
+  categoriaFinanceira?: string;
+}> {
   const config = await privateVirtualModelConfiguration({
     organizationId: s.organizationId,
     storeId: s.storeId,
@@ -229,10 +234,11 @@ export async function lerFiscalComGemini(
     );
   let primeira: ExtracaoFiscal | null = null,
     ultima: ExtracaoFiscal | null = null;
+  const sugestoes = new Map<ExtracaoFiscal, string | undefined>();
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
     try {
       const fotos = tentativa === 1 ? imagens : await fallback();
-      const p = await prepararExtracaoGemini(fotos, config),
+      const p = await prepararExtracaoGemini(fotos, config, categorias),
         reserva = await reservar(s, config, p.entradaTokens, tentativa);
       await registrar({
         etapa: "GEMINI_RESERVADO",
@@ -258,6 +264,7 @@ export async function lerFiscalComGemini(
         },
       });
       const pendencias = validarExtracaoFiscal(r.dados);
+      sugestoes.set(r.dados, r.categoriaFinanceira);
       ultima = r.dados;
       await registrar({
         etapa: "GEMINI_VALIDADO",
@@ -268,7 +275,12 @@ export async function lerFiscalComGemini(
       });
       if (tentativa === 1) {
         primeira = r.dados;
-        if (!pendencias.length) return { dados: r.dados, extras: [] };
+        if (!pendencias.length)
+          return {
+            dados: r.dados,
+            extras: [],
+            categoriaFinanceira: r.categoriaFinanceira,
+          };
       } else {
         const peso = (d: ExtracaoFiscal) =>
           validarExtracaoFiscal(d).reduce(
@@ -279,6 +291,7 @@ export async function lerFiscalComGemini(
           primeira && peso(primeira) < peso(r.dados) ? primeira : r.dados;
         return {
           dados: escolhida,
+          categoriaFinanceira: sugestoes.get(escolhida),
           extras: primeira ? divergenciasDeLeitura(primeira, r.dados) : [],
         };
       }
@@ -293,6 +306,7 @@ export async function lerFiscalComGemini(
       if (tentativa === 2 && primeira)
         return {
           dados: primeira,
+          categoriaFinanceira: sugestoes.get(primeira),
           extras: [
             {
               campo: "leitura",
@@ -310,7 +324,12 @@ export async function lerFiscalComGemini(
         throw e;
     }
   }
-  if (ultima) return { dados: ultima, extras: [] };
+  if (ultima)
+    return {
+      dados: ultima,
+      extras: [],
+      categoriaFinanceira: sugestoes.get(ultima),
+    };
   throw new LeituraNotaRecusada(
     "IA_CONTRATO",
     "Não foi possível conferir a leitura. Envie uma foto mais nítida ou o XML.",

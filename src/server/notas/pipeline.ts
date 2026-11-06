@@ -28,6 +28,7 @@ export type EventoPipeline = {
 export const VERSAO_FLUXO_FOTO = "foto-2.1";
 export type ResultadoFiscal = {
   dados: ExtracaoFiscal;
+  categoriaFinanceira?: string;
   metodo: MetodoLeitura;
   pendencias: PendenciaFiscal[];
   extras: PendenciaFiscal[];
@@ -45,12 +46,23 @@ export async function lerDocumentoFiscal(
     gemini?: (
       imagens: ImagemNota[],
       recortes: () => Promise<ImagemNota[]>,
-    ) => Promise<{ dados: ExtracaoFiscal; extras: PendenciaFiscal[] }>;
+    ) => Promise<{
+      dados: ExtracaoFiscal;
+      extras: PendenciaFiscal[];
+      categoriaFinanceira?: string;
+    }>;
   },
 ): Promise<ResultadoFiscal> {
   const registrar = opcoes.registrar ?? (async () => {}),
     tipo = tipoDocumentoNota(bytes),
     artefatos: ResultadoFiscal["artefatos"] = [];
+  let visual:
+    | {
+        dados: ExtracaoFiscal;
+        extras: PendenciaFiscal[];
+        categoriaFinanceira?: string;
+      }
+    | undefined;
   const concluir = async (
     dados: ExtracaoFiscal,
     metodo: MetodoLeitura,
@@ -64,6 +76,11 @@ export async function lerDocumentoFiscal(
     });
     return {
       dados,
+      ...(metodo === "GEMINI" &&
+      visual?.dados === dados &&
+      visual.categoriaFinanceira
+        ? { categoriaFinanceira: visual.categoriaFinanceira }
+        : {}),
       metodo,
       pendencias,
       extras,
@@ -111,7 +128,6 @@ export async function lerDocumentoFiscal(
     processadas.push(processada);
     if (a.ruim) ruins++;
   }
-  let visual: { dados: ExtracaoFiscal; extras: PendenciaFiscal[] } | undefined;
   let motivo: LeituraNotaRecusada | undefined;
   if (ruins === imagens.length)
     motivo = new LeituraNotaRecusada(

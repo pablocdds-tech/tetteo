@@ -6,6 +6,16 @@ import type { NotaAssistidaPronta } from "@/server/nota-assistida-contrato";
 import { NotaAssistidaRecusada } from "@/server/nota-assistida-contrato";
 import { dataBancaria } from "../schemas/bancos";
 import { registrarBaixa } from "./integrado";
+type DadosFinanceirosDaNota = Pick<
+  NotaAssistidaPronta,
+  | "operacaoId"
+  | "fornecedor"
+  | "numero"
+  | "empresaId"
+  | "categoriaId"
+  | "emitidaEm"
+  | "pagamento"
+> & { modo?: "FINANCEIRO" };
 
 type Tx = Prisma.TransactionClient;
 
@@ -44,7 +54,7 @@ async function auditar(
 export async function validarFinanceiroDaNota(
   tx: Tx,
   ctx: ContextoSessao,
-  dados: NotaAssistidaPronta,
+  dados: DadosFinanceirosDaNota,
 ) {
   if (!pode(ctx, "financeiro.ver") || !pode(ctx, "financeiro.lancar"))
     throw new SemPermissao("cadastrar contas");
@@ -71,12 +81,14 @@ export async function validarFinanceiroDaNota(
         organizacaoId: ctx.organizacao.id,
         ativa: true,
         tipo: "DESPESA",
-        grupoDre: "MERCADORIA",
+        ...(dados.modo === "FINANCEIRO" ? {} : { grupoDre: "MERCADORIA" }),
       },
     }))
   )
     throw new NotaAssistidaRecusada(
-      "Escolha um plano de mercadoria ativo desta organização para evitar duplicar o CMV.",
+      dados.modo === "FINANCEIRO"
+        ? "Escolha uma categoria de despesa ativa desta organização."
+        : "Escolha um plano de mercadoria ativo desta organização para evitar duplicar o CMV.",
     );
   if (
     dados.pagamento.contaId &&
@@ -97,7 +109,7 @@ export async function validarFinanceiroDaNota(
 async function pessoaDaNota(
   tx: Tx,
   ctx: ContextoSessao,
-  dados: NotaAssistidaPronta,
+  dados: DadosFinanceirosDaNota,
 ) {
   const organizacaoId = ctx.organizacao.id;
   const unidadeId = ctx.unidadeAtiva!.id;
@@ -166,14 +178,18 @@ async function pessoaDaNota(
 export async function lancarFinanceiroDaNotaNaTransacao(
   tx: Tx,
   ctx: ContextoSessao,
-  dados: NotaAssistidaPronta,
-  notaId: string,
-  fornecedorId: string,
+  dados: DadosFinanceirosDaNota,
+  notaId: string | null,
+  fornecedorId: string | undefined,
   assinatura: string,
 ): Promise<string[]> {
   await validarFinanceiroDaNota(tx, ctx, dados);
   const unidadeId = ctx.unidadeAtiva!.id;
   const pessoaId = await pessoaDaNota(tx, ctx, dados);
+  const categoria = await tx.categoriaFinanceira.findUniqueOrThrow({
+    where: { id: dados.categoriaId },
+    select: { grupoDre: true, entraDre: true },
+  });
   const lancamentoIds: string[] = [];
   const parcelas = dados.pagamento.parcelas;
   for (let i = 0; i < parcelas.length; i++) {
@@ -195,9 +211,15 @@ export async function lancarFinanceiroDaNotaNaTransacao(
         historico: "Pagamento",
         numeroNotaFiscal: dados.numero ?? "",
         // Mercadoria compõe o resultado pelo CMV do Estoque, uma única vez.
-        composeDre: false,
+        composeDre:
+          dados.modo === "FINANCEIRO" &&
+          categoria.grupoDre !== "MERCADORIA" &&
+          categoria.entraDre,
         notaEntradaId: i === 0 ? notaId : null,
-        grupoParcelas: parcelas.length > 1 ? `nota-whatsapp:${notaId}` : null,
+        grupoParcelas:
+          parcelas.length > 1
+            ? `nota-whatsapp:${notaId ?? dados.operacaoId}`
+            : null,
         parcela: parcelas.length > 1 ? i + 1 : null,
         totalParcelas: parcelas.length > 1 ? parcelas.length : null,
         contaId: dados.pagamento.contaId,

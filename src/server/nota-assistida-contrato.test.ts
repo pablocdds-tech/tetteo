@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { notaAssistidaPronta } from "./nota-assistida-contrato";
+import {
+  notaAssistidaPronta,
+  notaFinanceiraPronta,
+} from "./nota-assistida-contrato";
 
 function proposta() {
   return {
@@ -39,6 +42,45 @@ function proposta() {
     },
   };
 }
+
+test("financeiro conserva totais e pagamento, sem aceitar vínculos ou exigir local de estoque", () => {
+  const { localId: _local, ...p } = proposta();
+  void _local;
+  const financeira = {
+    ...p,
+    modo: "FINANCEIRO",
+    itens: p.itens.map(
+      ({ insumoId: _insumo, fatorConversao: _fator, ...i }) => {
+        void _insumo;
+        void _fator;
+        return i;
+      },
+    ),
+  };
+  assert.ok(notaFinanceiraPronta.safeParse(financeira).success);
+  assert.equal(notaAssistidaPronta.safeParse(financeira).success, false);
+  for (const alterada of [
+    { ...financeira, localId: "local" },
+    { ...financeira, fornecedor: { nome: "Fornecedor sem documento" } },
+    {
+      ...financeira,
+      itens: [
+        { ...financeira.itens[0], insumoId: "insumo" },
+        financeira.itens[1],
+      ],
+    },
+    { ...financeira, valorTotal: 10 },
+    {
+      ...financeira,
+      pagamento: {
+        ...financeira.pagamento,
+        parcelas: [{ valor: 1, vencimento: "2026-11-20" }],
+      },
+    },
+    { ...financeira, pagamento: { ...financeira.pagamento, situacao: "PAGA" } },
+  ])
+    assert.equal(notaFinanceiraPronta.safeParse(alterada).success, false);
+});
 
 test("centavos conferem sem erro de ponto flutuante e documento é normalizado", () => {
   const dados = notaAssistidaPronta.parse(proposta());

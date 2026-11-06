@@ -48,7 +48,7 @@ import {
   idDaParte,
 } from "@/modules/assistente/schemas/partes-mensagem-nota";
 import {
-  notaAssistidaPronta,
+  propostaNotaPronta,
   NotaAssistidaRecusada,
 } from "@/server/nota-assistida-contrato";
 
@@ -61,13 +61,16 @@ const AJUDA =
 const enderecoNota = (id: string) =>
   `${process.env.APP_URL?.trim().replace(/\/+$/, "") ?? ""}/estoque/entradas/${encodeURIComponent(id)}`;
 
-async function categoriasFinanceiras(ctx: ContextoSessao) {
+async function categoriasFinanceiras(
+  ctx: ContextoSessao,
+  somenteFinanceiro = false,
+) {
   const categorias = await db.categoriaFinanceira.findMany({
     where: {
       organizacaoId: ctx.organizacao.id,
       ativa: true,
       tipo: "DESPESA",
-      grupoDre: "MERCADORIA",
+      ...(somenteFinanceiro ? {} : { grupoDre: "MERCADORIA" as const }),
     },
     select: { id: true, nome: true },
     orderBy: { nome: "asc" },
@@ -75,7 +78,10 @@ async function categoriasFinanceiras(ctx: ContextoSessao) {
   return categorias.map((e) => ({ nome: e.nome, valor: e.id }));
 }
 
-async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
+async function catalogo(
+  ctx: ContextoSessao,
+  somenteFinanceiro = false,
+): Promise<CatalogoNota> {
   const unidadeId = ctx.unidadeAtiva!.id;
   const organizacaoId = ctx.organizacao.id;
   const [
@@ -92,38 +98,46 @@ async function catalogo(ctx: ContextoSessao): Promise<CatalogoNota> {
       select: { id: true, nome: true, cnpj: true },
       orderBy: { nome: "asc" },
     }),
-    categoriasFinanceiras(ctx),
-    db.localEstoque.findMany({
-      where: { unidadeId, ativo: true },
-      select: { id: true, nome: true },
-      orderBy: { ordem: "asc" },
-    }),
+    categoriasFinanceiras(ctx, somenteFinanceiro),
+    somenteFinanceiro
+      ? []
+      : db.localEstoque.findMany({
+          where: { unidadeId, ativo: true },
+          select: { id: true, nome: true },
+          orderBy: { ordem: "asc" },
+        }),
     db.contaFinanceira.findMany({
       where: { unidadeId, ativa: true },
       select: { id: true, nome: true, empresaId: true },
       orderBy: { nome: "asc" },
     }),
-    db.insumo.findMany({
-      where: { organizacaoId, ativo: true, excluidoEm: null },
-      select: { id: true, nome: true, unidadeMedida: true },
-      orderBy: { nome: "asc" },
-    }),
-    db.fornecedor.findMany({
-      where: { organizacaoId, excluidoEm: null },
-      select: { id: true, nome: true, documento: true, ativo: true },
-    }),
-    db.vinculoItemNotaWhatsapp.findMany({
-      where: { organizacaoId, unidadeId },
-      select: {
-        insumoId: true,
-        fornecedor: true,
-        descricao: true,
-        unidadeNota: true,
-        fator: true,
-        codigoFornecedor: true,
-        ean: true,
-      },
-    }),
+    somenteFinanceiro
+      ? []
+      : db.insumo.findMany({
+          where: { organizacaoId, ativo: true, excluidoEm: null },
+          select: { id: true, nome: true, unidadeMedida: true },
+          orderBy: { nome: "asc" },
+        }),
+    somenteFinanceiro
+      ? []
+      : db.fornecedor.findMany({
+          where: { organizacaoId, excluidoEm: null },
+          select: { id: true, nome: true, documento: true, ativo: true },
+        }),
+    somenteFinanceiro
+      ? []
+      : db.vinculoItemNotaWhatsapp.findMany({
+          where: { organizacaoId, unidadeId },
+          select: {
+            insumoId: true,
+            fornecedor: true,
+            descricao: true,
+            unidadeNota: true,
+            fator: true,
+            codigoFornecedor: true,
+            ean: true,
+          },
+        }),
   ]);
   return {
     unidade: ctx.unidadeAtiva!.nome,
@@ -264,7 +278,7 @@ async function mostrar(
       : randomBytes(3).toString("hex").toUpperCase();
     const pronta = pergunta
       ? null
-      : notaAssistidaPronta.parse(propostaDaConferencia(r));
+      : propostaNotaPronta.parse(propostaDaConferencia(r));
     await tx.notaFiscalWhatsapp.update({
       where: { id: notaId },
       data: {
@@ -292,7 +306,9 @@ async function mostrar(
       resumo,
       pergunta
         ? perguntaComOpcoes(pergunta)
-        : `Está tudo correto e os produtos já foram recebidos?\nResponda OK ${codigo} ou CONFIRMAR ${codigo} para cadastrar os itens indicados, dar entrada no estoque e registrar o financeiro acima. Esse código vale por 30 minutos após o envio.\nPara ajustar, responda CORRIGIR ITEM 1 QUANTIDADE 2, ALTERAR PAGAMENTO, ALTERAR LOCAL ou CANCELAR.`,
+        : r.modo === "FINANCEIRO"
+          ? `Confira a categoria e os dados financeiros acima.\nPara lançar somente no Financeiro, responda LANCAR ${codigo} ou CONFIRMAR ${codigo}. Não será registrada compra ou entrada de estoque. O código vale por 30 minutos após o envio deste resumo.\nPara ajustar: ALTERAR CATEGORIA, ALTERAR PAGAMENTO ou CANCELAR.`
+          : `Está tudo correto e os produtos já foram recebidos?\nResponda OK ${codigo} ou CONFIRMAR ${codigo} para cadastrar os itens indicados, dar entrada no estoque e registrar o financeiro acima. Esse código vale por 30 minutos após o envio.\nPara ajustar, responda CORRIGIR ITEM 1 QUANTIDADE 2, ALTERAR PAGAMENTO, ALTERAR LOCAL ou CANCELAR.`,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -322,7 +338,7 @@ async function executar(
     where: { id: notaId },
   });
   if (nota.estado !== "EXECUTANDO" || nota.confirmacaoId !== m.id) return;
-  const dados = notaAssistidaPronta.parse(
+  const dados = propostaNotaPronta.parse(
     propostaDaConferencia(nota.rascunho as unknown as RascunhoNota),
   );
   if (nota.resumoHash !== hashPropostaNota(dados))
@@ -393,8 +409,12 @@ async function executar(
         {
           organizacaoId: ctx.organizacao.id,
           enviadoPorId: ctx.usuario.id,
-          entidade: "NotaEntrada",
-          entidadeId: resultado.notaId,
+          entidade:
+            resultado.modo === "FINANCEIRO" ? "Lancamento" : "NotaEntrada",
+          entidadeId:
+            resultado.modo === "FINANCEIRO"
+              ? resultado.lancamentoIds[0]
+              : resultado.notaId,
         },
       );
     }
@@ -407,6 +427,7 @@ async function executar(
     );
     const r = nota.rascunho as unknown as RascunhoNota;
     for (const item of r.itens) {
+      if (r.modo === "FINANCEIRO") break;
       const insumoId =
         item.insumoId ??
         (
@@ -488,7 +509,10 @@ async function executar(
         direcao: "SAIDA",
         tipo: "TEXTO",
         recebidoEm: new Date(),
-        texto: `Nota cadastrada com sucesso. Estoque atualizado e ${resultado.lancamentoIds.length} lançamento(s) no financeiro${dados.pagamento.situacao === "PAGA" ? ", com pagamento registrado na conta confirmada" : " a pagar"}.\nNota: ${enderecoNota(resultado.notaId)}\nVocê já pode enviar a próxima foto.`,
+        texto:
+          resultado.modo === "FINANCEIRO"
+            ? `Nota lançada somente no Financeiro: ${resultado.lancamentoIds.length} lançamento(s)${dados.pagamento.situacao === "PAGA" ? ", com pagamento registrado na conta confirmada" : " a pagar"}.\nNão foi registrada compra nem entrada de estoque. Você já pode enviar a próxima foto.`
+            : `Nota cadastrada com sucesso. Estoque atualizado e ${resultado.lancamentoIds.length} lançamento(s) no financeiro${dados.pagamento.situacao === "PAGA" ? ", com pagamento registrado na conta confirmada" : " a pagar"}.\nNota: ${enderecoNota(resultado.notaId)}\nVocê já pode enviar a próxima foto.`,
       },
       update: {},
     });
@@ -516,6 +540,7 @@ async function avancarLeituraFiscal(
     where: { id: notaId },
   });
   const anterior = nota.rascunho as unknown as RascunhoNota | undefined;
+  if (!anterior) c = { ...c, destino: "FINANCEIRO" };
   const padroes = m.conversa.padroes as {
     empresaId?: string;
     localId?: string;
@@ -532,7 +557,7 @@ async function avancarLeituraFiscal(
     );
   c = atualizarCategoriasDaLeitura(
     c,
-    await categoriasFinanceiras(ctx),
+    await categoriasFinanceiras(ctx, c.destino === "FINANCEIRO"),
     anterior?.categoriaId ??
       (!c.categoriaFinanceira?.selecionada && mesmoFornecedor
         ? padroes?.categoriaId
@@ -639,7 +664,7 @@ async function avancarLeituraFiscal(
   );
   if (!anterior && padroes) {
     r.empresaId = padroes.empresaId;
-    r.localId = padroes.localId;
+    if (r.modo !== "FINANCEIRO") r.localId = padroes.localId;
     if (
       !r.categoriaId &&
       padroes.fornecedor ===
@@ -657,7 +682,7 @@ async function avancarLeituraFiscal(
     m,
     notaId,
     r,
-    await catalogo(ctx),
+    await catalogo(ctx, r.modo === "FINANCEIRO"),
     leaseDono,
     `Leitura fiscal conferida (${c.metodo}). Cadastros e lançamentos dependem da confirmação final.`,
   );
@@ -820,6 +845,7 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
           arquivoOriginalId: arquivoId,
         });
       });
+    const categorias = await categoriasFinanceiras(ctx, true);
     const resultado = await lerDocumentoFiscal(foto.bytes, {
       organizacaoId: ctx.organizacao.id,
       unidadeId: ctx.unidadeAtiva!.id,
@@ -846,15 +872,23 @@ async function foto(m: Mensagem, ctx: ContextoSessao, leaseDono?: string) {
           imagens,
           recortes,
           registrar,
+          categorias,
         ),
     });
     const conferencia: ConferenciaFiscal = {
+      destino: "FINANCEIRO",
       versao: "fiscal-2.0",
       metodo: resultado.metodo,
       original: structuredClone(resultado.dados),
       conferida: structuredClone(resultado.dados),
       extras: resultado.extras,
       alertasConferidos: false,
+      categoriaFinanceira: {
+        opcoes: categorias,
+        selecionada: resultado.categoriaFinanceira ?? null,
+        confirmada: false,
+        origem: resultado.categoriaFinanceira ? "GEMINI" : "CADASTRO",
+      },
     };
     await alterar(m.conversaId, leaseDono, (tx) =>
       tx.notaFiscalWhatsapp.update({
@@ -1001,7 +1035,10 @@ export async function tratarMensagemNota(
       const opcao = escolha
         ? fiscal.categoriaFinanceira?.opcoes[Number(escolha[1]) - 1]
         : undefined;
-      const opcoes = await categoriasFinanceiras(ctx);
+      const opcoes = await categoriasFinanceiras(
+        ctx,
+        fiscal.destino === "FINANCEIRO" || !nota.rascunho,
+      );
       if (escolha && (!opcao || !opcoes.some((o) => o.valor === opcao.valor))) {
         await responder(
           m,
@@ -1014,6 +1051,7 @@ export async function tratarMensagemNota(
       if (opcao) {
         atualizada.categoriaFinanceira!.selecionada = opcao.valor;
         atualizada.categoriaFinanceira!.confirmada = true;
+        atualizada.categoriaFinanceira!.origem = "USUARIO";
         if (nota.rascunho) {
           const r = nota.rascunho as unknown as RascunhoNota;
           await alterar(m.conversaId, leaseDono, (tx) =>
@@ -1040,7 +1078,12 @@ export async function tratarMensagemNota(
       await responder(m, mensagemItensFiscais(fiscal.conferida), leaseDono);
       return;
     }
-    const resposta = responderLeituraFiscal(fiscal, texto);
+    const resposta = responderLeituraFiscal(
+      /^(?:lançar|lancar)$/i.test(texto)
+        ? { ...fiscal, destino: "FINANCEIRO" }
+        : fiscal,
+      /^(?:lançar|lancar)$/i.test(texto) ? "CONFERI LEITURA" : texto,
+    );
     if (resposta.reconhecido) {
       if (resposta.erro) {
         await responder(m, resposta.erro, leaseDono);
@@ -1090,10 +1133,14 @@ export async function tratarMensagemNota(
   }
   const r = nota.rascunho as unknown as RascunhoNota;
   if (/^(itens|detalhes)$/i.test(texto)) {
-    await responder(m, resumoConferencia(r, await catalogo(ctx)), leaseDono);
+    await responder(
+      m,
+      resumoConferencia(r, await catalogo(ctx, r.modo === "FINANCEIRO")),
+      leaseDono,
+    );
     return;
   }
-  if (/^(?:confirmar|ok)\b/i.test(texto)) {
+  if (/^(?:confirmar|ok|lancar|lançar)\b/i.test(texto)) {
     if (r.pagamento.situacao === "PAGA" && !pode(ctx, "financeiro.quitar")) {
       await responder(
         m,
@@ -1102,18 +1149,22 @@ export async function tratarMensagemNota(
       );
       return;
     }
-    if (r.itens.some((i) => i.novoInsumo) && !pode(ctx, "cardapio.editar")) {
+    if (
+      r.modo !== "FINANCEIRO" &&
+      r.itens.some((i) => i.novoInsumo) &&
+      !pode(ctx, "cardapio.editar")
+    ) {
       await mostrar(
         m,
         nota.id,
         r,
-        await catalogo(ctx),
+        await catalogo(ctx, r.modo === "FINANCEIRO"),
         leaseDono,
         "Seu acesso não permite cadastrar novos insumos. Escolha um cadastro existente ou peça acesso a um responsável.",
       );
       return;
     }
-    const proposta = notaAssistidaPronta.safeParse(propostaDaConferencia(r));
+    const proposta = propostaNotaPronta.safeParse(propostaDaConferencia(r));
     if (
       nota.estado !== "PRONTA" ||
       !proposta.success ||
@@ -1132,7 +1183,7 @@ export async function tratarMensagemNota(
         m,
         nota.id,
         r,
-        await catalogo(ctx),
+        await catalogo(ctx, r.modo === "FINANCEIRO"),
         leaseDono,
         "A confirmação está vencida, chegou antes do resumo ou usa outro código. Confira esta versão atualizada.",
       );
@@ -1161,7 +1212,7 @@ export async function tratarMensagemNota(
     await executar(m, nota.id, ctx, leaseDono);
     return;
   }
-  const c = await catalogo(ctx);
+  const c = await catalogo(ctx, r.modo === "FINANCEIRO");
   const p = nota.pergunta as PerguntaNota | null;
   const aviso = responderConferencia(r, p, texto, c);
   if (aviso) {

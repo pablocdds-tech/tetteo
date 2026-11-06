@@ -13,7 +13,10 @@ import {
 } from "@/modules/assistente/schemas/conferencia-nota";
 import { contextoParaNota } from "@/modules/assistente/services/contexto-nota";
 import { db } from "@/server/db";
-import { notaAssistidaPronta } from "@/server/nota-assistida-contrato";
+import {
+  notaAssistidaPronta,
+  notaFinanceiraPronta,
+} from "@/server/nota-assistida-contrato";
 import { lancarNotaAssistida } from "./lancar-nota";
 import { tratarMensagemNota } from "./notas-conversa";
 import { receberWebhook } from "./receber";
@@ -28,6 +31,344 @@ assert.ok(
 );
 after(() => db.$disconnect());
 const json = (v: unknown) => JSON.parse(JSON.stringify(v));
+
+async function fixtureFinanceira(paga = false) {
+  const f = await fixture(paga);
+  const categoria = await db.categoriaFinanceira.create({
+    data: {
+      organizacaoId: f.org.id,
+      nome: "Despesa operacional fictícia",
+      tipo: "DESPESA",
+      grupoDre: "OPERACIONAL",
+    },
+  });
+  const r = structuredClone(f.rascunho);
+  r.modo = "FINANCEIRO";
+  r.categoriaId = categoria.id;
+  delete r.localId;
+  r.itens.forEach((i) => {
+    delete i.insumoId;
+    delete i.novoInsumo;
+    delete i.fatorConversao;
+  });
+  const dados = notaFinanceiraPronta.parse(propostaDaConferencia(r));
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: { rascunho: json(r), resumoHash: hashPropostaNota(dados) },
+  });
+  return { ...f, categoria, rascunho: r, dados };
+}
+
+test("resumo oferece LANCAR com código, confirma a despesa e não cria compra, estoque ou vínculo", async () => {
+  const f = await fixtureFinanceira();
+  await tratarMensagemNota((await f.entrada("RESUMO")).id);
+  let n = await f.atual();
+  const resumo = await db.mensagemNotaWhatsapp.findFirstOrThrow({
+    where: { notaId: n.id, idExterno: `resumo:${n.id}:${n.revisao}` },
+  });
+  assert.match(resumo.texto!, new RegExp(`LANCAR ${n.codigo}`));
+  assert.match(resumo.texto!, /somente Financeiro/);
+  assert.doesNotMatch(
+    resumo.texto!,
+    /dar entrada no estoque|Qual produto corresponde|Onde os produtos/,
+  );
+  await tratarMensagemNota((await f.entrada("LANCAR ERRADO")).id);
+  await f.semEfeito();
+  n = await f.atual();
+  await f.marcarResumoEnviado();
+  const confirmacao = await f.entrada(`LANCAR ${n.codigo}`);
+  await tratarMensagemNota(confirmacao.id);
+  const lancadas = await db.lancamento.findMany({
+    where: { unidadeId: f.unidade.id },
+  });
+  assert.equal(lancadas.length, 2);
+  assert.ok(
+    lancadas.every(
+      (l) =>
+        l.notaEntradaId === null &&
+        l.fornecedorId === null &&
+        l.categoriaId === f.categoria.id &&
+        l.composeDre,
+    ),
+  );
+  assert.equal((await f.atual()).estado, "LANCADA");
+  assert.equal(await f.saldo(), "0");
+  assert.equal(
+    await db.notaEntrada.count({ where: { unidadeId: f.unidade.id } }),
+    0,
+  );
+  assert.equal(
+    await db.fornecedor.count({ where: { organizacaoId: f.org.id } }),
+    0,
+  );
+  assert.equal(
+    await db.vinculoItemNotaWhatsapp.count({
+      where: { unidadeId: f.unidade.id },
+    }),
+    0,
+  );
+  await tratarMensagemNota(confirmacao.id);
+  await tratarMensagemNota((await f.entrada(`LANCAR ${n.codigo}`)).id);
+  assert.equal(
+    await db.lancamento.count({ where: { unidadeId: f.unidade.id } }),
+    2,
+  );
+});
+
+test("financeiro recusa categoria inativa, outra organização, conta incompatível, acesso revogado e código não entregue ou vencido", async (t) => {
+  for (const caso of [
+    "inativa",
+    "organizacao",
+    "conta",
+    "acesso",
+    "codigo-nao-entregue",
+    "codigo-vencido",
+    "hash",
+    "baixa",
+  ] as const)
+    await t.test(caso, async () => {
+      const f = await fixtureFinanceira(caso === "conta" || caso === "baixa");
+      if (caso === "inativa")
+        await db.categoriaFinanceira.update({
+          where: { id: f.categoria.id },
+          data: { ativa: false },
+        });
+      if (caso === "organizacao") {
+        const outra = await db.organizacao.create({
+          data: { nome: "Outra fictícia", slug: randomUUID() },
+        });
+        await db.categoriaFinanceira.update({
+          where: { id: f.categoria.id },
+          data: { organizacaoId: outra.id },
+        });
+      }
+      if (caso === "conta")
+        await db.contaFinanceira.update({
+          where: { id: f.conta.id },
+          data: { empresaId: null },
+        });
+      if (caso === "acesso" || caso === "baixa")
+        await db.papelPermissao.deleteMany({
+          where: {
+            papelId: f.papel.id,
+            chave: caso === "baixa" ? "financeiro.quitar" : "financeiro.lancar",
+          },
+        });
+      if (caso === "codigo-nao-entregue")
+        await db.notaFiscalWhatsapp.update({
+          where: { id: f.nota.id },
+          data: { resumoEm: null, expiraEm: null },
+        });
+      if (caso === "codigo-vencido")
+        await db.notaFiscalWhatsapp.update({
+          where: { id: f.nota.id },
+          data: { expiraEm: new Date(Date.now() - 1000) },
+        });
+      if (caso === "hash")
+        await db.notaFiscalWhatsapp.update({
+          where: { id: f.nota.id },
+          data: { resumoHash: "hash-alterado" },
+        });
+      await tratarMensagemNota((await f.entrada("LANCAR ABC123")).id);
+      await f.semEfeito();
+      assert.notEqual((await f.atual()).estado, "LANCADA");
+    });
+});
+
+test("financeiro pago é idempotente entre execuções concorrentes e recupera commit sem estoque, mesmo com baixa revogada depois", async () => {
+  const f = await fixtureFinanceira(true);
+  const m = await f.entrada("LANCAR ABC123");
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: { estado: "EXECUTANDO", confirmacaoId: m.id },
+  });
+  const autorizado = await contextoParaNota(f.instancia.id, f.vinculo.id);
+  assert.ok(autorizado);
+  const executar = () =>
+    lancarNotaAssistida(autorizado.contexto, f.dados, {
+      instanciaId: f.instancia.id,
+      vinculoId: f.vinculo.id,
+    });
+  const [a, b] = await Promise.all([executar(), executar()]);
+  assert.deepEqual(a, b);
+  assert.equal(a.modo, "FINANCEIRO");
+  assert.equal((await f.atual()).estado, "EXECUTANDO");
+  assert.deepEqual((await f.atual()).resultado, a);
+  await db.papelPermissao.deleteMany({
+    where: { papelId: f.papel.id, chave: "financeiro.quitar" },
+  });
+  await tratarMensagemNota(m.id);
+  assert.equal((await f.atual()).estado, "LANCADA");
+  assert.equal(
+    await db.lancamento.count({ where: { unidadeId: f.unidade.id } }),
+    1,
+  );
+  assert.equal(
+    await db.baixaFinanceira.count({ where: { unidadeId: f.unidade.id } }),
+    1,
+  );
+  assert.equal(
+    await db.notaEntrada.count({ where: { unidadeId: f.unidade.id } }),
+    0,
+  );
+  assert.equal(await f.saldo(), "0");
+});
+
+test("outra foto da mesma nota não duplica o financeiro, inclusive se o recibo anterior ainda está EXECUTANDO", async () => {
+  const f = await fixtureFinanceira();
+  const m = await f.entrada("LANCAR ABC123");
+  await db.notaFiscalWhatsapp.update({
+    where: { id: f.nota.id },
+    data: { estado: "EXECUTANDO", confirmacaoId: m.id },
+  });
+  const autorizado = await contextoParaNota(f.instancia.id, f.vinculo.id);
+  assert.ok(autorizado);
+  await lancarNotaAssistida(autorizado.contexto, f.dados, {
+    instanciaId: f.instancia.id,
+    vinculoId: f.vinculo.id,
+  });
+  const nova = await db.notaFiscalWhatsapp.create({
+    data: {
+      organizacaoId: f.org.id,
+      unidadeId: f.unidade.id,
+      instanciaId: f.instancia.id,
+      vinculoId: f.vinculo.id,
+      usuarioId: f.usuario.id,
+      mensagemId: randomUUID(),
+      estado: "PRONTA",
+      codigo: "ABC123",
+      resumoEm: new Date(Date.now() - 1000),
+      expiraEm: new Date(Date.now() + 60000),
+    },
+  });
+  const r = {
+    ...f.rascunho,
+    operacaoId: nova.id,
+    numero: `000${f.rascunho.numero}`,
+  };
+  await db.notaFiscalWhatsapp.update({
+    where: { id: nova.id },
+    data: {
+      rascunho: json(r),
+      resumoHash: hashPropostaNota(
+        notaFinanceiraPronta.parse(propostaDaConferencia(r)),
+      ),
+    },
+  });
+  await db.conversaNotaWhatsapp.update({
+    where: { id: f.conversa.id },
+    data: { notaAtivaId: nova.id },
+  });
+  await tratarMensagemNota((await f.entrada("LANCAR ABC123")).id);
+  assert.equal(
+    await db.lancamento.count({ where: { unidadeId: f.unidade.id } }),
+    2,
+  );
+  assert.equal(
+    (await db.notaFiscalWhatsapp.findUniqueOrThrow({ where: { id: nova.id } }))
+      .estado,
+    "REVISAO",
+  );
+  assert.equal(
+    await db.notaEntrada.count({ where: { unidadeId: f.unidade.id } }),
+    0,
+  );
+  assert.equal(await f.saldo(), "0");
+});
+
+test("nota já lançada manualmente no financeiro ou registrada no fluxo antigo impede outra despesa", async (t) => {
+  for (const origem of ["manual", "estoque"] as const)
+    await t.test(origem, async () => {
+      const f = await fixtureFinanceira();
+      const autorizado = await contextoParaNota(f.instancia.id, f.vinculo.id);
+      assert.ok(autorizado);
+      if (origem === "manual") {
+        const pessoa = await db.pessoaFinanceira.create({
+          data: {
+            organizacaoId: f.org.id,
+            unidadeId: f.unidade.id,
+            nome: f.dados.fornecedor.nome,
+            documento: f.dados.fornecedor.documento,
+          },
+        });
+        await db.lancamento.create({
+          data: {
+            unidadeId: f.unidade.id,
+            empresaId: f.empresa.id,
+            pessoaId: pessoa.id,
+            categoriaId: f.categoria.id,
+            direcao: "PAGAR",
+            descricao: "Documento sintético já registrado",
+            numeroNotaFiscal: f.dados.numero,
+            valor: f.dados.valorTotal,
+            vencimento: new Date("2026-12-04T00:00:00Z"),
+          },
+        });
+      } else {
+        const categoria = await db.categoriaFinanceira.findFirstOrThrow({
+          where: { organizacaoId: f.org.id, grupoDre: "MERCADORIA" },
+        });
+        const { modo: _modo, ...r } = f.rascunho;
+        void _modo;
+        r.operacaoId = randomUUID();
+        r.localId = f.local.id;
+        r.categoriaId = categoria.id;
+        r.itens.forEach((i) => {
+          i.insumoId = f.insumo.id;
+          i.fatorConversao = 3;
+        });
+        await lancarNotaAssistida(
+          autorizado.contexto,
+          propostaDaConferencia(r),
+        );
+      }
+      const antes = await db.lancamento.count({
+        where: { unidadeId: f.unidade.id },
+      });
+      await tratarMensagemNota((await f.entrada("LANCAR ABC123")).id);
+      assert.equal(
+        await db.lancamento.count({ where: { unidadeId: f.unidade.id } }),
+        antes,
+      );
+      assert.equal((await f.atual()).estado, "REVISAO");
+      assert.equal(
+        await db.notaEntrada.count({ where: { unidadeId: f.unidade.id } }),
+        origem === "estoque" ? 1 : 0,
+      );
+    });
+});
+
+test("fluxo antigo não repete financeiro de um documento já confirmado somente no Financeiro", async () => {
+  const f = await fixtureFinanceira();
+  await tratarMensagemNota((await f.entrada("LANCAR ABC123")).id);
+  const autorizado = await contextoParaNota(f.instancia.id, f.vinculo.id);
+  assert.ok(autorizado);
+  const categoria = await db.categoriaFinanceira.findFirstOrThrow({
+    where: { organizacaoId: f.org.id, grupoDre: "MERCADORIA" },
+  });
+  const { modo: _modo, ...r } = f.rascunho;
+  void _modo;
+  r.operacaoId = randomUUID();
+  r.localId = f.local.id;
+  r.categoriaId = categoria.id;
+  r.itens.forEach((i) => {
+    i.insumoId = f.insumo.id;
+    i.fatorConversao = 3;
+  });
+  await assert.rejects(
+    lancarNotaAssistida(autorizado.contexto, propostaDaConferencia(r)),
+    /já foi lançado/,
+  );
+  assert.equal(
+    await db.lancamento.count({ where: { unidadeId: f.unidade.id } }),
+    2,
+  );
+  assert.equal(
+    await db.notaEntrada.count({ where: { unidadeId: f.unidade.id } }),
+    0,
+  );
+  assert.equal(await f.saldo(), "0");
+});
 
 test("foto no webhook Evolution entrega rascunho parcial completo em partes no mesmo WhatsApp, sem web ou lançamento", async (t) => {
   const f = await fixture();
@@ -81,6 +422,14 @@ test("foto no webhook Evolution entrega rascunho parcial completo em partes no m
   const d = lerXmlFiscal(
     await readFile("tests/fixtures/notas/nfe-sintetica.xml"),
   );
+  await db.categoriaFinanceira.create({
+    data: {
+      organizacaoId: f.org.id,
+      nome: "Limpeza fictícia",
+      tipo: "DESPESA",
+      grupoDre: "OPERACIONAL",
+    },
+  });
   d.itens = Array.from({ length: 45 }, (_, n) => ({
     ...structuredClone(d.itens[0]),
     descricao: `PRODUTO FICTICIO ${String(n + 1).padStart(2, "0")} ${"descrição ".repeat(15)}`,
@@ -117,7 +466,16 @@ test("foto no webhook Evolution entrega rascunho parcial completo em partes no m
           candidates: [
             {
               finishReason: "STOP",
-              content: { parts: [{ text: JSON.stringify(d) }] },
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      ...d,
+                      categoria_financeira_indice: 1,
+                    }),
+                  },
+                ],
+              },
             },
           ],
           usageMetadata: {
@@ -192,7 +550,7 @@ test("foto no webhook Evolution entrega rascunho parcial completo em partes no m
   assert.match(texto, new RegExp(`Pagamento na nota: ${d.forma_pagamento}`));
   assert.match(
     texto,
-    /Categoria financeira: Mercadoria fictícia \(sugestão do cadastro; conferir\)/,
+    /Categoria financeira: Limpeza fictícia \(sugerida pelo Gemini; conferir\)/,
   );
   enviadas.forEach((p, n) => {
     assert.ok(p.length <= 3500);
@@ -219,6 +577,14 @@ test("foto no webhook Evolution entrega rascunho parcial completo em partes no m
   assert.equal(enviadas.length, quantidade);
   await tratarMensagemNota((await f.entrada("OK")).id);
   await f.semEfeito();
+  await tratarMensagemNota((await f.entrada("LANÇAR")).id);
+  await f.semEfeito();
+  assert.equal(geracoes, 2);
+  const parcial = await db.notaFiscalWhatsapp.findUniqueOrThrow({
+    where: { id: notaId },
+  });
+  assert.equal(parcial.codigo, null);
+  assert.equal(parcial.rascunho, null);
 });
 
 test("categoria financeira é escolhida no rascunho parcial, isolada por organização, sem vínculo de estoque ou nova IA", async (t) => {
@@ -310,8 +676,14 @@ test("categoria financeira é escolhida no rascunho parcial, isolada por organiz
     };
   const inicial = await responder("RESUMO");
   const opcoes = metadados(inicial).categoriaFinanceira.opcoes;
-  assert.equal(opcoes.length, 2);
-  assert.ok(opcoes.every((o) => [f.categoria.id, outra.id].includes(o.valor)));
+  assert.equal(opcoes.length, 3);
+  assert.ok(
+    opcoes.every(
+      (o) =>
+        [f.categoria.id, outra.id].includes(o.valor) ||
+        o.nome === "Fora do fluxo fiscal",
+    ),
+  );
   assert.equal(metadados(inicial).categoriaFinanceira.selecionada, null);
   // Inserir antes da opção não pode mudar o significado do número já enviado.
   await db.categoriaFinanceira.create({
@@ -322,10 +694,11 @@ test("categoria financeira é escolhida no rascunho parcial, isolada por organiz
       grupoDre: "MERCADORIA",
     },
   });
-  const selecionada = await responder("CATEGORIA 2");
+  const escolhida = opcoes.findIndex((o) => o.valor === outra.id);
+  const selecionada = await responder(`CATEGORIA ${escolhida + 1}`);
   assert.equal(
     metadados(selecionada).categoriaFinanceira.selecionada,
-    opcoes[1].valor,
+    opcoes[escolhida].valor,
   );
   assert.equal(metadados(selecionada).categoriaFinanceira.confirmada, true);
   assert.equal(selecionada.rascunho, null);
@@ -334,7 +707,7 @@ test("categoria financeira é escolhida no rascunho parcial, isolada por organiz
   assert.equal(invalida.revisao, selecionada.revisao);
   assert.equal(
     metadados(invalida).categoriaFinanceira.selecionada,
-    opcoes[1].valor,
+    opcoes[escolhida].valor,
   );
   const indiceAnterior =
     metadados(selecionada).categoriaFinanceira.opcoes.findIndex(
@@ -705,7 +1078,7 @@ test("confirmação da conversa lança estoque e parcelas, aprende o vínculo e 
   assert.match(resposta.texto!, /cadastrada com sucesso/);
   assert.match(resposta.texto!, new RegExp(resultado.notaId));
 });
-test("XML passa pelo leitor, permanece pendente e só OK com código vigente lança financeiro e estoque", async (t) => {
+test("XML passa pelo leitor, oferece LANÇAR e só o código vigente registra financeiro sem estoque", async (t) => {
   const f = await fixture();
   const rede = t.mock.method(globalThis, "fetch", async () => {
     throw Error("XML não deve usar rede ou Gemini");
@@ -742,7 +1115,7 @@ test("XML passa pelo leitor, permanece pendente e só OK com código vigente lan
     await db.fornecedor.count({ where: { organizacaoId: f.org.id } }),
     0,
   );
-  await tratarMensagemNota((await f.entrada("CONFERI LEITURA")).id);
+  await tratarMensagemNota((await f.entrada("LANÇAR")).id);
   n = await f.atual();
   const r = n.rascunho as unknown as RascunhoNota;
   assert.equal(r.fiscal?.descontos, 1);
@@ -750,10 +1123,7 @@ test("XML passa pelo leitor, permanece pendente e só OK com código vigente lan
     r.itens.map((i) => i.valorTotal),
     [9.33, 4.67],
   );
-  r.itens.forEach((i) => {
-    i.insumoId = f.insumo.id;
-    i.fatorConversao = 1;
-  });
+  assert.equal(r.modo, "FINANCEIRO");
   r.pagamento = {
     situacao: "A_PAGAR",
     forma: "BOLETO",
@@ -771,7 +1141,11 @@ test("XML passa pelo leitor, permanece pendente e só OK com código vigente lan
   await tratarMensagemNota((await f.entrada(`OK ${n.codigo}`)).id);
   n = await f.atual();
   assert.equal(n.estado, "LANCADA");
-  assert.equal(await f.saldo(), "3");
+  assert.equal(await f.saldo(), "0");
+  assert.equal(
+    await db.notaEntrada.count({ where: { unidadeId: f.unidade.id } }),
+    0,
+  );
   const lancamentos = await db.lancamento.findMany({
     where: { unidadeId: f.unidade.id },
   });
@@ -780,7 +1154,7 @@ test("XML passa pelo leitor, permanece pendente e só OK com código vigente lan
   assert.equal(
     (await db.arquivo.findUniqueOrThrow({ where: { id: arquivo.id } }))
       .entidade,
-    "NotaEntrada",
+    "Lancamento",
   );
   assert.equal(rede.mock.callCount(), 0);
 });

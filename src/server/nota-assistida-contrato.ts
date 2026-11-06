@@ -88,7 +88,7 @@ const item = z
   });
 
 /** A proposta completa que a pessoa conferiu. Não admite valores presumidos. */
-export const notaAssistidaPronta = z
+const baseDaNota = z
   .object({
     operacaoId: id,
     arquivoId: id.optional(),
@@ -160,131 +160,168 @@ export const notaAssistidaPronta = z
       })
       .strict(),
   })
-  .strict()
-  .superRefine((v, ctx) => {
-    if (!v.numero && !v.chaveAcesso)
-      ctx.addIssue({
-        code: "custom",
-        path: ["numero"],
-        message:
-          "Confira o número da nota ou cupom, ou informe a chave de acesso, para evitar duplicar a entrada.",
-      });
-    if (
-      !dinheiro.safeParse(v.valorTotal).success ||
-      !v.itens.every((i) => valorItem.safeParse(i.valorTotal).success) ||
-      !v.pagamento.parcelas.every((p) => dinheiro.safeParse(p.valor).success)
-    )
-      return;
-    const total = centavosDaNota(v.valorTotal);
-    const chave = v.chaveAcesso ? dadosDaChave(v.chaveAcesso) : null;
-    const normalizar = (s: string) => s.replace(/^0+(?=\d)/, "");
-    if (
-      chave &&
-      ((v.fornecedor.documento && v.fornecedor.documento !== chave.cnpj) ||
-        (v.numero && normalizar(v.numero) !== normalizar(chave.numero)) ||
-        (v.serie && normalizar(v.serie) !== normalizar(chave.serie)) ||
-        v.emitidaEm.slice(2, 7).replace("-", "") !== chave.anoMes)
-    )
-      ctx.addIssue({
-        code: "custom",
-        path: ["chaveAcesso"],
-        message: "A chave diverge do emitente, número, série ou emissão.",
-      });
-    const tolerancia = toleranciaFiscalCentavos();
-    for (const [n, i] of v.itens.entries()) {
-      if (
-        i.valorUnitarioImpresso !== undefined &&
-        Math.abs(
-          Math.round(i.quantidade * i.valorUnitarioImpresso * 100) -
-            Number(centavosDaNota(i.valorBruto ?? i.valorTotal)),
-        ) > tolerancia
+  .strict();
+
+// O contrato financeiro conserva a conferência fiscal e de pagamento, sem
+// permitir vínculos, cadastros ou conversões de estoque na proposta.
+const baseFinanceira = z
+  .object({
+    ...baseDaNota.shape,
+    modo: z.literal("FINANCEIRO"),
+    fornecedor: baseDaNota.shape.fornecedor.refine(
+      (v) => !!v.documento,
+      "Confirme o CPF/CNPJ do fornecedor antes de lançar.",
+    ),
+    localId: z.never().optional(),
+    itens: z
+      .array(
+        z
+          .object({
+            ...item.shape,
+            quantidade: z.number().finite().positive().max(1_000_000_000),
+            insumoId: z.never().optional(),
+            novoInsumo: z.never().optional(),
+            fatorConversao: z.never().optional(),
+          })
+          .strict(),
       )
-        ctx.addIssue({
-          code: "custom",
-          path: ["itens", n],
-          message: `Quantidade × preço do item ${n + 1} não confere com o total bruto.`,
-        });
-    }
-    if (v.fiscal) {
-      const f = v.fiscal;
-      if (v.itens.some((i) => i.valorBruto === undefined))
+      .min(1)
+      .max(200),
+  })
+  .strict();
+
+function validarConferencia(
+  v: z.infer<typeof baseDaNota> | z.infer<typeof baseFinanceira>,
+  ctx: z.RefinementCtx,
+) {
+  if (!v.numero && !v.chaveAcesso)
+    ctx.addIssue({
+      code: "custom",
+      path: ["numero"],
+      message:
+        "Confira o número da nota ou cupom, ou informe a chave de acesso, para evitar duplicar a entrada.",
+    });
+  if (
+    !dinheiro.safeParse(v.valorTotal).success ||
+    !v.itens.every((i) => valorItem.safeParse(i.valorTotal).success) ||
+    !v.pagamento.parcelas.every((p) => dinheiro.safeParse(p.valor).success)
+  )
+    return;
+  const total = centavosDaNota(v.valorTotal);
+  const chave = v.chaveAcesso ? dadosDaChave(v.chaveAcesso) : null;
+  const normalizar = (s: string) => s.replace(/^0+(?=\d)/, "");
+  if (
+    chave &&
+    ((v.fornecedor.documento && v.fornecedor.documento !== chave.cnpj) ||
+      (v.numero && normalizar(v.numero) !== normalizar(chave.numero)) ||
+      (v.serie && normalizar(v.serie) !== normalizar(chave.serie)) ||
+      v.emitidaEm.slice(2, 7).replace("-", "") !== chave.anoMes)
+  )
+    ctx.addIssue({
+      code: "custom",
+      path: ["chaveAcesso"],
+      message: "A chave diverge do emitente, número, série ou emissão.",
+    });
+  const tolerancia = toleranciaFiscalCentavos();
+  for (const [n, i] of v.itens.entries()) {
+    if (
+      i.valorUnitarioImpresso !== undefined &&
+      Math.abs(
+        Math.round(i.quantidade * i.valorUnitarioImpresso * 100) -
+          Number(centavosDaNota(i.valorBruto ?? i.valorTotal)),
+      ) > tolerancia
+    )
+      ctx.addIssue({
+        code: "custom",
+        path: ["itens", n],
+        message: `Quantidade × preço do item ${n + 1} não confere com o total bruto.`,
+      });
+  }
+  if (v.fiscal) {
+    const f = v.fiscal;
+    if (v.itens.some((i) => i.valorBruto === undefined))
+      ctx.addIssue({
+        code: "custom",
+        path: ["fiscal"],
+        message: "Conserve os totais brutos transcritos para validar o rateio.",
+      });
+    else {
+      const brutos = v.itens.map((i) => Number(centavosDaNota(i.valorBruto!))),
+        soma = brutos.reduce((a, b) => a + b, 0);
+      const ajuste = Math.round(f.ajusteArredondamento * 100);
+      if (
+        Math.abs(ajuste) > tolerancia ||
+        soma -
+          Number(centavosDaNota(f.descontos)) +
+          Number(centavosDaNota(f.acrescimos)) +
+          ajuste !==
+          Number(total)
+      )
         ctx.addIssue({
           code: "custom",
           path: ["fiscal"],
           message:
-            "Conserve os totais brutos transcritos para validar o rateio.",
+            "Itens, descontos e acréscimos não conferem com o total fiscal.",
         });
-      else {
-        const brutos = v.itens.map((i) =>
-            Number(centavosDaNota(i.valorBruto!)),
-          ),
-          soma = brutos.reduce((a, b) => a + b, 0);
-        const ajuste = Math.round(f.ajusteArredondamento * 100);
+      if (soma > 0) {
+        const liquidos = ratearCentavos(brutos, Number(total));
         if (
-          Math.abs(ajuste) > tolerancia ||
-          soma -
-            Number(centavosDaNota(f.descontos)) +
-            Number(centavosDaNota(f.acrescimos)) +
-            ajuste !==
-            Number(total)
+          v.itens.some(
+            (i, n) => Number(centavosDaNota(i.valorTotal)) !== liquidos[n],
+          )
         )
           ctx.addIssue({
             code: "custom",
-            path: ["fiscal"],
-            message:
-              "Itens, descontos e acréscimos não conferem com o total fiscal.",
+            path: ["itens"],
+            message: "O rateio líquido por item está divergente.",
           });
-        if (soma > 0) {
-          const liquidos = ratearCentavos(brutos, Number(total));
-          if (
-            v.itens.some(
-              (i, n) => Number(centavosDaNota(i.valorTotal)) !== liquidos[n],
-            )
-          )
-            ctx.addIssue({
-              code: "custom",
-              path: ["itens"],
-              message: "O rateio líquido por item está divergente.",
-            });
-        }
       }
     }
-    if (
-      v.itens.reduce((s, i) => s + centavosDaNota(i.valorTotal), 0n) !== total
-    )
-      ctx.addIssue({
-        code: "custom",
-        path: ["itens"],
-        message:
-          "O total dos itens não confere com o total da nota. Confira descontos e frete antes de confirmar.",
-      });
-    if (
-      v.pagamento.parcelas.reduce((s, p) => s + centavosDaNota(p.valor), 0n) !==
-      total
-    )
-      ctx.addIssue({
-        code: "custom",
-        path: ["pagamento", "parcelas"],
-        message: "A soma das parcelas precisa conferir com o total da nota.",
-      });
-    if (
-      v.pagamento.situacao === "PAGA" &&
-      (!v.pagamento.contaId ||
-        !v.pagamento.dataPagamento ||
-        v.pagamento.parcelas.length !== 1)
-    )
-      ctx.addIssue({
-        code: "custom",
-        path: ["pagamento"],
-        message:
-          "Para registrar como paga, confirme conta, data do pagamento e o valor integral em uma parcela.",
-      });
-    if (v.pagamento.situacao === "A_PAGAR" && v.pagamento.dataPagamento)
-      ctx.addIssue({
-        code: "custom",
-        path: ["pagamento", "dataPagamento"],
-        message: "Nota a pagar não pode ter data de pagamento confirmado.",
-      });
-  });
+  }
+  if (v.itens.reduce((s, i) => s + centavosDaNota(i.valorTotal), 0n) !== total)
+    ctx.addIssue({
+      code: "custom",
+      path: ["itens"],
+      message:
+        "O total dos itens não confere com o total da nota. Confira descontos e frete antes de confirmar.",
+    });
+  if (
+    v.pagamento.parcelas.reduce((s, p) => s + centavosDaNota(p.valor), 0n) !==
+    total
+  )
+    ctx.addIssue({
+      code: "custom",
+      path: ["pagamento", "parcelas"],
+      message: "A soma das parcelas precisa conferir com o total da nota.",
+    });
+  if (
+    v.pagamento.situacao === "PAGA" &&
+    (!v.pagamento.contaId ||
+      !v.pagamento.dataPagamento ||
+      v.pagamento.parcelas.length !== 1)
+  )
+    ctx.addIssue({
+      code: "custom",
+      path: ["pagamento"],
+      message:
+        "Para registrar como paga, confirme conta, data do pagamento e o valor integral em uma parcela.",
+    });
+  if (v.pagamento.situacao === "A_PAGAR" && v.pagamento.dataPagamento)
+    ctx.addIssue({
+      code: "custom",
+      path: ["pagamento", "dataPagamento"],
+      message: "Nota a pagar não pode ter data de pagamento confirmado.",
+    });
+}
+
+export const notaAssistidaPronta = baseDaNota.superRefine(validarConferencia);
+export const notaFinanceiraPronta =
+  baseFinanceira.superRefine(validarConferencia);
+export const propostaNotaPronta = z.union([
+  notaFinanceiraPronta,
+  notaAssistidaPronta,
+]);
 
 export type NotaAssistidaPronta = z.infer<typeof notaAssistidaPronta>;
+export type NotaFinanceiraPronta = z.infer<typeof notaFinanceiraPronta>;
+export type PropostaNotaPronta = z.infer<typeof propostaNotaPronta>;

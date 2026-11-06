@@ -23,8 +23,10 @@ const categoriaFinanceiraSchema = z.object({
   ),
   selecionada: z.string().min(1).max(120).nullable(),
   confirmada: z.boolean(),
+  origem: z.enum(["GEMINI", "CADASTRO", "USUARIO"]).optional(),
 });
 export type ConferenciaFiscal = {
+  destino?: "FINANCEIRO";
   versao: "fiscal-2.0";
   metodo: string;
   original: ExtracaoFiscal;
@@ -53,6 +55,7 @@ export function conferenciaFiscal(v: unknown): ConferenciaFiscal | null {
         conferida: l.data,
         extras: d.extras,
         alertasConferidos: !!d.alertasConferidos,
+        ...(d.destino === "FINANCEIRO" ? { destino: d.destino } : {}),
         ...(categoria.success ? { categoriaFinanceira: categoria.data } : {}),
       }
     : null;
@@ -83,6 +86,10 @@ export function atualizarCategoriasDaLeitura(
         manter &&
         !!anterior?.confirmada &&
         (!preferir || preferida === anterior?.selecionada),
+      origem:
+        manter && (!preferir || preferida === anterior?.selecionada)
+          ? anterior?.origem
+          : "CADASTRO",
     },
   };
 }
@@ -344,6 +351,7 @@ export function rascunhoDaLeituraFiscal(
   return {
     ...anterior,
     ...meta,
+    ...(c.destino ? { modo: c.destino } : {}),
     ...(!anterior?.categoriaId && c.categoriaFinanceira?.selecionada
       ? { categoriaId: c.categoriaFinanceira.selecionada }
       : {}),

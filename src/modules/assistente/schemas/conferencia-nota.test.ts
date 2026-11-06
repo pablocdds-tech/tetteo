@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { notaAssistidaPronta } from "@/server/nota-assistida-contrato";
+import {
+  notaAssistidaPronta,
+  notaFinanceiraPronta,
+} from "@/server/nota-assistida-contrato";
 import {
   confirmacaoVigente,
   dataConferencia,
@@ -47,6 +50,24 @@ function pronta() {
   assert.equal(prepararConferencia(r, catalogo), null);
   return r;
 }
+
+test("conferência financeira pede pagamento e vencimento sem depender de catálogo ou conversão de estoque", () => {
+  const r = rascunho();
+  r.modo = "FINANCEIRO";
+  r.fornecedor.documento = "11222333000181";
+  r.itens[0].unidade = "CX";
+  const c = { ...catalogo, locais: [], insumos: [], podeCriarInsumo: false };
+  assert.equal(prepararConferencia(r, c)?.campo, "situacao");
+  assert.equal(r.localId, undefined);
+  r.pagamento = { situacao: "A_PAGAR", forma: "PIX" };
+  assert.equal(prepararConferencia(r, c)?.campo, "parcelas");
+  r.pagamento.parcelas = [{ vencimento: "2026-12-04", valor: 40 }];
+  assert.equal(prepararConferencia(r, c), null);
+  assert.equal(r.itens[0].insumoId, undefined);
+  assert.equal(r.itens[0].fatorConversao, undefined);
+  assert.ok(notaFinanceiraPronta.safeParse(propostaDaConferencia(r)).success);
+  assert.doesNotMatch(resumoConferencia(r, c), /Entrada em|NOVO CADASTRO| → /);
+});
 test("não presume quitação nem vencimento pela presença de nota", () => {
   const r = rascunho();
   const p = prepararConferencia(r, catalogo)!;

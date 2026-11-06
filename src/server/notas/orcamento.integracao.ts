@@ -137,6 +137,34 @@ test("concorrência não repete geração mesmo com tarifa zero", async (t) => {
   assert.equal(r.filter((x) => x.status === "fulfilled").length, 1);
   assert.equal(geracoes, 1);
 });
+
+test("sugestão acompanha a leitura escolhida e não gera tentativa adicional só para classificar", async (t) => {
+  const f = await fixture();
+  let geracoes = 0;
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    if (url.endsWith(":countTokens"))
+      return Response.json({ totalTokens: 800 });
+    geracoes++;
+    const d = structuredClone(f.dados);
+    if (geracoes === 1) d.itens[0].quantidade = 20;
+    return f.sucesso(
+      Object.assign(d, { categoria_financeira_indice: geracoes }),
+    );
+  });
+  const r = await lerFiscalComGemini(
+    f.scope,
+    [imagem],
+    async () => [imagem],
+    async () => {},
+    [
+      { nome: "Categoria A", valor: "a" },
+      { nome: "Categoria B", valor: "b" },
+    ],
+  );
+  assert.equal(geracoes, 2);
+  assert.equal(r.dados.itens[0].quantidade, 2);
+  assert.equal(r.categoriaFinanceira, "b");
+});
 test("cota e falha de rede não causam segunda geração nem liberam replay", async (t) => {
   const f = await fixture();
   let geracoes = 0;

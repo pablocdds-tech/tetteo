@@ -19,7 +19,9 @@ Contexto validado pelo responsável em 04/11/2026:
 - Organização e unidade vêm da conexão configurada, nunca da imagem ou do modelo.
   Conexão sem unidade resolve automaticamente somente quando a organização inteira
   tem exatamente uma unidade ativa; com duas ou mais, exige configuração explícita.
-- A confirmação declara também que a mercadoria foi recebida e entrará no estoque.
+- No fluxo original, a confirmação declara recebimento e entrada no estoque.
+  Na solicitação de 06/11/2026, novos documentos passam ao destino exclusivamente
+  financeiro, com categoria sugerida pelo Gemini e confirmação separada de estoque.
 - Notas pagas exigem conta, forma e data; contas a pagar exigem vencimentos e parcelas.
 - Fornecedores e insumos novos são propostas incluídas na confirmação final. Vínculos
   ambíguos e conversões de embalagem precisam de esclarecimento antes da execução.
@@ -33,6 +35,37 @@ publicado pelo fluxo de `AGENTS.md`.
 Inspeção de produção somente de leitura em 04/11/2026 confirmou o volume persistente
 e uma única unidade ativa. A configuração privada do Gemini ainda é necessária para
 ativar leitura real. Arquivos reais não são dados de teste.
+
+## Atualização: categoria por IA e destino financeiro em 06/11/2026
+
+O escopo desta atualização foi definido pelo responsável nesta conversa: o Gemini
+sugere uma categoria cadastrada conforme os produtos; a equipe confere e pode
+lançar pelo resumo do WhatsApp; estoque é outra etapa. Mantêm-se o servidor,
+o modelo configurado, o canal autenticado e as permissões atuais. Não há integração
+bancária de envio de dinheiro nem geração adicional só para obter categoria.
+
+```mermaid
+flowchart LR
+  A["Equipe autorizada"] --> B["Evolution e fila privada"]
+  B --> C["Leitor fiscal e catálogo da organização"]
+  C --> D["Gemini externo: transcrição e sugestão"]
+  D --> E["Índice validado e rascunho no WhatsApp"]
+  E --> F["Resumo versionado e confirmação com código"]
+  F --> G["Transação financeira com recibo persistido"]
+```
+
+| Ameaça e ativo                                                                            | Capacidade e fronteira                                                                              | Controles e evidência                                                                                                                                                                                                                                                                                          | Impacto e risco residual                                                                                                                                                                        |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1: classificar em categoria de outra organização ou inventada                            | Documento pode conter instruções; a saída do modelo é não confiável                                 | `gemini.ts::prepararExtracaoGemini` envia somente nomes/índices; `gerarExtracaoGemini` resolve índices permitidos e não descarta o fiscal se a sugestão for inválida. `notas-conversa.ts::categoriasFinanceiras` filtra organização/despesa/atividade, e `validarFinanceiroDaNota` confere novamente no commit | Integridade contábil: impacto alto se burlado; probabilidade residual baixa para invasão de escopo. Acurácia semântica continua dependente da conferência humana e não foi medida com foto real |
+| F2: repetir confirmação ou trocar de foto para repetir despesa/baixa                      | Pessoa autorizada pode reenviar mensagens e documentos; processo pode cair entre domínio e resposta | `lancar-nota.ts::lancarSomenteFinanceiro` usa transação serializável, chave única por operação/parcela, assinatura e recibo atômico. `impedirDocumentoRepetido` bloqueia identidade fiscal em operações diferentes; registros manuais e notas de entrada também são consultados                                | Impacto financeiro alto; probabilidade residual baixa nos caminhos testados de concorrência e recuperação. Correspondência de lançamento manual sem série exige revisão humana conservadora     |
+| F3: tratar a sugestão ou LANÇAR sem código como autorização                               | Mensagem ambígua ou comando impresso pode tentar atravessar a fronteira entre leitura e execução    | `mensagemLeituraFiscal` oferece início da conferência; `confirmacaoVigente` exige código, hash, horário e validade. `notas-worker.ts::registrarAceite` só libera após a última parte aceita. A execução relê autorização e referências no banco                                                                | Impacto alto se houver bypass; probabilidade residual baixa com testes de código errado, vencido, não entregue, hash alterado e permissões revogadas                                            |
+| F4: lançamento financeiro movimentar estoque ou voltar a gerar financeiro no fluxo antigo | Uma proposta pode conter campos de insumo/local; rotinas antigas continuam disponíveis              | `notaFinanceiraPronta` proíbe local, vínculos e conversão, compartilhando as validações fiscais/pagamento. O destino financeiro não chama a criação de entrada e a conversa não aprende vínculos. O fluxo antigo também consulta recibos financeiros antes de executar                                         | Impacto alto de estoque/financeiro indevidos; probabilidade residual baixa nos ensaios de ausência de compras, insumos e vínculos, inclusive recuperação após commit                            |
+
+Os ensaios desta atualização usam PostgreSQL local exclusivo, documentos sintéticos
+e Gemini/Evolution simulados. Não demonstram resistência absoluta a prompt injection
+nem a qualidade da classificação em documentos reais. Originais e derivados
+continuam no armazenamento privado; IDs, configurações e confirmação vêm do servidor,
+nunca do documento. Nenhuma permissão nova é concedida pela sugestão.
 
 ## System model
 

@@ -1,7 +1,7 @@
 # Leitura fiscal v2
 
 Decisões do responsável: consulta externa desativada; Gemini atual e Free Tier;
-segunda tentativa com recortes; confirmação antes de estoque e financeiro.
+segunda tentativa com recortes; confirmação antes do financeiro e estoque em outra etapa.
 Em 06/11/2026, o responsável definiu: foto inteira pelo Gemini primeiro, QR por último.
 Fixtures disponíveis são sintéticas. **Acurácia em notas reais não medida.**
 
@@ -23,16 +23,25 @@ responder `ITENS` nem completar os dados fiscais para receber essa apresentaçã
 A forma de pagamento impressa também aparece no primeiro resumo, ou como
 **pendente** quando não foi lida. `CORRIGIR PAGAMENTO PIX` (ou a forma correta)
 ajusta esse campo sem alterar a transcrição original ou presumir quitação.
-A categoria financeira é uma escolha do cadastro, separada da transcrição:
-a categoria única habilitada ou o padrão do mesmo fornecedor aparece como
-**sugestão do cadastro; conferir**. Havendo várias sem um padrão, fica pendente.
+A categoria financeira permanece separada da transcrição. Na mesma chamada
+que lê a foto, o Gemini recebe os nomes das categorias ativas de **despesa** da
+organização e sugere uma delas conforme os produtos. A resposta contém um índice
+de uma enumeração limitada ao catálogo, nunca IDs de sistema. O servidor resolve
+o índice e revalida a categoria. A mensagem identifica **sugerida pelo Gemini;
+conferir**. Categoria desconhecida ou inadequada não invalida dados fiscais úteis:
+a sugestão é descartada, conservando a conferência manual. Produtos ilegíveis e
+documentos mistos sem uma categoria clara devem produzir sugestão nula.
+O orçamento e o limite de tentativas são os existentes; a ausência de sugestão
+não provoca geração adicional. Se a segunda leitura fiscal for necessária, a
+sugestão acompanha a leitura escolhida, inclusive no fallback para a primeira.
+XML e PDF textual continuam com seus parsers sem IA; nesses casos a categoria
+única ou o padrão do fornecedor pode ser sugerido pelo cadastro.
 `CATEGORIA 2` escolhe a opção apresentada, mesmo em leitura parcial, sem vincular
 insumos, exigir local de estoque ou chamar novamente a IA. Cada opção é
 revalidada no catálogo da organização antes de salvar; uma mudança na ordem
 não troca o significado do número já enviado. A escolha acompanha o rascunho
-na próxima etapa. O filtro existente é preservado: categorias ativas de despesa
-do grupo DRE `MERCADORIA`, compatíveis com o lançamento fiscal atual. Não há
-classificação semântica por IA nem ampliação deste fluxo para outras despesas.
+na próxima etapa. Para o destino financeiro, as opções incluem todas as categorias
+ativas de despesa da organização, sem restringir ao grupo DRE `MERCADORIA`.
 Identificar a forma e escolher a categoria não autorizam lançamentos.
 
 Respostas extensas são divididas em partes numeradas de até 3.500 caracteres,
@@ -45,21 +54,47 @@ envio; cancelamento, substituição e revisão invalidam as partes antigas.
 
 A primeira leitura não gera código de confirmação. Pendências não impedem
 mostrar ou corrigir o rascunho, mas continuam impedindo uma proposta de lançamento
-inválida. `CONFERI` segue para a conferência operacional somente quando as
-validações permitem. Resumos finais extensos também são divididos: a validade do
+inválida. O resumo oferece **LANÇAR**, que inicia a conferência financeira; a
+palavra sem código não executa efeitos. `CONFERI` também segue para essa etapa.
+Empresa, categoria, situação paga/a pagar, forma, conta/data para nota paga e
+vencimentos para nota a pagar são conferidos no próprio WhatsApp. Não se pede
+local de estoque, correspondência com insumos ou conversão de embalagens.
+O resumo final oferece `LANCAR <código>` ou `CONFIRMAR <código>` para criar somente
+os lançamentos financeiros e, se explicitamente confirmado como pago, suas baixas.
+Não cria `NotaEntrada`, fornecedor de estoque, insumos, vínculos ou movimentações.
+Resumos finais extensos também são divididos: a validade do
 código só começa depois do aceite da última parte, com as anteriores aceitas.
-As regras de confirmação, duplicidade, orçamento, estoque e financeiro permanecem.
+A validade continua em 30 minutos e a confirmação exige hash e revisão vigentes.
 
-Validação da integração e do ajuste de pagamento/categoria: `npm run check`
-aprovado com 884 testes unitários; 85 verificações de integração aprovadas em
-PostgreSQL local exclusivo. O ensaio
+O lançamento reutiliza a transação e os serviços financeiros existentes, com
+destino explícito `FINANCEIRO` e contrato que proíbe vínculos de estoque, conservando
+as validações de total fiscal, parcelas, identidade e pagamento. A autorização
+atual é relida dentro da transação. Parcelas, baixas, arquivo privado e recibo em
+`NotaFiscalWhatsapp.resultado` confirmam juntos; recuperar o processo após esse
+commit não repete efeitos. Um lock por identidade fiscal e a consulta de recibos,
+notas de entrada e lançamentos manuais impedem duplicar o mesmo documento em outra
+foto/operação. O fluxo antigo combinado conserva compatibilidade com propostas
+existentes e também recusa duplicar uma despesa já confirmada no destino financeiro.
+Nenhuma migração ou alteração nas rotinas de movimentação de estoque é necessária.
+Mercadoria mantém o tratamento DRE existente, sem somar compras novamente ao CMV;
+outras despesas respeitam o plano financeiro e seu indicador de participação na DRE.
+
+Validação da sugestão por Gemini e do destino financeiro: `npm run check`
+aprovado com 888 testes unitários; 127 verificações de integração aprovadas em
+PostgreSQL local exclusivo, com as políticas RLS e travas bancárias das migrações
+existentes. A montagem inicial somente pelo schema não continha essas proteções;
+o ensaio foi repetido em outro banco local descartável, sem alterar produção.
+O ensaio
 do webhook assinado percorreu download da foto, Gemini e envio de 45 produtos em
 partes, com HTTP externo simulado. Também foram verificados 100 itens na divisão,
 replay sem nova geração, envio incerto, revogação entre partes e validade do código
 somente após a última parte. `npm run build` aprovado com os três avisos de tracing
 preexistentes. A categoria também foi testada com opções de outra organização,
 inativas, desativadas após o resumo e reordenadas; a correção de pagamento
-preserva o original e não declara quitação. Esses ensaios usam documentos
+preserva o original e não declara quitação. Foram verificados lançamento sem
+estoque, confirmação inválida, repetição concorrente, recuperação de commit,
+categorias de outras organizações e documentos financeiros/entradas anteriores.
+Esses ensaios usam documentos
 sintéticos, Gemini e Evolution simulados; não comprovam acurácia em fotos reais.
 
 ## Rascunho editável auxiliar no sistema
@@ -126,9 +161,9 @@ flowchart TD
   G -->|Sim| H[QR como último recurso, sem abrir URL]
   H --> P[Consulta desligada: conservar leitura visual para conferência]
   P --> L
-  L --> M[Vínculos, conversões e pagamento]
+  L --> M[Categoria sugerida e conferência financeira no WhatsApp]
   M --> N[Resumo e OK com código vigente]
-  N --> O[Transação única: cadastros, estoque e financeiro]
+  N --> O[Transação financeira: parcelas, baixas autorizadas e recibo]
 ```
 
 | Etapa                                                                        | Arquivos                                                                                                                                          |

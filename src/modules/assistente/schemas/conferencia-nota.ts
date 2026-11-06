@@ -6,7 +6,8 @@ import {
 } from "@/server/notas/casamento";
 
 import {
-  notaAssistidaPronta,
+  propostaNotaPronta,
+  type PropostaNotaPronta,
   type NotaAssistidaPronta,
 } from "@/server/nota-assistida-contrato";
 
@@ -25,6 +26,7 @@ export type ItemConferido = {
   ean?: string;
 };
 export type RascunhoNota = {
+  modo?: "FINANCEIRO";
   operacaoId: string;
   arquivoId?: string;
   fornecedor: { nome: string; documento?: string };
@@ -89,7 +91,7 @@ export function normalizarDescricaoNota(v: string): string {
     .trim()
     .slice(0, 200);
 }
-export function hashPropostaNota(dados: NotaAssistidaPronta): string {
+export function hashPropostaNota(dados: PropostaNotaPronta): string {
   return createHash("sha256").update(JSON.stringify(dados)).digest("hex");
 }
 export function dataConferencia(v: string): string | null {
@@ -163,7 +165,7 @@ export function prepararConferencia(
       texto:
         "Não consegui ler o número fiscal. Qual é o número da nota ou cupom? Ele ajuda a impedir lançamentos repetidos.",
     };
-  if (r.fiscal) {
+  if (r.fiscal && r.modo !== "FINANCEIRO") {
     const fornecedor = casarFornecedorFiscal(
       r.fornecedor.documento,
       r.fornecedor.nome,
@@ -186,6 +188,7 @@ export function prepararConferencia(
       "Em qual categoria financeira entra esta compra?",
     ],
   ] as const) {
+    if (r.modo === "FINANCEIRO" && campo === "localId") continue;
     if (r[campo] && !lista.some((o) => o.valor === r[campo])) delete r[campo];
     if (!r[campo]) {
       if (lista.length === 1) r[campo] = lista[0].valor;
@@ -200,6 +203,7 @@ export function prepararConferencia(
     }
   }
   for (const [i, item] of r.itens.entries()) {
+    if (r.modo === "FINANCEIRO") break;
     if (item.insumoId && !c.insumos.some((s) => s.id === item.insumoId)) {
       delete item.insumoId;
       delete item.fatorConversao;
@@ -331,7 +335,7 @@ export function prepararConferencia(
       texto: `Quando vence? Para uma parcela, envie DD/MM/AAAA. Se forem várias, envie data e valor de cada uma, separados por ponto e vírgula. Ex.: 10/11/2026 100,00; 10/12/2026 100,00. Total: ${moeda(r.valorTotal)}.`,
     };
   const proposta = propostaDaConferencia(r);
-  const validacao = notaAssistidaPronta.safeParse(proposta);
+  const validacao = propostaNotaPronta.safeParse(proposta);
   if (!validacao.success)
     return {
       campo: "conferencia",
@@ -343,6 +347,22 @@ export function prepararConferencia(
 export function propostaDaConferencia(r: RascunhoNota): unknown {
   const { fornecedorNovo: _fornecedorNovo, ...dados } = r;
   void _fornecedorNovo;
+  if (r.modo === "FINANCEIRO") {
+    const { localId: _local, ...financeiro } = dados;
+    void _local;
+    return {
+      ...financeiro,
+      itens: r.itens.map((i) => ({
+        descricao: i.descricao,
+        quantidade: i.quantidade,
+        valorTotal: i.valorTotal,
+        valorBruto: i.valorBruto,
+        valorUnitarioImpresso: i.valorUnitarioImpresso,
+        codigoFornecedor: i.codigoFornecedor,
+        ean: i.ean,
+      })),
+    };
+  }
   return {
     ...dados,
     itens: r.itens.map((i) => ({
@@ -568,7 +588,7 @@ export function resumoConferencia(r: RascunhoNota, c: CatalogoNota): string {
     `Emissão: ${r.emitidaEm ? dia(r.emitidaEm) : "a conferir"} · Unidade: ${c.unidade}`,
     ...r.itens.map(
       (i, n) =>
-        `${n + 1}. ${i.descricao}: ${i.quantidade} ${i.unidade} · ${moeda(i.valorTotal)}${i.valorBruto !== undefined ? ` líquido rateado (bruto impresso ${moeda(i.valorBruto)})` : ""}${i.novoInsumo ? " · NOVO CADASTRO" : ""}${i.fatorConversao ? ` → ${Number((i.quantidade * i.fatorConversao).toFixed(3))} ${i.novoInsumo?.unidadeMedida ?? c.insumos.find((s) => s.id === i.insumoId)?.unidadeMedida ?? ""} de ${i.novoInsumo?.nome ?? c.insumos.find((s) => s.id === i.insumoId)?.nome ?? "produto a conferir"}` : ""}`,
+        `${n + 1}. ${i.descricao}: ${i.quantidade} ${i.unidade} · ${moeda(i.valorTotal)}${i.valorBruto !== undefined ? ` líquido rateado (bruto impresso ${moeda(i.valorBruto)})` : ""}${r.modo !== "FINANCEIRO" && i.novoInsumo ? " · NOVO CADASTRO" : ""}${r.modo !== "FINANCEIRO" && i.fatorConversao ? ` → ${Number((i.quantidade * i.fatorConversao).toFixed(3))} ${i.novoInsumo?.unidadeMedida ?? c.insumos.find((s) => s.id === i.insumoId)?.unidadeMedida ?? ""} de ${i.novoInsumo?.nome ?? c.insumos.find((s) => s.id === i.insumoId)?.nome ?? "produto a conferir"}` : ""}`,
     ),
     ...(r.fiscal
       ? [
@@ -577,7 +597,9 @@ export function resumoConferencia(r: RascunhoNota, c: CatalogoNota): string {
       : []),
     `Total: ${moeda(r.valorTotal)}`,
     `Empresa: ${nome(c.empresas, r.empresaId)} · Categoria: ${nome(c.categorias, r.categoriaId)}`,
-    `Entrada em: ${nome(c.locais, r.localId)} · Recebimento: ${dia(r.recebidaEm)}`,
+    r.modo === "FINANCEIRO"
+      ? "Destino: somente Financeiro. Estoque em outra etapa."
+      : `Entrada em: ${nome(c.locais, r.localId)} · Recebimento: ${dia(r.recebidaEm)}`,
     `Financeiro: ${r.pagamento.situacao === "PAGA" ? `paga${r.pagamento.dataPagamento ? ` em ${dia(r.pagamento.dataPagamento)}` : ""} · Conta: ${nome(c.contas, r.pagamento.contaId)}` : r.pagamento.situacao === "A_PAGAR" ? "a pagar" : "a conferir"}${r.pagamento.forma ? ` · ${r.pagamento.forma}` : ""}`,
     ...(r.pagamento.parcelas ?? []).map(
       (p, i) => `Parcela ${i + 1}: ${moeda(p.valor)} · ${dia(p.vencimento)}`,
@@ -622,13 +644,17 @@ export function confirmacaoVigente(d: {
   recebidoEm: Date;
   agora: Date;
   hash: string | null;
-  proposta: NotaAssistidaPronta;
+  proposta: PropostaNotaPronta;
 }): boolean {
   return (
     !!d.codigo &&
-    [`CONFIRMAR ${d.codigo}`, `OK ${d.codigo}`].includes(
-      d.texto.trim().toUpperCase(),
-    ) &&
+    [
+      `CONFIRMAR ${d.codigo}`,
+      `OK ${d.codigo}`,
+      ...("modo" in d.proposta && d.proposta.modo === "FINANCEIRO"
+        ? [`LANCAR ${d.codigo}`, `LANÇAR ${d.codigo}`]
+        : []),
+    ].includes(d.texto.trim().toUpperCase()) &&
     !!d.resumoEm &&
     !!d.expiraEm &&
     d.recebidoEm > d.resumoEm &&

@@ -163,6 +163,7 @@ export function mensagemLeituraFiscal(
     opcoes: { nome: string; valor: string }[];
     selecionada: string | null;
     confirmada: boolean;
+    origem?: "GEMINI" | "CADASTRO" | "USUARIO";
   },
 ): string {
   const apontamentos = [...pendenciasDoRascunho(d), ...pendencias];
@@ -201,7 +202,7 @@ export function mensagemLeituraFiscal(
     "Para ajustar a forma: CORRIGIR PAGAMENTO PIX (ou a forma correta). A forma impressa não confirma que a compra foi paga.",
     ...(categoria
       ? [
-          `Categoria financeira: ${nomeCategoria ? `${limpar(nomeCategoria)}${categoria.confirmada ? " (selecionada)" : " (sugestão do cadastro; conferir)"}` : "*pendente*"}`,
+          `Categoria financeira: ${nomeCategoria ? `${limpar(nomeCategoria)}${categoria.confirmada ? " (selecionada)" : categoria.origem === "GEMINI" ? " (sugerida pelo Gemini; conferir)" : " (sugestão do cadastro; conferir)"}` : "*pendente*"}`,
           ...categoria.opcoes.map((o, i) => `${i + 1}. ${limpar(o.nome)}`),
           categoria.opcoes.length
             ? "Para escolher ou trocar: CATEGORIA seguido do número da opção (ex.: CATEGORIA 1)."
@@ -214,6 +215,7 @@ export function mensagemLeituraFiscal(
     "Para corrigir: CORRIGIR ITEM 1 QUANTIDADE 2 (use o número e o campo desejados).",
     "*RESUMO* para rever os dados · *ITENS* para rever produtos · *CANCELAR* para descartar.",
     "Ainda não houve lançamento.",
+    "Para lançar somente no Financeiro, responda *LANÇAR*. Vou conferir os dados pendentes e pedir a confirmação final com código. Estoque fica para outra etapa.",
   ].join("\n");
 }
 
@@ -249,7 +251,7 @@ export function comandoDaRespostaFiscal(
 ): string | null {
   const s = texto.trim();
   if (
-    /^(?:ok|confirmar|corrigir|cancelar|resumo|itens|detalhes|ajuda|buscar|alterar|categoria|nota|conferi\s+leitura|sem\s+ajustes)\b/i.test(
+    /^(?:ok|confirmar|lançar|lancar|corrigir|cancelar|resumo|itens|detalhes|ajuda|buscar|alterar|categoria|nota|conferi\s+leitura|sem\s+ajustes)\b/i.test(
       s,
     )
   )
