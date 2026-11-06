@@ -17,6 +17,12 @@ export function PainelDeNotas({ dados }: { dados: PainelNotas }) {
         <p className="text-ink-3 mt-1">
           Número receptor, agente e pessoas autorizadas de {dados.unidade}.
         </p>
+        <Link
+          href="/assistente/equipe/notas/rascunhos"
+          className="text-accent mt-3 inline-flex min-h-11 items-center font-medium underline underline-offset-4"
+        >
+          Ler documento e salvar rascunho
+        </Link>
       </header>
       <section
         aria-labelledby="numero-notas"

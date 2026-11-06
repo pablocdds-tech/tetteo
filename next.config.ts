@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["pdf-parse", "sharp", "jsqr", "fast-xml-parser"],
   // Os workers termináveis resolvem estes pacotes pelo Node, fora do bundle.
   outputFileTracingIncludes: {
+    "/api/notas/rascunhos": [
+      "./scripts/pdf-fiscal-worker.cjs",
+      "./node_modules/pdf-parse/**/*",
+      "./node_modules/pdfjs-dist/**/*",
+      "./node_modules/@napi-rs/canvas*/**/*",
+      "./node_modules/jsqr/**/*",
+    ],
     "/api/whatsapp/webhook": [
       "./scripts/pdf-fiscal-worker.cjs",
       "./node_modules/pdf-parse/**/*",

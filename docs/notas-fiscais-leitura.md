@@ -5,6 +5,50 @@ segunda tentativa com recortes; confirmação antes de estoque e financeiro.
 Em 06/11/2026, o responsável definiu: foto inteira pelo Gemini primeiro, QR por último.
 Fixtures disponíveis são sintéticas. **Acurácia em notas reais não medida.**
 
+## Rascunho editável no sistema
+
+Em **Severina → Equipe e avisos → Notas pelo WhatsApp → Ler documento e salvar
+rascunho**, a rota `/assistente/equipe/notas/rascunhos` recebe XML, PDF e fotos
+de até 20 MB e chama o mesmo `lerDocumentoFiscal`, com a mesma configuração,
+reserva de orçamento e limites de tentativas do Gemini. Não há segundo leitor.
+
+A transcrição pode estar incompleta. O formulário mostra os campos lidos,
+destaca pendências e permite editar, adicionar/remover a última linha e salvar
+mesmo sem documento do fornecedor, número fiscal, quantidade ou ajustes. Ausências
+permanecem `null`; não se presume zero nem se recalculam valores impressos.
+Erros de JSON, provedor e imagem ilegível oferecem rascunho vazio para digitação,
+com aviso de que a leitura não foi concluída. Arquivos de tipo ou tamanho inválido
+são recusados. A transcrição original e as correções permanecem separadas.
+
+O armazenamento reutiliza `NotaFiscalWhatsapp`, cujos identificadores de canal
+são escalares: `instanciaId=WEB`, `vinculoId=usuarioId`, `mensagemId=web:<hash>` e
+estados exclusivos `LENDO_WEB`/`RASCUNHO_WEB`. Não cria conversa nem mensagem de
+WhatsApp, proposta de lançamento, código de confirmação ou evento de compra.
+O fluxo existente de WhatsApp permanece inalterado. Nenhuma migração é necessária.
+
+Cada operação exige sessão ativa, unidade ativa visível e permissões atuais
+`assistente.ver`, `estoque.ver` e `estoque.lancar`. Consultas e alterações exigem
+organização, unidade e autor; essas permissões não conferem lançamento nesta tela.
+A API valida origem nas escritas, limita o corpo durante a leitura e responde
+com `private, no-store`. Os arquivos usam o armazenamento privado existente.
+O limite diário e as reservas são conservados; reenvio com a mesma identidade
+não gera outra leitura. Salvar exige a revisão atual para evitar sobrescrever
+outra aba. Auditoria registra identidade, revisão e pendências, sem conteúdo
+fiscal em logs do aplicativo. Não há persistência fiscal em localStorage.
+
+Esta etapa termina em **Salvar rascunho**. Não oferece confirmação nem chama
+rotinas de compra, estoque ou financeiro. As validações obrigatórias desses
+lançamentos não foram alteradas. A validação automatizada usa fixtures sintéticas,
+Gemini simulado e PostgreSQL local exclusivo; isso não comprova acurácia em fotos
+reais. Nenhum deploy faz parte desta entrega.
+
+Validação desta etapa em 06/11/2026: `npm run check` aprovado; execução final
+com 877 testes unitários aprovados e 79 verificações de integração aprovadas
+(seis novas e 73 dos fluxos existentes), em banco local exclusivo. Playwright
+validou login, XML, PDF textual, imagem sintética ilegível, edição, salvamento,
+reabertura e layout de 390 px. `npm run build` aprovado com os três avisos
+preexistentes de tracing de `server/arquivos.ts`. Nenhuma chamada real ao Gemini.
+
 ## Fluxo e implementação
 
 ```mermaid
