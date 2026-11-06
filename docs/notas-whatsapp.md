@@ -1,11 +1,13 @@
-# Notas e cupons por foto no WhatsApp
+# Notas, cupons, XML e PDF no WhatsApp
 
 ## Como funciona
 
-Envie uma foto da nota fiscal ou cupom para o WhatsApp interno da equipe. A
+Envie XML, PDF ou uma foto da nota fiscal ou cupom para o WhatsApp interno da equipe. A
 Severina lê fornecedor, data, itens, quantidades e valores, pergunta o que faltar
 e apresenta um resumo. Sua resposta `CONFIRMAR` com o código daquele resumo
 autoriza os cadastros indicados, a entrada no estoque e o lançamento financeiro.
+`OK` com o código vigente também confirma; `OK` sozinho não lança. O fluxo de
+leitura e avaliação está em [Leitura fiscal v2](notas-fiscais-leitura.md).
 
 Até a confirmação há apenas a foto e a conferência. A confirmação declara também
 que os produtos foram recebidos. Estoque e Financeiro são gravados na mesma
@@ -88,7 +90,8 @@ Salvar uma mudança invalida o teste anterior. O teste da revisão vale por
 chat ou arquivo versionado. A configuração é da organização e unidade que
 usarão a leitura.
 
-A imagem é enviada ao Gemini para extração. O custo máximo é reservado antes
+A imagem sem QR decodificado pode ser enviada ao Gemini para extração. XML e PDF
+com texto são lidos diretamente. O custo máximo é reservado antes
 da geração e compartilha o orçamento da unidade com o atendimento e seus
 testes. Sem configuração ativa, com teste vencido ou limite de custo atingido,
 a nota fica sem lançamento e a conversa orienta a revisão. A configuração por
@@ -114,16 +117,17 @@ complexidade aceita pelo provedor. O contrato Zod completo continua validando a
 resposta, inclusive limites, datas, documentos e campos desconhecidos, antes da
 conferência e de qualquer lançamento.
 
-Na mesma inspeção, a leitura ainda não tinha chave Gemini configurada para a
-unidade. Depois da publicação e atualização dos eventos pelo responsável técnico,
-a etapa de ativação pelo usuário é salvar a chave no painel privado, escolher o
-modelo, confirmar tarifas, testar e ativar. A unidade única é resolvida pelo
-servidor. Não envie a chave em mensagens.
+O modelo escolhido nesta etapa permanece o Gemini atual, com tarifas confirmadas
+do Free Tier. Uma segunda leitura usa recortes e o mesmo modelo, no máximo uma
+vez. Falhas de rede, credencial e cota não repetem a geração. Não há modelo pago
+alternativo ativado. A consulta fiscal externa permanece desativada; encontrar QR
+Code pede o XML para continuar sem OCR.
 
 ## Lançar uma nota
 
-1. Envie uma foto nítida em JPG, PNG ou WebP, de até **5 MB**, mostrando o documento
-   inteiro. Envie uma nota por foto e conclua uma conferência antes da próxima.
+1. Envie XML, PDF de até cinco páginas ou foto nítida em JPG, PNG ou WebP, de até
+   **20 MB**, mostrando o documento inteiro. Prefira foto como documento, sem
+   compressão. Envie uma nota por arquivo e conclua uma conferência antes da próxima.
 2. Confira a leitura e responda às perguntas usando os números das opções. Para
    encontrar um produto durante o vínculo de item, use `BUSCAR` seguido do nome.
 3. Confirme qual cadastro corresponde a cada descrição da nota. Para embalagens,
@@ -133,9 +137,11 @@ servidor. Não envie a chave em mensagens.
 4. Confira se a compra está **já paga** ou **a pagar**. Para as pagas, informe
    conta, forma e data; para as que serão pagas, informe vencimentos e valores de
    cada parcela. A baixa registra o pagamento já realizado que você confirmou.
-5. Leia o resumo completo: fornecedor, itens, cadastros propostos, conversões,
-   valores, unidade, local, empresa e pagamento. Responda exatamente como pedido,
-   por exemplo `CONFIRMAR A1B2C3`, usando o código recebido na sua conversa.
+5. Confira os dados e alertas da leitura; se solicitado, responda `CONFERI LEITURA`.
+   Valores ausentes ou inconsistentes continuam bloqueados. Leia o resumo final:
+   fornecedor, quantidade de itens, total, cadastros propostos, unidade, local,
+   empresa e pagamento. `ITENS` exibe descrições, valores e conversões. Responda
+   `OK A1B2C3` ou `CONFIRMAR A1B2C3` usando o código recebido na sua conversa.
 6. Aguarde **Nota cadastrada com sucesso**, com a referência da nota de entrada
    e o resultado financeiro. Depois envie a próxima foto.
 
@@ -160,6 +166,11 @@ resumo ou um código antigo não autorizam o lançamento.
 | `ALTERAR PAGAMENTO`                                                      | Reabre a escolha de situação, forma, conta e datas.                                                                 |
 | `ALTERAR LOCAL`, `ALTERAR EMPRESA`, `ALTERAR CATEGORIA`, `ALTERAR CONTA` | Reabre a escolha indicada.                                                                                          |
 | `CANCELAR`                                                               | Descarta uma conferência ainda não aprovada.                                                                        |
+| `CONFERI LEITURA`                                                        | Confirma campos já lidos e alertas; não completa campos ausentes nem autoriza o lançamento.                         |
+| `CORRIGIR CNPJ 11222333000181`, `CORRIGIR CHAVE 44digitos`               | Corrige a identidade fiscal e revalida os dígitos.                                                                  |
+| `CORRIGIR ITEM 1 PRECO 5,00`, `CORRIGIR ITEM 1 EAN SEM`                  | Corrige o preço impresso ou remove um EAN não legível.                                                              |
+| `SEM AJUSTES`, `CORRIGIR DESCONTOS 1,00`, `CORRIGIR ACRESCIMOS 2,00`     | Confirma ausência ou valores dos ajustes antes do rateio.                                                           |
+| `ITENS`                                                                  | Mostra os itens e as conversões da conferência atual.                                                               |
 
 Para várias parcelas, responda à pergunta com data e valor separados por ponto
 e vírgula: `10/11/2026 100,00; 10/12/2026 100,00`. Para uma parcela, basta a data
@@ -180,12 +191,12 @@ retomada da mesma nota.
 
 ## Limites desta entrega
 
-- A leitura aceita fotos, com até 100 itens legíveis. PDF, XML e várias fotos
-  compondo a mesma nota ficam para o cadastro pelo sistema.
-- Descontos e frete não recebem rateio automático. Se os valores das linhas não
-  somarem o total final, o lançamento é bloqueado. Corrija os valores líquidos
-  dos itens conforme o documento, confira a distribuição e confirme novamente.
-  Para situações que exijam um tratamento fiscal específico, use o fluxo manual.
+- A leitura aceita XML, PDF ou foto, com até 100 itens. Mensagens separadas não
+  são juntadas. Layouts de PDF desconhecidos ficam pendentes e pedem XML.
+- Descontos e acréscimos explícitos são rateados em centavos para preservar o
+  custo líquido. Valores brutos permanecem na leitura original. Composição não
+  explicada pelos valores impressos bloqueia o lançamento. Tolerância padrão:
+  um centavo, configurável de zero a cinco por `NOTAS_TOLERANCIA_CENTAVOS`.
 - Os produtos entram juntos no local escolhido. Pagamentos parciais, devoluções
   e alterações de uma nota já lançada usam os fluxos próprios do sistema.
 - A fila limita cada pessoa a 20 fotos e 200 textos em 24 horas, somando seus

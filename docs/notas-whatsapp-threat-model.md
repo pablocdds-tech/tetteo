@@ -45,7 +45,7 @@ ativar leitura real. Arquivos reais não são dados de teste.
   usuário ativo, canal ligado, unidade e permissões reconstruídas pelo banco.
 - `src/modules/assistente/services/notas-fila.ts`: entrada deduplicada com limite
   por pessoa de 20 fotos ou 200 textos em 24 horas, inclusive entre canais.
-- `src/app/api/whatsapp/_costura/notas-worker.ts`: lease de 120 segundos renovável,
+- `src/app/api/whatsapp/_costura/notas-worker.ts`: lease de 240 segundos renovável,
   execução cercada pelo dono, até três tentativas, ritmo global de quatro segundos
   e recuperação de envios incertos por consulta. A revisão do resumo é verificada
   antes da entrega; somente o aceite da versão pronta abre a confirmação por 30 minutos.
@@ -77,7 +77,7 @@ ativar leitura real. Arquivos reais não são dados de teste.
   recuperável. Nunca depender apenas de memória ou do `after()` para recuperar falhas.
 - Worker → Evolution: ID de mídia por HTTP autenticado no endereço privado configurado;
   sem URL arbitrária, sem redirecionamentos, com timeout e limite lido em streaming.
-- Worker → disco/banco: imagem com assinatura validada e até 5 MB; nome aleatório,
+- Worker → disco/banco: XML, PDF ou imagem com assinatura validada e até 20 MB; nome aleatório,
   caminho privado e dono no banco. A montagem persistente precisa sobreviver ao deploy.
 - Worker → provedor de IA: imagem e instruções de extração por HTTPS; credencial só
   no servidor. Saída validada como dados, sem SQL, autorização ou ferramentas livres.
@@ -198,6 +198,27 @@ original não são resolvidos pela leitura automática.
 | `src/modules/financeiro/services/integrado.ts`                  | Retentativa de efeitos abortados por concorrência             | TM-003, TM-004         |
 
 ## Notes on use
+
+### Ampliação da leitura fiscal v2
+
+O escopo inclui XML, PDF, QR e pré-processamento. Decisões confirmadas: consulta
+externa desativada; mesmo Gemini e Free Tier; recortes na segunda tentativa;
+fixtures sintéticas enquanto não houver notas reais anonimizadas.
+
+| Ameaça                         | Impacto                                                    | Mitigação                                                                                                                                           | Risco residual                                                                 |
+| ------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| TM-007: XML hostil             | Leitura de arquivos ou exaustão por entidades/profundidade | `documento.ts`/`xml.ts`: sem DTD, entidades e stylesheet; limites de bytes, profundidade e nós                                                      | Sem validação de assinatura/XSD; origem exige conferência                      |
+| TM-008: PDF/imagem hostil      | Falha nativa ou consumo excessivo                          | `pdf.ts` e worker CJS em processo separado, sem credenciais herdadas, stdin/saída limitados e prazo; geometria antes do canvas; Sharp limita pixels | Mesmo UID; heap não limita memória nativa; isolamento de SO pode ser reforçado |
+| TM-009: QR causa SSRF          | URL impressa tenta acessar rede interna                    | `qr.ts` só extrai chave; `consulta.ts` desativada; provedor não vem do documento/modelo                                                             | Futuro adaptador exige revisão de endpoint, escopo e custos                    |
+| TM-010: leitura errada         | Quantidade, dívida ou embalagem incorretas                 | Schema nullable, confiança, DV, reconciliação, divergências entre leituras, vínculos fortes e confirmação versionada                                | Confiança não prova acerto; corpus real pendente e erro humano possível        |
+| TM-011: repetição consome cota | Replay repete gerações, inclusive gratuitas                | Reserva sob trava, marcador, até duas gerações; sem repetição por rede/cota                                                                         | Cota do provedor pode acabar; orçamento/circuito continuam obrigatórios        |
+| TM-012: XML ativo no navegador | Documento atinge o usuário que abre anexo                  | Rota mantém autenticação/escopo e entrega XML como anexo com CSP sandbox                                                                            | Aplicativo que abre download tem suas próprias proteções                       |
+
+Preservados: autorização por unidade, autoria, proposta imutável durante execução,
+transação serializável, outbox e confirmação antes de qualquer efeito. Original,
+derivados e recortes são privados. Logs guardam IDs/códigos, sem credenciais ou
+corpo de erro do provedor. Validar dígitos não prova autenticidade fiscal.
+Testes sintéticos não medem acurácia real.
 
 Cobertos: entrada HTTP, remetente, mídia, modelo, confirmação, banco, resposta e
 leitura privada. Cada fronteira aparece em pelo menos uma ameaça. CI e testes não
